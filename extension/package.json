@@ -5,7 +5,6 @@
   "version": "0.10.0",
   "publisher": "vibezoo",
   "license": "MIT",
-  "icon": "resources/icons/vibezoo.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/vibezoo/vibezoo"

@@ -281,6 +281,55 @@ export function deactivate(): void {
   statusBar?.dispose();
 }
 
+// ── Auto Configure Zoo Code MCP ──────────────────────────
+
+function autoConfigureMCP(): void {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.[0]) return;
+
+  const root = folders[0].uri.fsPath;
+  const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
+  const zooMCPDir = path.join(root, '.roo');
+  const zooMCPPath = path.join(zooMCPDir, 'mcp.json');
+
+  const mcpConfig = {
+    mcpServers: {
+      crow: {
+        url: `http://localhost:${crowPort}`,
+        transport: 'sse',
+      },
+      vibezoo: {
+        url: 'http://localhost:9027',
+        transport: 'sse',
+      },
+    },
+  };
+
+  let existing: any = {};
+  if (fs.existsSync(zooMCPPath)) {
+    try {
+      existing = JSON.parse(fs.readFileSync(zooMCPPath, 'utf-8'));
+    } catch { /* ignore */ }
+  }
+
+  const existingServers = existing.mcpServers || {};
+
+  // 이미 crow나 vibezoo가 등록되어 있으면 덮어쓰지 않음
+  if (!existingServers.crow && !existingServers.vibezoo) {
+    fs.mkdirSync(zooMCPDir, { recursive: true });
+    const merged = {
+      mcpServers: {
+        ...existingServers,
+        ...mcpConfig.mcpServers,
+      },
+    };
+    fs.writeFileSync(zooMCPPath, JSON.stringify(merged, null, 2), 'utf-8');
+    console.log(`[VibeZoo] Zoo Code MCP 설정 완료: ${zooMCPPath}`);
+  } else {
+    console.log('[VibeZoo] Zoo Code MCP 설정이 이미 존재합니다. 건드리지 않습니다.');
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
 function ensureDirectories(): void {
@@ -317,6 +366,9 @@ function ensureTemplates(): void {
       }
     }
   }
+
+  // Zoo Code MCP 자동 설정
+  autoConfigureMCP();
 
   // .vscode/settings.json
   const vscodeDir = path.join(root, '.vscode');
