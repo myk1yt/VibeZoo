@@ -47,6 +47,14 @@ export class SubagentManager {
       );
     }
 
+    // Python 의존성 자동 설치
+    try {
+      await this.installDependencies();
+    } catch (err: any) {
+      console.warn('[VibeZoo] Python deps install failed:', err.message);
+      // 실패해도 진행 — 이미 설치되어 있을 수 있음
+    }
+
     const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
 
     this.child = spawn('python', [this.bridgeScript, '--port', String(BRIDGE_PORT)], {
@@ -115,6 +123,28 @@ export class SubagentManager {
       }, 5000);
       this.child = null;
       this.node = null;
+    }
+  }
+
+  /** Python 의존성 자동 설치 */
+  private async installDependencies(): Promise<void> {
+    const requirements = ['fastmcp', 'uvicorn', 'requests'];
+    const missing: string[] = [];
+
+    for (const pkg of requirements) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`python -c "import ${pkg.replace('-', '_')}"`, { stdio: 'ignore' });
+      } catch {
+        missing.push(pkg);
+      }
+    }
+
+    if (missing.length > 0) {
+      console.log(`[VibeZoo] Installing missing Python packages: ${missing.join(', ')}`);
+      const { execSync } = require('child_process');
+      execSync(`pip install ${missing.join(' ')}`, { stdio: 'pipe', timeout: 60000 });
+      console.log('[VibeZoo] Python packages installed successfully');
     }
   }
 

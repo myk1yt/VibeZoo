@@ -103,6 +103,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionResume.show(context).catch(() => {});
   }
 
+  // ── MCP Bridge 자동 시작 ──────────────────────────────
+  subagentManager = new SubagentManager(context);
+
+  // 백그라운드에서 자동 시작
+  subagentManager.spawnBridge().then(async (port) => {
+    console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
+    crowServer.reconnect().catch(() => {});
+    autoConfigureMCP();
+    const fresh = await crowServer.getFreshness().catch(() => 0);
+    statusBar.setCrowStatus(true, fresh);
+  }).catch(async (err: any) => {
+    console.warn('[VibeZoo] MCP Bridge failed:', err.message);
+    const connected = crowServer.isRunning() && await crowServer.healthCheck().catch(() => false);
+    statusBar.setCrowStatus(connected);
+  });
+
   // ── TreeView Providers ──────────────────────────────────
   const subagentsProvider = new ActiveSubagentsProvider();
   const yoloHistoryProvider = new YoloHistoryProvider();
@@ -114,13 +130,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider('vibezoo.yoloHistory', yoloHistoryProvider)
   );
 
-  // SubagentManager 상태 변경 → TreeView 업데이트
-  subagentManager.onChange((node) => {
-    subagentsProvider.updateNode(node);
-  });
+  subagentManager.onChange((node) => subagentsProvider.updateNode(node));
 
   // ── Wave 4: Orchestra ────────────────────────────────────
-  subagentManager = new SubagentManager(context);
   mentionRouter = new MentionRouter(subagentManager);
   mentionRouter.registerParticipants(context);
 
