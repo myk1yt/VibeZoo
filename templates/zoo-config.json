@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "defaultMode": "code_plus_crow",
+  "project": {
+    "name": "",
+    "type": "auto",
+    "framework": "auto"
+  },
+  "crow": {
+    "autoCompactInterval": 600,
+    "preferredRegisters": ["arch", "style", "life_pref"]
+  },
+  "build": {
+    "command": "auto",
+    "problemMatcher": "auto",
+    "autoFix": {
+      "enabled": false,
+      "maxAttempts": 3
+    }
+  },
+  "yolo": {
+    "autoBackup": true,
+    "rewindShortcut": "ctrl+shift+z"
+  },
+  "visual": {
+    "whiteboardEnabled": true,
+    "uiPreviewEnabled": true
+  }
+}

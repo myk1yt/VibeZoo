@@ -1,0 +1,36 @@
+# .yoloignore — VibeZoo: AI가 자동 수정/접근해서는 안 되는 파일 패턴
+# .gitignore와 동일한 glob 문법 사용
+
+# 환경 변수 (모든 수준에서 보호)
+**/.env
+**/.env.*
+!.env.example
+
+# 인증/보안
+**/*.pem
+**/*.key
+**/secrets/**
+**/.ssh/
+**/.aws/
+
+# 인프라 상태
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/.terraform/
+
+# 패키지 매니저 락 파일 (AI 수정 금지)
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# 빌드 산출물 (수정 의미 없음)
+**/dist/
+**/build/
+**/coverage/
+
+# VibeZoo 자체 데이터
+**/.zoo-code/
+**/.zoo/yocto/
+
+# 사용자 커스텀 규칙은 이 아래에 추가
+# Crow Memory의 life_avoid 레지스터와 자동 동기화됨

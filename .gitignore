@@ -1,0 +1,35 @@
+# VibeZoo .gitignore
+
+# Node
+node_modules/
+extension/out/
+extension/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Go
+mcp-servers/bin/
+mcp-servers/build/
+
+# VS Code
+.vscode/
+*.vsix
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+*.swp
+*.swo
+*~
+
+# Build
+dist/
+build/
+
+# VibeZoo data (user local)
+.zoo-code/

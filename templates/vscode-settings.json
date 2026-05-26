@@ -1,0 +1,15 @@
+{
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/node_modules/*/**": true,
+    "**/.zoo-code/yocto/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/.next/**": true,
+    "**/coverage/**": true,
+    "**/target/**": true
+  },
+  "workbench.localHistory.enabled": true,
+  "workbench.localHistory.maxFileSize": 512,
+  "workbench.localHistory.maxFileEntries": 100
+}

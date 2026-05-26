@@ -1,0 +1,191 @@
+{
+  "name": "vibezoo",
+  "displayName": "VibeZoo",
+  "description": "Zoo Code Companion Extension — 세상에서 가장 흐름이 끊기지 않는 바이브코딩 환경",
+  "version": "0.10.0",
+  "publisher": "vibezoo",
+  "license": "MIT",
+  "icon": "resources/icons/vibezoo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vibezoo/vibezoo"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vibezoo.verifyFoundation",
+        "title": "VibeZoo: Verify Foundation"
+      },
+      {
+        "command": "vibezoo.reconnectCrow",
+        "title": "VibeZoo: Reconnect to Crow Memory"
+      },
+      {
+        "command": "vibezoo.instantRewind",
+        "title": "VibeZoo: Instant Rewind (YOLO 복구)"
+      },
+      {
+        "command": "vibezoo.toggleYolo",
+        "title": "VibeZoo: Toggle YOLO Mode"
+      },
+      {
+        "command": "vibezoo.scanProject",
+        "title": "VibeZoo: Scan Project Tree"
+      },
+      {
+        "command": "vibezoo.openWhiteboard",
+        "title": "VibeZoo: Open Whiteboard"
+      },
+      {
+        "command": "vibezoo.openUIPreview",
+        "title": "VibeZoo: Open UI Preview"
+      },
+      {
+        "command": "vibezoo.openDashboard",
+        "title": "VibeZoo: Open Orchestra Dashboard"
+      },
+      {
+        "command": "vibezoo.showSessionResume",
+        "title": "VibeZoo: Show Session Resume"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vibezoo-sidebar",
+          "title": "VibeZoo",
+          "icon": "$(zap)"
+        }
+      ]
+    },
+    "views": {
+      "vibezoo-sidebar": [
+        {
+          "id": "vibezoo.activeSubagents",
+          "name": "Active Subagents",
+          "type": "tree",
+          "contextualTitle": "VibeZoo Subagents"
+        },
+        {
+          "id": "vibezoo.yoloHistory",
+          "name": "YOLO History",
+          "type": "tree",
+          "contextualTitle": "VibeZoo YOLO Sessions"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "VibeZoo",
+      "properties": {
+        "vibezoo.crow.port": {
+          "type": "number",
+          "default": 9020,
+          "description": "Crow Memory SSE 서버 포트"
+        },
+        "vibezoo.crow.autoReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "VS Code 시작 시 Crow 서버 자동 재연결"
+        },
+        "vibezoo.yolo.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "YOLO 안전망 활성화 (yocto 백업 + File Guard)"
+        },
+        "vibezoo.yolo.rewindShortcut": {
+          "type": "string",
+          "default": "ctrl+shift+z",
+          "description": "Instant Rewind 단축키"
+        },
+        "vibezoo.build.silentMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "빌드 성공 시 터미널 숨김 (Silent Build)"
+        },
+        "vibezoo.build.autoFix": {
+          "type": "boolean",
+          "default": false,
+          "description": "빌드 실패 시 AutoBuildFix 자동 실행"
+        },
+        "vibezoo.build.autoFixMaxAttempts": {
+          "type": "number",
+          "default": 3,
+          "description": "AutoBuildFix 최대 재시도 횟수"
+        },
+        "vibezoo.scout.port": {
+          "type": "number",
+          "default": 9022,
+          "description": "Scout MCP 서버 포트"
+        },
+        "vibezoo.reviewer.port": {
+          "type": "number",
+          "default": 9023,
+          "description": "Reviewer MCP 서버 포트"
+        },
+        "vibezoo.tester.port": {
+          "type": "number",
+          "default": 9024,
+          "description": "Tester MCP 서버 포트"
+        },
+        "vibezoo.deepAnalyzer.port": {
+          "type": "number",
+          "default": 9026,
+          "description": "Deep Analyzer MCP 서버 포트"
+        },
+        "vibezoo.context.showFreshness": {
+          "type": "boolean",
+          "default": true,
+          "description": "StatusBar에 Crow Context freshness 표시"
+        },
+        "vibezoo.session.autoResume": {
+          "type": "boolean",
+          "default": true,
+          "description": "세션 시작 시 이전 세션 요약 자동 표시"
+        },
+        "vibezoo.visual.whiteboardEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whiteboard 기능 활성화"
+        },
+        "vibezoo.visual.uiPreviewEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "UI Preview 기능 활성화"
+        },
+        "vibezoo.emotion.detectionEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "감정 신호 감지 활성화 (연속 거절 패턴 분석)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.22.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "minimatch": "^10.2.5"
+  }
+}
