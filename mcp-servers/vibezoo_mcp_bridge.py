@@ -25,6 +25,39 @@ mcp = FastMCP(name="vibezoo")
 
 # ── 도우미 함수 ──────────────────────────────────────────
 
+# 화이트보드 파일 경로 (피드백 루프용)
+WHITEBOARD_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard.json")
+
+# ── 도우미 함수 ──────────────────────────────────────────
+
+@mcp.tool
+def capture_screen() -> str:
+    """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다."""
+    try:
+        from PIL import ImageGrab
+        import base64
+        from io import BytesIO
+        
+        img = ImageGrab.grab()
+        buf = BytesIO()
+        img.save(buf, format='PNG')
+        img_b64 = base64.b64encode(buf.getvalue()).decode()
+        
+        # 화이트보드 파일에 저장
+        data = {
+            "timestamp": time.time(),
+            "type": "screenshot",
+            "image": f"data:image/png;base64,{img_b64}"
+        }
+        with open(WHITEBOARD_FILE, "w") as f:
+            json.dump(data, f)
+        
+        return f"Screen captured ({img.width}x{img.height}). Image saved to whiteboard."
+    except ImportError:
+        return "Pillow not installed. Run: pip install Pillow"
+    except Exception as e:
+        return f"Capture failed: {e}"
+
 def get_project_root(target_path: str = "") -> str:
     if target_path:
         p = Path(target_path)

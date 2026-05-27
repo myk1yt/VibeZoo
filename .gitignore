@@ -33,3 +33,10 @@ build/
 
 # VibeZoo data (user local)
 .zoo-code/
+
+# VSIX packaging cruft
+extension/--out/
+extension/-Force/
+extension/npx/
+extension/package/
+extension/vsce/

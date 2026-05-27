@@ -113,36 +113,32 @@ export class VisualVibePanels {
         } catch {}
       }
       if (message.type === 'captureScreenshot') {
-        // Windows Snipping Tool 실행
+        // Python PIL로 직접 화면 캡처 (temp file 사용, 진짜 원클릭)
         const { exec } = require('child_process');
-        exec('start ms-screenclip:', { shell: 'powershell.exe' });
-        // 5초 후 최신 스크린샷 찾아 Webview로 전송 (Windows 10/11 둘 다 지원)
-        setTimeout(() => {
-          const candidates = [
-            path.join(os.homedir(), 'Pictures', 'Screenshots'),
-            path.join(os.homedir(), 'OneDrive', 'Pictures', 'Screenshots'),
-            path.join(os.homedir(), 'OneDrive', '사진', '스크린샷'),
-            path.join(os.homedir(), 'Pictures'),
-          ];
-          for (const dir of candidates) {
+        const tmpScript = path.join(os.tmpdir(), 'vibezoo-capture.py');
+        const script = [
+          'from PIL import ImageGrab',
+          'import base64, json, sys',
+          'from io import BytesIO',
+          'img = ImageGrab.grab()',
+          'buf = BytesIO()',
+          'img.save(buf, format="PNG")',
+          'data = {"type":"screenshot","image":"data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()}',
+          'print(json.dumps(data))',
+        ].join('\n');
+        fs.writeFileSync(tmpScript, script, 'utf-8');
+        exec(`python "${tmpScript}"`, { timeout: 10000 }, (err: any, stdout: string) => {
+          try { fs.unlinkSync(tmpScript); } catch {}
+          if (!err && stdout) {
             try {
-              const files = fs.readdirSync(dir)
-                .filter((f: string) => f.match(/\.(png|jpg|jpeg)$/i))
-                .map((f: string) => path.join(dir, f))
-                .sort((a: string, b: string) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-              if (files.length > 0 && Date.now() - fs.statSync(files[0]).mtimeMs < 30000) {
-                const imgData = fs.readFileSync(files[0], 'base64');
-                const ext = path.extname(files[0]).toLowerCase();
-                const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-                this.whiteboardPanel?.webview.postMessage({
-                  type: 'loadLatestScreenshot',
-                  dataUrl: `data:${mime};base64,${imgData}`
-                });
-                return;
-              }
+              const result = JSON.parse(stdout.trim());
+              this.whiteboardPanel?.webview.postMessage({
+                type: 'loadLatestScreenshot',
+                dataUrl: result.image
+              });
             } catch {}
           }
-        }, 5000);
+        });
       }
     });
 
