@@ -15,21 +15,27 @@ export class StatusBarManager {
     this.item.command = 'vibezoo.verifyFoundation';
   }
 
-  /** Crow 연결 상태 업데이트 */
-  setCrowStatus(connected: boolean, freshness?: number): void {
-    if (connected) {
-      const fresh = freshness ?? 100;
-      const icon = fresh > 70 ? '$(pulse)' : fresh > 30 ? '$(warning)' : '$(error)';
-      this.item.text = `${icon} VibeZoo`;
-      this.item.tooltip = `Crow Memory: 연결됨 | Context: ${fresh}% fresh`;
+  /** VibeZoo 활성 상태 표시 (Bridge 연결 기준) */
+  setActive(bridgeConnected: boolean, bridgePort?: number): void {
+    if (bridgeConnected) {
+      this.item.text = '$(pulse) VibeZoo';
+      this.item.tooltip = `VibeZoo Bridge: 연결됨 (:${bridgePort || 9027})`;
       this.item.backgroundColor = undefined;
     } else {
-      this.item.text = '$(circle-slash) VibeZoo';
-      this.item.tooltip = 'Crow Memory: 연결 끊김';
-      this.item.backgroundColor = new vscode.ThemeColor(
-        'statusBarItem.warningBackground'
-      );
+      this.item.text = '$(check) VibeZoo';
+      this.item.tooltip = 'VibeZoo: 활성화됨';
+      this.item.backgroundColor = undefined;
     }
+    this.item.show();
+  }
+
+  /** Crow 연결 상태 (툴팁에만) */
+  setCrowStatus(connected: boolean, freshness?: number): void {
+    const current = String(this.item.tooltip || 'VibeZoo');
+    const base = current.split(' | Crow')[0];
+    this.item.tooltip = connected
+      ? `${base} | Crow: 연결됨 (${freshness || 100}% fresh)`
+      : `${base} | Crow: 연결 안 됨`;
     this.item.show();
   }
 

@@ -90,30 +90,22 @@ export class CrowServerManager {
     return this.child.pid!;
   }
 
-  /** Crow SSE 서버 재연결 (VS Code 재시작 시 호출) */
+  /** Crow SSE 서버 재연결 (외부 시스템 — PID 파일이나 스크립트 없이 헬스체크만) */
   async reconnect(): Promise<boolean> {
-    if (!this.isRunning()) {
-      console.log('[VibeZoo] Crow 서버가 실행 중이 아닙니다. 새로 시작합니다.');
-      await this.start();
-      return true;
-    }
-
-    // 기존 서버 헬스체크
+    // 기존 서버 헬스체크 (외부 Crow 시스템 — PID 불필요)
     try {
       const healthy = await this.healthCheck();
       if (healthy) {
-        const pid = fs.readFileSync(this.config.pidPath, 'utf-8').trim();
-        console.log(`[VibeZoo] 기존 Crow 서버 재연결 성공: PID ${pid}`);
+        console.log(`[VibeZoo] Crow 서버 연결 확인: 포트 ${this.config.port}`);
         this.startHealthCheck();
-        this._onStatusChange.fire({ connected: true });
+        this._onStatusChange.fire({ connected: true, freshness: await this.getFreshness().catch(() => undefined) });
         return true;
       }
     } catch {
-      console.log('[VibeZoo] Crow 서버 응답 없음. PID 파일 정리 후 재시작.');
+      // health check 실패 — Crow가 꺼져 있거나 다른 포트 사용 중
+      console.log(`[VibeZoo] Crow 서버 응답 없음 (${this.config.port}). 외부 시스템이므로 넘어갑니다.`);
+      this._onStatusChange.fire({ connected: false });
     }
-
-    // 응답 없으면 PID 파일 정리 후 새로 시작
-    try { fs.unlinkSync(this.config.pidPath); } catch {}
 
     if (this.config.autoRestart) {
       await this.start();

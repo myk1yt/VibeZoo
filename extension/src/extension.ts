@@ -49,7 +49,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   crowServer = new CrowServerManager();
   statusBar = new StatusBarManager();
 
-  // Crow 연결 상태 → StatusBar
+  // Bridge 상태 → StatusBar 메인
+  statusBar.setActive(false);
+
+  // Crow 상태 → StatusBar 툴팁
   crowServer.onStatusChange(({ connected, freshness }) => {
     statusBar.setCrowStatus(connected, freshness);
   });
@@ -109,12 +112,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 백그라운드에서 자동 시작
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
+    statusBar.setActive(true, port);
     crowServer.reconnect().catch(() => {});
     autoConfigureMCP();
     const fresh = await crowServer.getFreshness().catch(() => 0);
-    statusBar.setCrowStatus(true, fresh);
+    statusBar.setCrowStatus(fresh > 0, fresh);
   }).catch(async (err: any) => {
     console.warn('[VibeZoo] MCP Bridge failed:', err.message);
+    statusBar.setActive(false);
     const connected = crowServer.isRunning() && await crowServer.healthCheck().catch(() => false);
     statusBar.setCrowStatus(connected);
   });
