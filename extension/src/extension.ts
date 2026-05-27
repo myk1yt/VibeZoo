@@ -187,6 +187,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
         return;
       }
+      const confirm = await vscode.window.showWarningMessage(
+        '정말로 모든 파일을 이 시점으로 되돌리시겠습니까?',
+        { modal: true },
+        '예, 복구합니다',
+        '취소'
+      );
+      if (confirm !== '예, 복구합니다') return;
       try {
         const result = await yocto.instantRewind(sessionName);
         vscode.window.showInformationMessage(

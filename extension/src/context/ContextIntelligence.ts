@@ -79,11 +79,13 @@ export class SessionResume {
     // 1) Crow Memory recall 시도
     try {
       const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
-      const resp = await fetch(`http://localhost:${crowPort}/recall?q=session+summary&top_k=5`);
+      const resp = await fetch(`http://localhost:${crowPort}/recall?query=session+summary&register=context&limit=10`);
       if (resp.ok) {
         const data: any = await resp.json();
         if (Array.isArray(data)) {
           loaded.push(...data.map((item: any) => this.toSessionSummary(item)));
+        } else if (data.results && Array.isArray(data.results)) {
+          loaded.push(...data.results.map((item: any) => this.toSessionSummary(item)));
         } else if (data.summary) {
           loaded.push(this.toSessionSummary(data));
         }

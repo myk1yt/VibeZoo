@@ -175,12 +175,7 @@ class YoloHistoryItem extends vscode.TreeItem {
     this.iconPath = undefined;
     this.label = `$(history) ${name}`;
     this.contextValue = 'yoloSnapshot';
-    this.tooltip = `YOLO 세션: ${name}\n클릭하여 Rewind 실행`;
-    this.command = {
-      command: 'vibezoo.instantRewind',
-      title: 'YOLO Rewind',
-      arguments: [name],
-    };
+    this.tooltip = `YOLO 세션: ${name}\n우클릭 → Rewind 실행`;
   }
 
   private formatDescription(name: string): string {

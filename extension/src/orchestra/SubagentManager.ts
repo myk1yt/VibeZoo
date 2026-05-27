@@ -184,10 +184,19 @@ export class SubagentManager {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(`http://localhost:${port}/health`);
-        if (response.ok) return;
-      } catch { /* not ready */ }
-      await new Promise((r) => setTimeout(r, 200));
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 1500);
+        // 127.0.0.1 사용 (localhost는 IPv6로 resolve될 수 있음)
+        const response = await fetch(`http://127.0.0.1:${port}/health`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        // Any HTTP response (including 404) means the server is running
+        return;
+      } catch {
+        // Connection refused or timeout — not ready yet
+      }
+      await new Promise((r) => setTimeout(r, 300));
     }
   }
 }

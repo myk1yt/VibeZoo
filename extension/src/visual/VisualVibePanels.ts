@@ -2,6 +2,11 @@
 // Whiteboard, UI Preview, Diagram 등 Webview 패널 생성
 // AI가 MCP 도구(draw_on_whiteboard, open_whiteboard)를 호출하면
 // 파일 감시를 통해 자동으로 패널을 열고 그림을 렌더링한다.
+//
+// ★ 2026-05-27: 무한 알람 수정
+//   - setInterval 폴링 → fs.watchFile() 이벤트 기반 감시
+//   - showInformationMessage → log() (사용자 알람 제거)
+//   - startWatching()은 Whiteboard가 실제로 열릴 때만 시작
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -17,20 +22,25 @@ export class VisualVibePanels {
   private whiteboardPanel: vscode.WebviewPanel | null = null;
   private uiPreviewPanel: vscode.WebviewPanel | null = null;
   private diagramPanel: vscode.WebviewPanel | null = null;
-  private watchTimer: NodeJS.Timeout | null = null;
   private homedir: string;
   private _activated = false;
+  /** Watcher가 이미 시작되었는지 플래그 (중복 시작 방지) */
+  private _watching = false;
+
+  /** 마지막으로 보낸 명령어의 해시 (중복 전송 방지) */
+  private _lastCommandsHash: string = '';
 
   constructor() {
     this.homedir = os.homedir();
-    // NOTE: startWatching()은 activate()에서 호출 — 생성자에서 즉시 폴링하지 않음
+    // NOTE: startWatching()은 openWhiteboard()에서 호출 — 생성자/activate()에서 즉시 시작하지 않음
   }
 
-  /** Visual 감시 시작 (activate()에서 조건부 호출) */
+  /** Visual 감시 준비 (activate()에서 조건부 호출) */
   activate(): void {
     if (this._activated) return;
     this._activated = true;
-    this.startWatching();
+    // ★ startWatching() 제거 — Whiteboard가 실제로 열릴 때만 감시 시작
+    log('VisualVibePanels activated (watching deferred until whiteboard opens)');
   }
 
   /** 파일의 현재 mtime을 반환 (없으면 0) */
@@ -43,65 +53,99 @@ export class VisualVibePanels {
     }
   }
 
-  /** AI가 MCP 도구로 호출한 Whiteboard/UI 명령 파일 감시 (비동기 폴링) */
+  /**
+   * Whiteboard / UI action 파일 감시 시작 (fs.watchFile 기반)
+   * setInterval 폴링 대신 fs.watchFile을 사용하여 OS 이벤트에 반응.
+   * startWatching()은 openWhiteboard()에서 최초 1회 호출됨.
+   */
   private startWatching(): void {
+    if (this._watching) return;
+    this._watching = true;
+
     const wbFile = path.join(this.homedir, '.vibezoo-whiteboard.json');
     const wbAction = path.join(this.homedir, '.vibezoo-whiteboard-action.json');
     const uiAction = path.join(this.homedir, '.vibezoo-ui-action.json');
 
-    // ★ 중요: lastMtime을 0이 아닌 현재 파일 mtime으로 초기화
-    //    기존 파일이 있더라도 "이미 처리된 변경"으로 간주하여 무한 트리거 방지
-    let lastWbMtime = this.getCurrentMtime(wbFile);
-    let lastActionMtime = this.getCurrentMtime(wbAction);
-    let lastUiMtime = this.getCurrentMtime(uiAction);
+    // ★ 중요: lastMtime을 객체로 유지해야 콜백 내부에서 .current 업데이트가 반영됨
+    const lastWbMtime = { current: this.getCurrentMtime(wbFile) };
+    const lastActionMtime = { current: this.getCurrentMtime(wbAction) };
+    const lastUiMtime = { current: this.getCurrentMtime(uiAction) };
 
-    const checkFile = async (filePath: string, lastMtime: { current: number }, onChange: (content: any, stat: fs.Stats) => void): Promise<void> => {
+    /** 공통 파일 변경 핸들러: 변경 시 파일을 읽고 onChange 콜백 실행 */
+    const handleFileChange = async (
+      filePath: string,
+      lastMtime: { current: number },
+      onChange: (content: any) => void,
+    ): Promise<void> => {
       try {
         const stat = await fs.promises.stat(filePath);
         if (stat.mtimeMs > lastMtime.current) {
           lastMtime.current = stat.mtimeMs;
           const contentStr = await fs.promises.readFile(filePath, 'utf-8');
           const content = JSON.parse(contentStr);
-          onChange(content, stat);
+          onChange(content);
         }
       } catch {
         // 파일이 아직 없거나 읽을 수 없음 — 무시
       }
     };
 
-    this.watchTimer = setInterval(() => {
-      // Whiteboard action 감지 (open_whiteboard 호출)
-      checkFile(wbAction, { current: lastActionMtime }, (content) => {
-        if (content.action === 'open') {
-          this.openWhiteboard();
-          if (content.message) {
-            vscode.window.showInformationMessage(`🎨 VibeZoo: ${content.message}`);
-          }
-        }
-      });
-
-      // UI Preview action 감지 (open_ui_preview 호출)
-      checkFile(uiAction, { current: lastUiMtime }, (content) => {
-        if (content.action === 'open_ui') {
-          this.openUIPreview(content.code || '', content.framework || 'react');
-        }
-      });
-
-      // Whiteboard drawing 명령 감지 (draw_on_whiteboard 호출)
-      checkFile(wbFile, { current: lastWbMtime }, (content) => {
-        if (content.commands && content.commands.length > 0) {
-          // Whiteboard가 아직 안 열렸으면 자동 열기
-          if (!this.whiteboardPanel) {
+    // ── whiteboard-action.json 감시 (open_whiteboard MCP 도구) ──
+    fs.watchFile(wbAction, { interval: 500 }, (curr) => {
+      if (curr.mtimeMs > lastActionMtime.current) {
+        lastActionMtime.current = curr.mtimeMs;
+        handleFileChange(wbAction, lastActionMtime, (content) => {
+          if (content.action === 'open') {
             this.openWhiteboard();
-            // Webview HTML 로드 대기 → ready 메시지에서 pending commands 전송
-            (this as any)._pendingDrawCommands = content.commands;
-          } else {
-            // 드로잉 명령 Webview에 전달
-            this.sendToWhiteboard(content.commands);
+            if (content.message) {
+              // ★ showInformationMessage 제거 — log()로 대체 (무한 알람 방지)
+              log(`Whiteboard action: ${content.message}`);
+            }
           }
-        }
-      });
-    }, 1000);
+        });
+      }
+    });
+
+    // ── ui-action.json 감시 (open_ui_preview MCP 도구) ──
+    fs.watchFile(uiAction, { interval: 500 }, (curr) => {
+      if (curr.mtimeMs > lastUiMtime.current) {
+        lastUiMtime.current = curr.mtimeMs;
+        handleFileChange(uiAction, lastUiMtime, (content) => {
+          if (content.action === 'open_ui') {
+            this.openUIPreview(content.code || '', content.framework || 'react');
+          }
+        });
+      }
+    });
+
+    // ── whiteboard.json 감시 (draw_on_whiteboard MCP 도구) ──
+    fs.watchFile(wbFile, { interval: 500 }, (curr) => {
+      if (curr.mtimeMs > lastWbMtime.current) {
+        lastWbMtime.current = curr.mtimeMs;
+        handleFileChange(wbFile, lastWbMtime, (content) => {
+          // ★ canvasState에서 쓴 내용은 건너뜀 (무한 루프 방지)
+          if (content._source === 'canvasState') return;
+          if (content.commands && content.commands.length > 0) {
+            // 중복 전송 방지: JSON 문자열이 동일하면 스킵
+            const hash = JSON.stringify(content.commands);
+            if (hash === this._lastCommandsHash) return;
+            this._lastCommandsHash = hash;
+
+            // Whiteboard가 아직 안 열렸으면 자동 열기
+            if (!this.whiteboardPanel) {
+              this.openWhiteboard();
+              // Webview HTML 로드 대기 → ready 메시지에서 pending commands 전송
+              (this as any)._pendingDrawCommands = content.commands;
+            } else {
+              // 드로잉 명령 Webview에 전달
+              this.sendToWhiteboard(content.commands);
+            }
+          }
+        });
+      }
+    });
+
+    log('File watching started (fs.watchFile)');
   }
 
   /** AI의 드로잉 명령을 Whiteboard Webview로 전달 */
@@ -113,6 +157,9 @@ export class VisualVibePanels {
 
   /** Whiteboard 열기 — Fabric.js 기반 드로잉 캔버스 */
   openWhiteboard(): vscode.WebviewPanel {
+    // ★ Whiteboard가 열릴 때 watcher 시작 (최초 1회)
+    this.startWatching();
+
     if (this.whiteboardPanel) {
       this.whiteboardPanel.reveal(vscode.ViewColumn.Two);
       return this.whiteboardPanel;
@@ -134,7 +181,9 @@ export class VisualVibePanels {
     this.whiteboardPanel.webview.onDidReceiveMessage(async (message) => {
       if (message.type === 'canvasState') {
         const wbFile = path.join(os.homedir(), '.vibezoo-whiteboard.json');
-        const data = { timestamp: Date.now(), commands: message.commands };
+        // ★ _source: "canvasState" 마커를 추가하여 watcher가 이 변경을 무시하게 함
+        //    (AI의 draw_on_whiteboard 명령과 구분하여 무한 루프 방지)
+        const data = { _source: 'canvasState', timestamp: Date.now(), commands: message.commands };
         try {
           fs.writeFileSync(wbFile, JSON.stringify(data, null, 2), 'utf-8');
         } catch {}
@@ -269,11 +318,18 @@ export class VisualVibePanels {
     return this.diagramPanel;
   }
 
-  /** 모든 패널 정리 */
+  /** 모든 패널 정리 + 파일 감시 중단 */
   dispose(): void {
-    if (this.watchTimer) {
-      clearInterval(this.watchTimer);
-      this.watchTimer = null;
+    // ★ fs.watchFile 해제
+    if (this._watching) {
+      const wbFile = path.join(this.homedir, '.vibezoo-whiteboard.json');
+      const wbAction = path.join(this.homedir, '.vibezoo-whiteboard-action.json');
+      const uiAction = path.join(this.homedir, '.vibezoo-ui-action.json');
+      try { fs.unwatchFile(wbFile); } catch {}
+      try { fs.unwatchFile(wbAction); } catch {}
+      try { fs.unwatchFile(uiAction); } catch {}
+      this._watching = false;
+      log('File watching stopped');
     }
     this.whiteboardPanel?.dispose();
     this.uiPreviewPanel?.dispose();
@@ -341,7 +397,143 @@ export class VisualVibePanels {
       vscode.postMessage({ type: 'captureScreenshot' });
     }
   }
+  // ============================================================
+  // AI Draw 명령 처리기 — Extension에서 보낸 type:'draw' 메시지
+  // ============================================================
+  function executeCommands(commands) {
+    if (!commands || !Array.isArray(commands)) return;
+    commands.forEach(function(cmd) {
+      if (!cmd || !cmd.type) return;
+      var props = cmd.props || {};
+      switch (cmd.type) {
+        case 'polygon': {
+          // points: [{x:0,y:0}, {x:100,y:0}, ...]
+          var pts = (props.points || []).map(function(p) { return new fabric.Point(p.x, p.y); });
+          if (pts.length < 3) break;
+          var poly = new fabric.Polygon(pts, {
+            fill: props.fill || 'transparent',
+            stroke: props.stroke || '#ff6b6b',
+            strokeWidth: props.strokeWidth || 2,
+            left: props.left || 0,
+            top: props.top || 0,
+            objectCaching: false
+          });
+          canvas.add(poly);
+          break;
+        }
+        case 'rect': {
+          var rect = new fabric.Rect({
+            left: props.left || 100,
+            top: props.top || 100,
+            width: props.width || 200,
+            height: props.height || 150,
+            fill: props.fill || 'transparent',
+            stroke: props.stroke || '#4ec9ff',
+            strokeWidth: props.strokeWidth || 2,
+            rx: props.rx || 0,
+            ry: props.ry || 0
+          });
+          canvas.add(rect);
+          break;
+        }
+        case 'circle': {
+          var circle = new fabric.Circle({
+            left: props.left || 100,
+            top: props.top || 100,
+            radius: props.radius || 80,
+            fill: props.fill || 'transparent',
+            stroke: props.stroke || '#ffd700',
+            strokeWidth: props.strokeWidth || 2
+          });
+          canvas.add(circle);
+          break;
+        }
+        case 'line': {
+          var line = new fabric.Line(
+            [props.x1 || 0, props.y1 || 0, props.x2 || 200, props.y2 || 200],
+            {
+              left: props.left || 0,
+              top: props.top || 0,
+              stroke: props.stroke || '#ffffff',
+              strokeWidth: props.strokeWidth || 2
+            }
+          );
+          canvas.add(line);
+          break;
+        }
+        case 'text': {
+          var text = new fabric.Textbox(props.text || '텍스트', {
+            left: props.left || 100,
+            top: props.top || 100,
+            width: props.width || 300,
+            fontSize: props.fontSize || 20,
+            fill: props.fill || '#ffffff',
+            fontFamily: props.fontFamily || 'sans-serif'
+          });
+          canvas.add(text);
+          break;
+        }
+        case 'arrow': {
+          // 화살표는 선 + 삼각형 헤드로 구현
+          var x1 = props.x1 || 0, y1 = props.y1 || 0;
+          var x2 = props.x2 || 200, y2 = props.y2 || 200;
+          var arrColor = props.stroke || '#ffffff';
+          var arrWidth = props.strokeWidth || 2;
+          var line = new fabric.Line([x1, y1, x2, y2], {
+            left: props.left || 0,
+            top: props.top || 0,
+            stroke: arrColor,
+            strokeWidth: arrWidth
+          });
+          canvas.add(line);
+          // 화살촉 삼각형
+          var angle = Math.atan2(y2 - y1, x2 - x1);
+          var headLen = 15;
+          var headPts = [
+            { x: x2, y: y2 },
+            { x: x2 - headLen * Math.cos(angle - Math.PI/6), y: y2 - headLen * Math.sin(angle - Math.PI/6) },
+            { x: x2 - headLen * Math.cos(angle + Math.PI/6), y: y2 - headLen * Math.sin(angle + Math.PI/6) }
+          ];
+          var head = new fabric.Polygon(headPts.map(function(p) { return new fabric.Point(p.x, p.y); }), {
+            fill: arrColor,
+            stroke: arrColor,
+            strokeWidth: 1,
+            objectCaching: false
+          });
+          canvas.add(head);
+          break;
+        }
+        case 'freehand': {
+          // freehand path: props.path (array of fabric point arrays)
+          if (props.path) {
+            var path = new fabric.Path(props.path, {
+              left: props.left || 0,
+              top: props.top || 0,
+              stroke: props.stroke || '#ffffff',
+              strokeWidth: props.strokeWidth || 3,
+              fill: null
+            });
+            canvas.add(path);
+          }
+          break;
+        }
+        case 'clear': {
+          canvas.clear();
+          canvas.backgroundColor = '#1e1e1e';
+          break;
+        }
+      }
+    });
+    canvas.renderAll();
+    setTimeout(sendState, 200);
+  }
+
   window.addEventListener('message', (e) => {
+    // 🔥 draw 명령 처리 (AI가 draw_on_whiteboard로 보낸 polygon, rect 등)
+    if (e.data?.type === 'draw' && e.data?.commands) {
+      executeCommands(e.data.commands);
+      return;
+    }
     if (e.data?.type === 'loadLatestScreenshot' && e.data?.dataUrl) {
       fabric.Image.fromURL(e.data.dataUrl, (img) => {
         img.set({ left: 50, top: 50 });

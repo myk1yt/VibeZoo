@@ -21,8 +21,36 @@ except ImportError:
     print("fastmcp not installed. Install with: pip install fastmcp")
     sys.exit(1)
 
+try:
+    from starlette.responses import JSONResponse
+    from starlette.requests import Request
+except ImportError:
+    # FastMCP 의존성에 포함되어 있음
+    from starlette.responses import JSONResponse
+    from starlette.requests import Request
+
 CROW_URL = os.environ.get("CROW_SERVER_URL", "http://localhost:9020")
 mcp = FastMCP(name="vibezoo")
+
+
+# ── Health Check ──────────────────────────────────────────
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:
+    """헬스체크 엔드포인트 — Bridge 상태 및 Crow 연결 상태 반환"""
+    crow_ok = False
+    try:
+        import requests
+        resp = requests.get(f"{CROW_URL}/health", timeout=2)
+        crow_ok = resp.ok
+    except Exception:
+        pass
+    return JSONResponse({
+        "status": "ok",
+        "crow": crow_ok,
+        "timestamp": time.time(),
+        "version": "0.11.1",
+    })
 
 # ── 도우미 함수 ──────────────────────────────────────────
 

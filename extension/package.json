@@ -191,7 +191,16 @@
         "key": "ctrl+shift+b",
         "when": "editorTextFocus"
       }
-    ]
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "vibezoo.instantRewind",
+          "when": "view == vibezoo.yoloHistory && viewItem == yoloSnapshot",
+          "group": "1_rewind"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
