@@ -102,6 +102,50 @@ export class VisualVibePanels {
     );
 
     this.whiteboardPanel.webview.html = this.whiteboardHtml();
+
+    // Webview → Extension: 사용자가 그린 내용 자동 저장 + 캡처
+    this.whiteboardPanel.webview.onDidReceiveMessage(async (message) => {
+      if (message.type === 'canvasState') {
+        const wbFile = path.join(os.homedir(), '.vibezoo-whiteboard.json');
+        const data = { timestamp: Date.now(), commands: message.commands };
+        try {
+          fs.writeFileSync(wbFile, JSON.stringify(data, null, 2), 'utf-8');
+        } catch {}
+      }
+      if (message.type === 'captureScreenshot') {
+        // Windows Snipping Tool 실행
+        const { exec } = require('child_process');
+        exec('start ms-screenclip:', { shell: 'powershell.exe' });
+        // 5초 후 최신 스크린샷 찾아 Webview로 전송 (Windows 10/11 둘 다 지원)
+        setTimeout(() => {
+          const candidates = [
+            path.join(os.homedir(), 'Pictures', 'Screenshots'),
+            path.join(os.homedir(), 'OneDrive', 'Pictures', 'Screenshots'),
+            path.join(os.homedir(), 'OneDrive', '사진', '스크린샷'),
+            path.join(os.homedir(), 'Pictures'),
+          ];
+          for (const dir of candidates) {
+            try {
+              const files = fs.readdirSync(dir)
+                .filter((f: string) => f.match(/\.(png|jpg|jpeg)$/i))
+                .map((f: string) => path.join(dir, f))
+                .sort((a: string, b: string) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+              if (files.length > 0 && Date.now() - fs.statSync(files[0]).mtimeMs < 30000) {
+                const imgData = fs.readFileSync(files[0], 'base64');
+                const ext = path.extname(files[0]).toLowerCase();
+                const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+                this.whiteboardPanel?.webview.postMessage({
+                  type: 'loadLatestScreenshot',
+                  dataUrl: `data:${mime};base64,${imgData}`
+                });
+                return;
+              }
+            } catch {}
+          }
+        }, 5000);
+      }
+    });
+
     this.whiteboardPanel.onDidDispose(() => { this.whiteboardPanel = null; });
     return this.whiteboardPanel;
   }
@@ -189,7 +233,10 @@ export class VisualVibePanels {
   <button onclick="setMode('rect')">⬜ 사각형</button>
   <button onclick="setMode('text')">📝 텍스트</button>
   <button onclick="setMode('select')">🖱️ 선택</button>
+  <button onclick="captureScreenshot()">📸 캡처</button>
+  <button onclick="document.getElementById('imgInput').click()">📷 이미지</button>
   <button onclick="clearAll()">🗑️ 전체 삭제</button>
+  <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="addImage(this)">
 </div>
 <canvas id="c"></canvas>
 <script>
@@ -201,6 +248,79 @@ export class VisualVibePanels {
   });
   canvas.freeDrawingBrush.color = '#ffffff';
   canvas.freeDrawingBrush.width = 3;
+
+  // Auto-save on every change → sends to extension via postMessage
+  function sendState() {
+    const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+    if (vscode) {
+      const state = canvas.toJSON ? canvas.toJSON() : {};
+      vscode.postMessage({ type: 'canvasState', commands: state.objects || [] });
+    }
+  }
+  canvas.on('object:added', () => setTimeout(sendState, 150));
+  canvas.on('object:modified', () => setTimeout(sendState, 150));
+  canvas.on('object:removed', () => setTimeout(sendState, 150));
+
+  // 캡처 → Windows Snipping Tool → 자동 로드
+  function captureScreenshot() {
+    const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+    if (vscode) {
+      vscode.postMessage({ type: 'captureScreenshot' });
+    }
+  }
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'loadLatestScreenshot' && e.data?.dataUrl) {
+      fabric.Image.fromURL(e.data.dataUrl, (img) => {
+        img.set({ left: 50, top: 50 });
+        img.scaleToWidth(Math.min(canvas.width * 0.8, 600));
+        canvas.add(img);
+        canvas.renderAll();
+        setTimeout(sendState, 150);
+      });
+    }
+  });
+
+  // 파일 선택으로 이미지 추가
+  function addImage(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      fabric.Image.fromURL(ev.target.result, (img) => {
+        img.set({ left: 50, top: 50 });
+        img.scaleToWidth(Math.min(canvas.width * 0.8, 600));
+        canvas.add(img);
+        canvas.renderAll();
+        setTimeout(sendState, 150);
+      });
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+  }
+
+  // Ctrl+V 이미지 붙여넣기 (Webview가 허용하는 경우만)
+  document.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let item of items) {
+      if (item.type.startsWith('image/')) {
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          fabric.Image.fromURL(ev.target.result, (img) => {
+            img.set({ left: 50, top: 50 });
+            img.scaleToWidth(Math.min(canvas.width * 0.8, 600));
+            canvas.add(img);
+            canvas.renderAll();
+            setTimeout(sendState, 150);
+          });
+        };
+        reader.readAsDataURL(blob);
+        break;
+      }
+    }
+  });
 
   function setMode(mode) {
     switch(mode) {

@@ -157,6 +157,26 @@
           "default": true,
           "description": "Whiteboard 기능 활성화"
         },
+        "vibezoo.showSessionResume": {
+          "command": "vibezoo.showSessionResume",
+          "key": "ctrl+shift+r",
+          "when": "editorTextFocus"
+        },
+        "vibezoo.instantRewind": {
+          "command": "vibezoo.instantRewind",
+          "key": "ctrl+shift+z",
+          "when": "editorTextFocus"
+        },
+        "vibezoo.openWhiteboard": {
+          "command": "vibezoo.openWhiteboard",
+          "key": "ctrl+shift+b",
+          "when": "editorTextFocus"
+        }
+      }
+    },
+    "configuration": {
+      "title": "VibeZoo",
+      "properties": {
         "vibezoo.visual.uiPreviewEnabled": {
           "type": "boolean",
           "default": true,

@@ -266,6 +266,58 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  // VibeZoo: Help
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.showHelp', async () => {
+      const help = [
+        '# 🚀 VibeZoo v0.10.0',
+        '',
+        '## 단축키',
+        '| 키 | 기능 |',
+        '|:---|:---|',
+        '| **Ctrl+Shift+Z** | Instant Rewind (YOLO 복구) |',
+        '| **Ctrl+Shift+R** | Session Resume (이전 세션) |',
+        '| **Ctrl+Shift+B** | Open Whiteboard |',
+        '',
+        '## 명령어 (`Ctrl+Shift+P`)',
+        '| 명령어 | 기능 |',
+        '|:---|:---|',
+        '| `VibeZoo: Open Whiteboard` | 🎨 AI와 그림 그리며 협업 |',
+        '| `VibeZoo: Open UI Preview` | 🖼️ React/Vue 실시간 미리보기 |',
+        '| `VibeZoo: Instant Rewind` | ⏪ YOLO 즉시 복구 |',
+        '| `VibeZoo: Verify Foundation` | 🔍 상태 진단 |',
+        '',
+        '## MCP 도구 (Zoo Code 채팅)',
+        '| "코드 검색해줘" | Scout: search_codebase |',
+        '| "코드 리뷰해줘" | Reviewer: review_code |',
+        '| "의존성 분석해줘" | DeepAnalyzer: map_dependencies |',
+        '| "그림 그려줘" | Whiteboard: draw_on_whiteboard |',
+        '',
+        '## 자동 기능',
+        '- 🤫 Silent Build (빌드 에러 Crow 저장)',
+        '- 📸 yocto 백업 (모든 파일 변경 실시간 저장)',
+        '- 🛡️ .yoloignore File Guard',
+        '- 🔧 AutoBuildFix (빌드 실패 자동 수정)',
+      ].join('\n');
+      const doc = await vscode.workspace.openTextDocument({ content: help, language: 'markdown' });
+      await vscode.window.showTextDocument(doc, { preview: false });
+    })
+  );
+
+  // Welcome
+  const hasShownWelcome = context.globalState.get('vibezoo.welcomeShown');
+  if (!hasShownWelcome) {
+    context.globalState.update('vibezoo.welcomeShown', true);
+    setTimeout(() => {
+      vscode.window.showInformationMessage(
+        '🎉 VibeZoo 준비 완료! Ctrl+Shift+P → VibeZoo: Help',
+        'Help 보기', '닫기'
+      ).then(choice => {
+        if (choice === 'Help 보기') vscode.commands.executeCommand('vibezoo.showHelp');
+      });
+    }, 2000);
+  }
+
   // AutoBuildFix 내부 커맨드
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo._autoBuildFix', async (result: any) => {
