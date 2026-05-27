@@ -699,6 +699,204 @@ def open_ui_preview(code: str = "", framework: str = "react") -> str:
         return f"Failed: {e}"
 
 # ═══════════════════════════════════════════════════════════
+# Q1: Quick Win — 시나리오 통합 MCP 도구 4개
+# ═══════════════════════════════════════════════════════════
+
+def _run_tool(name: str, **kwargs):
+    """내부적으로 기존 MCP 도구 함수를 호출하여 결과를 문자열로 반환"""
+    import inspect
+    tools = {
+        "search_codebase": search_codebase,
+        "review_code": review_code,
+        "check_quality": check_quality,
+        "extract_patterns": extract_patterns,
+        "map_dependencies": map_dependencies,
+        "analyze_call_graph": analyze_call_graph,
+        "reverse_engineer": reverse_engineer,
+        "summarize_architecture": summarize_architecture,
+        "draw_on_whiteboard": draw_on_whiteboard,
+    }
+    fn = tools.get(name)
+    if not fn:
+        return f"Tool not found: {name}"
+    sig = inspect.signature(fn)
+    filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    try:
+        result = fn(**filtered)
+        return str(result)
+    except Exception as e:
+        return f"Error in {name}: {e}"
+
+
+@mcp.tool
+def review_project(target_path: str) -> str:
+    """search_codebase + review_code + check_quality + extract_patterns 통합.
+    프로젝트 전체를 종합 리뷰하여 하나의 마크다운 보고서로 반환합니다.
+
+    Args:
+        target_path: 분석 대상 디렉토리 경로
+    """
+    sections = []
+    sections.append("# 📋 Project Review Report\n")
+    sections.append(f"> Target: `{target_path}`\n")
+
+    # 1. search_codebase — 주요 패턴 검색
+    sections.append("## 🔍 Code Search\n")
+    search_result = _run_tool("search_codebase", query="TODO|FIXME|HACK|BUG", max_results=20)
+    sections.append(search_result)
+
+    # 2. review_code — 주요 파일 리뷰
+    sections.append("## 📝 Code Review\n")
+    root = Path(get_project_root(target_path))
+    reviewed = 0
+    for p in sorted(root.rglob("*")):
+        if not p.is_file() or p.suffix not in (".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs"):
+            continue
+        if any(part in str(p) for part in [".git", "node_modules", ".zoo-code", "dist", "build", "__pycache__"]):
+            continue
+        if reviewed >= 5:
+            sections.append(f"\n> ... and more files (reviewed top 5 of {sum(1 for _ in root.rglob('*') if _.is_file())} total)\n")
+            break
+        review = _run_tool("review_code", file_path=str(p))
+        sections.append(review)
+        reviewed += 1
+
+    # 3. check_quality
+    sections.append("## ✅ Quality Check\n")
+    quality = _run_tool("check_quality", target_path=target_path)
+    sections.append(quality)
+
+    # 4. extract_patterns
+    sections.append("## 📊 Pattern Analysis\n")
+    patterns = _run_tool("extract_patterns", target_path=target_path, min_occurrences=3)
+    sections.append(patterns)
+
+    try_crow_ingest(f"review_project completed for {target_path}", register="arch")
+    return "\n\n---\n\n".join(sections)
+
+
+@mcp.tool
+def find_bugs(target_path: str) -> str:
+    """extract_patterns + search_codebase(console.log|debugger|any) + Crow recall 통합.
+    프로젝트에서 잠재적 버그를 찾아 마크다운으로 반환합니다.
+
+    Args:
+        target_path: 분석 대상 디렉토리 경로
+    """
+    sections = []
+    sections.append("# 🐛 Bug Finder Report\n")
+    sections.append(f"> Target: `{target_path}`\n")
+
+    # 1. extract_patterns — 콘솔 로그, TODO 등 패턴 분석
+    sections.append("## 📊 Pattern Analysis\n")
+    patterns = _run_tool("extract_patterns", target_path=target_path, min_occurrences=1)
+    sections.append(patterns)
+
+    # 2. search_codebase — 버그 의심 패턴 검색
+    sections.append("## ⚠️ Suspicious Patterns\n")
+    for query in ["console.log", "debugger", ".only(", "fit(", "fdescribe", "TODO", "FIXME", "HACK", "XXX", "any", "as any", "@ts-ignore", "@ts-nocheck"]:
+        result = _run_tool("search_codebase", query=query, max_results=10)
+        if "Found 0 results" not in result:
+            sections.append(result)
+
+    # 3. Crow recall — 이전 버그 패턴 회상
+    sections.append("## 🧠 Crow Memory Recall\n")
+    crow_results = try_crow_recall(query="bug pattern error in project", register="bug", limit=10)
+    if crow_results:
+        sections.append("### Previous bug patterns from Crow memory:\n")
+        for item in crow_results:
+            content = item.get("content", item.get("value", str(item)))
+            sections.append(f"- {content[:300]}")
+    else:
+        sections.append("- No relevant bug patterns found in Crow memory.\n")
+
+    try_crow_ingest(f"find_bugs completed for {target_path}", register="bug")
+    return "\n\n---\n\n".join(sections)
+
+
+@mcp.tool
+def suggest_refactor(target_path: str) -> str:
+    """map_dependencies + extract_patterns + analyze_call_graph 통합.
+    프로젝트의 리팩터링 제안을 마크다운으로 반환합니다.
+
+    Args:
+        target_path: 분석 대상 디렉토리 경로
+    """
+    sections = []
+    sections.append("# 🔧 Refactoring Suggestions\n")
+    sections.append(f"> Target: `{target_path}`\n")
+
+    # 1. map_dependencies — 의존성 분석 + 순환 참조
+    sections.append("## 🔗 Dependency Map\n")
+    deps = _run_tool("map_dependencies", target_path=target_path)
+    sections.append(deps)
+
+    # 2. extract_patterns — 중복 패턴 찾기
+    sections.append("## 📊 Pattern Duplication\n")
+    patterns = _run_tool("extract_patterns", target_path=target_path, min_occurrences=5)
+    sections.append(patterns)
+
+    # 3. analyze_call_graph — 호출 구조 분석
+    sections.append("## 📞 Call Graph\n")
+    callgraph = _run_tool("analyze_call_graph", file_path=target_path, depth=3)
+    sections.append(callgraph)
+
+    try_crow_ingest(f"suggest_refactor completed for {target_path}", register="arch")
+    return "\n\n---\n\n".join(sections)
+
+
+@mcp.tool
+def generate_docs(target_path: str, format: str = "markdown") -> str:
+    """reverse_engineer + summarize_architecture + draw_on_whiteboard(architecture diagram) 통합.
+    프로젝트 문서를 자동 생성하고 아키텍처 다이어그램을 화이트보드에 그립니다.
+
+    Args:
+        target_path: 분석 대상 디렉토리 경로
+        format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
+    """
+    sections = []
+    sections.append("# 📚 Auto-Generated Documentation\n")
+    sections.append(f"> Target: `{target_path}`  \n> Format: `{format}`\n")
+
+    # 1. summarize_architecture
+    sections.append("## 🏗️ Architecture Summary\n")
+    arch = _run_tool("summarize_architecture", target_path=target_path)
+    sections.append(arch)
+
+    # 2. reverse_engineer
+    sections.append("## 🔄 Reverse Engineering\n")
+    rev = _run_tool("reverse_engineer", target_path=target_path, format=format)
+    sections.append(rev)
+
+    # 3. draw_on_whiteboard — 아키텍처 다이어그램 자동 생성
+    sections.append("## 🎨 Architecture Diagram (Whiteboard)\n")
+    try:
+        root = Path(get_project_root(target_path))
+        # 디렉토리 구조 기반 간단한 박스+화살표 다이어그램 생성
+        dirs = []
+        for p in sorted(root.iterdir()):
+            if p.is_dir() and not p.name.startswith(".") and p.name not in ("node_modules", "dist", "build", "__pycache__"):
+                dirs.append(p.name)
+        commands = []
+        y = 50
+        for i, d in enumerate(dirs[:8]):
+            commands.append({"type": "rect", "props": {"left": 80, "top": y + i * 70, "width": 180, "height": 50, "fill": "transparent", "stroke": "#4ec9ff", "rx": 6}})
+            commands.append({"type": "text", "props": {"left": 90, "top": y + i * 70 + 15, "text": f"📁 {d}", "fontSize": 14, "fill": "#ffffff"}})
+            if i > 0:
+                commands.append({"type": "arrow", "props": {"x1": 170, "y1": y + (i - 1) * 70 + 50, "x2": 170, "y2": y + i * 70, "stroke": "#ffd700", "strokeWidth": 1.5}})
+        if commands:
+            draw_result = _run_tool("draw_on_whiteboard", commands=json.dumps(commands))
+            sections.append(f"- {draw_result}")
+        else:
+            sections.append("- No directory structure to visualize.\n")
+    except Exception as e:
+        sections.append(f"- Could not draw diagram: {e}\n")
+
+    try_crow_ingest(f"generate_docs completed for {target_path} (format={format})", register="arch")
+    return "\n\n---\n\n".join(sections)
+
+
+# ═══════════════════════════════════════════════════════════
 # 메인 — SSE 서버 시작
 # ═══════════════════════════════════════════════════════════
 

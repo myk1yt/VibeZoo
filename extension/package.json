@@ -57,6 +57,22 @@
       {
         "command": "vibezoo.showSessionResume",
         "title": "VibeZoo: Show Session Resume"
+      },
+      {
+        "command": "vibezoo.reviewProject",
+        "title": "VibeZoo: Review Project (통합 코드 리뷰)"
+      },
+      {
+        "command": "vibezoo.findBugs",
+        "title": "VibeZoo: Find Bugs (버그 찾기)"
+      },
+      {
+        "command": "vibezoo.suggestRefactor",
+        "title": "VibeZoo: Suggest Refactoring (리팩터링 제안)"
+      },
+      {
+        "command": "vibezoo.generateDocs",
+        "title": "VibeZoo: Generate Documentation (문서 자동 생성)"
       }
     ],
     "viewsContainers": {
@@ -198,6 +214,46 @@
           "command": "vibezoo.instantRewind",
           "when": "view == vibezoo.yoloHistory && viewItem == yoloSnapshot",
           "group": "1_rewind"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "vibezoo.reviewProject",
+          "group": "vibezoo@1",
+          "when": "explorerViewletVisible"
+        },
+        {
+          "command": "vibezoo.findBugs",
+          "group": "vibezoo@2",
+          "when": "explorerViewletVisible"
+        },
+        {
+          "command": "vibezoo.suggestRefactor",
+          "group": "vibezoo@3",
+          "when": "explorerViewletVisible"
+        },
+        {
+          "command": "vibezoo.generateDocs",
+          "group": "vibezoo@4",
+          "when": "explorerViewletVisible"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "vibezoo.reviewProject",
+          "when": "never"
+        },
+        {
+          "command": "vibezoo.findBugs",
+          "when": "never"
+        },
+        {
+          "command": "vibezoo.suggestRefactor",
+          "when": "never"
+        },
+        {
+          "command": "vibezoo.generateDocs",
+          "when": "never"
         }
       ]
     }

@@ -33,8 +33,12 @@ export class StatusBarManager {
     return `${this._baseTooltip} | Crow: 없음`;
   }
 
-  /** VibeZoo 활성 상태 표시 (VibeZoo 자체는 항상 active) */
-  setActive(bridgeConnected: boolean, bridgePort?: number): void {
+  /** VibeZoo 활성 상태 표시 (VibeZoo 자체는 항상 active)
+   *  setActive + setCrowStatus 통합: crowConnected를 함께 받아 tooltip을 한 번에 구성 */
+  setActive(bridgeConnected: boolean, bridgePort?: number, crowConnected?: boolean): void {
+    if (crowConnected !== undefined) {
+      this._crowConnected = crowConnected;
+    }
     if (bridgeConnected) {
       this.item.text = '$(pulse) VibeZoo';
       this._baseTooltip = `VibeZoo Bridge: 연결됨 (:${bridgePort || 9027})`;
@@ -44,12 +48,12 @@ export class StatusBarManager {
       this._baseTooltip = 'VibeZoo: 활성화됨';
       this.item.backgroundColor = undefined;
     }
-    // Crow 상태를 보존하여 tooltip 재구성
+    // Crow 상태를 통합하여 tooltip 한 번에 구성
     this.item.tooltip = this._composeTooltip();
     this.item.show();
   }
 
-  /** Crow 연결 상태 표시 (간결하게) */
+  /** Crow 연결 상태 표시 (setActive 통합으로 단독 호출 최소화, 필요시 유지) */
   setCrowStatus(connected: boolean): void {
     this._crowConnected = connected;
     this.item.tooltip = this._composeTooltip();

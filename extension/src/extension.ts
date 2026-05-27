@@ -61,9 +61,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   crowServer = new CrowServerManager();
   statusBar = new StatusBarManager();
 
-  // VibeZoo는 항상 active (Crow/Bridge 상태와 무관)
-  statusBar.setActive(true);
-  statusBar.setCrowStatus(false); // "Crow: 없음" (initial, will be updated)
+  // VibeZoo는 항상 active (Crow/Bridge 상태와 무관) — 통합 setActive에 crowConnected 포함
+  statusBar.setActive(true, undefined, false); // "Crow: 없음" (initial, will be updated)
 
   // Crow 상태 → StatusBar (비동기 — 실패해도 VibeZoo는 정상)
   crowServer.onStatusChange(({ connected }) => {
@@ -120,7 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Bridge 시작 후 Crow 연결 재확인 (이미 조기 연결 시도했으나 Bridge 이후 다시 확인)
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
-    statusBar.setActive(true, port);
+    statusBar.setActive(true, port, crowServer.lastHealthy);
     autoConfigureMCP();
 
     // ★ Bridge 시작 후 개별 에이전트 노드 초기화
@@ -136,8 +135,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }).catch((err: any) => {
     console.warn('[VibeZoo] MCP Bridge failed:', err.message);
-    statusBar.setActive(true); // Bridge 실패해도 VibeZoo는 active
-    statusBar.setCrowStatus(crowServer?.lastHealthy ?? false);
+    statusBar.setActive(true, undefined, crowServer?.lastHealthy ?? false);
   });
 
   // ── TreeView Providers ──────────────────────────────────
@@ -388,6 +386,95 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           );
         }
       }
+    })
+  );
+
+  // ── Q4: Quick Win — 시나리오 통합 MCP 도구 VS Code 명령어 ──
+  const BRIDGE_URL = 'http://localhost:9027';
+
+  /** MCP Bridge 호출 헬퍼 */
+  async function callMCPTool(toolName: string, args: Record<string, any>): Promise<string> {
+    try {
+      const resp = await fetch(`${BRIDGE_URL}/tools/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: toolName, arguments: args }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!resp.ok) {
+        return `❌ Bridge error: ${resp.status} ${resp.statusText}`;
+      }
+      const data: any = await resp.json();
+      return data?.content?.[0]?.text || JSON.stringify(data, null, 2);
+    } catch (err: any) {
+      return `❌ Bridge 호출 실패: ${err.message}\n\nBridge가 http://localhost:9027 에서 실행 중인지 확인하세요.`;
+    }
+  }
+
+  /** 결과를 새 편집기 탭으로 열기 */
+  function showResultInEditor(title: string, content: string): void {
+    vscode.workspace.openTextDocument({ content, language: 'markdown' }).then(doc => {
+      vscode.window.showTextDocument(doc, { preview: false });
+    });
+  }
+
+  // ── review_project ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.reviewProject', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        vscode.window.showWarningMessage('VibeZoo: 열려있는 프로젝트가 없습니다.');
+        return;
+      }
+      const targetPath = folders[0].uri.fsPath;
+      statusBar.showProgress('리뷰 분석 중...');
+      const result = await callMCPTool('review_project', { target_path: targetPath });
+      showResultInEditor('VibeZoo Project Review', result);
+    })
+  );
+
+  // ── find_bugs ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.findBugs', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        vscode.window.showWarningMessage('VibeZoo: 열려있는 프로젝트가 없습니다.');
+        return;
+      }
+      const targetPath = folders[0].uri.fsPath;
+      statusBar.showProgress('버그 검색 중...');
+      const result = await callMCPTool('find_bugs', { target_path: targetPath });
+      showResultInEditor('VibeZoo Bug Finder', result);
+    })
+  );
+
+  // ── suggest_refactor ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.suggestRefactor', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        vscode.window.showWarningMessage('VibeZoo: 열려있는 프로젝트가 없습니다.');
+        return;
+      }
+      const targetPath = folders[0].uri.fsPath;
+      statusBar.showProgress('리팩터링 분석 중...');
+      const result = await callMCPTool('suggest_refactor', { target_path: targetPath });
+      showResultInEditor('VibeZoo Refactoring Suggestions', result);
+    })
+  );
+
+  // ── generate_docs ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.generateDocs', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        vscode.window.showWarningMessage('VibeZoo: 열려있는 프로젝트가 없습니다.');
+        return;
+      }
+      const targetPath = folders[0].uri.fsPath;
+      statusBar.showProgress('문서 생성 중...');
+      const result = await callMCPTool('generate_docs', { target_path: targetPath, format: 'markdown' });
+      showResultInEditor('VibeZoo Generated Documentation', result);
     })
   );
 
