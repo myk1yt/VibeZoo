@@ -8,6 +8,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+const log = (msg: string, ...args: any[]) => {
+  if (process.env.VIBEZOO_DEBUG) console.log(`[VibeZoo::Visual] ${msg}`, ...args);
+};
+
 export class VisualVibePanels {
   private whiteboardPanel: vscode.WebviewPanel | null = null;
   private uiPreviewPanel: vscode.WebviewPanel | null = null;
@@ -44,7 +48,7 @@ export class VisualVibePanels {
             }
           }
         }
-      } catch {}
+      } catch { /* wbAction file not ready — ignore */ }
 
       // UI Preview action 감지 (open_ui_preview 호출)
       try {
@@ -113,31 +117,28 @@ export class VisualVibePanels {
         } catch {}
       }
       if (message.type === 'captureScreenshot') {
-        // Python PIL로 직접 화면 캡처 (temp file 사용, 진짜 원클릭)
+        // Windows Snipping Tool로 영역 선택 캡처 → 클립보드에서 자동 로드
         const { exec } = require('child_process');
-        const tmpScript = path.join(os.tmpdir(), 'vibezoo-capture.py');
-        const script = [
-          'from PIL import ImageGrab',
-          'import base64, json, sys',
-          'from io import BytesIO',
-          'img = ImageGrab.grab()',
-          'buf = BytesIO()',
-          'img.save(buf, format="PNG")',
-          'data = {"type":"screenshot","image":"data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()}',
-          'print(json.dumps(data))',
-        ].join('\n');
-        fs.writeFileSync(tmpScript, script, 'utf-8');
-        exec(`python "${tmpScript}"`, { timeout: 10000 }, (err: any, stdout: string) => {
-          try { fs.unlinkSync(tmpScript); } catch {}
-          if (!err && stdout) {
-            try {
-              const result = JSON.parse(stdout.trim());
-              this.whiteboardPanel?.webview.postMessage({
-                type: 'loadLatestScreenshot',
-                dataUrl: result.image
-              });
-            } catch {}
-          }
+        const tmpFile = path.join(os.tmpdir(), `vibezoo-capture-${Date.now()}.png`);
+        // Step 1: Start snipping tool
+        exec('powershell -Command "Start-Process ms-screenclip: -Wait"', (err1: any) => {
+          // Step 2: Save clipboard image to temp file
+          const psScript = `Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $img.Save('${tmpFile.replace(/\\/g, '\\\\')}') }`;
+          exec(`powershell -Command "${psScript}"`, (err2: any) => {
+            // Step 3: Read temp file and send to Webview
+            setTimeout(() => {
+              try {
+                if (fs.existsSync(tmpFile)) {
+                  const imgData = fs.readFileSync(tmpFile, 'base64');
+                  fs.unlinkSync(tmpFile);
+                  this.whiteboardPanel?.webview.postMessage({
+                    type: 'loadLatestScreenshot',
+                    dataUrl: `data:image/png;base64,${imgData}`
+                  });
+                }
+              } catch {}
+            }, 500);
+          });
         });
       }
     });
@@ -203,6 +204,10 @@ export class VisualVibePanels {
 
   /** 모든 패널 정리 */
   dispose(): void {
+    if (this.watchTimer) {
+      clearInterval(this.watchTimer);
+      this.watchTimer = null;
+    }
     this.whiteboardPanel?.dispose();
     this.uiPreviewPanel?.dispose();
     this.diagramPanel?.dispose();
@@ -231,7 +236,8 @@ export class VisualVibePanels {
   <button onclick="setMode('select')">🖱️ 선택</button>
   <button onclick="captureScreenshot()">📸 캡처</button>
   <button onclick="document.getElementById('imgInput').click()">📷 이미지</button>
-  <button onclick="clearAll()">🗑️ 전체 삭제</button>
+  <button onclick="deleteSelected()">🗑️ 선택 삭제</button>
+  <button onclick="clearAll()">🧹 전체 삭제</button>
   <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="addImage(this)">
 </div>
 <canvas id="c"></canvas>
@@ -337,7 +343,23 @@ export class VisualVibePanels {
     canvas.add(text);
   }
 
-  function clearAll() { canvas.clear(); canvas.backgroundColor = '#1e1e1e'; }
+  function deleteSelected() {
+    const active = canvas.getActiveObject();
+    if (active) {
+      canvas.remove(active);
+      canvas.discardActiveObject();
+      canvas.renderAll();
+      setTimeout(sendState, 150);
+    }
+  }
+  function clearAll() { canvas.clear(); canvas.backgroundColor = '#1e1e1e'; setTimeout(sendState, 150); }
+
+  // Delete key로 선택 객체 삭제
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      deleteSelected();
+    }
+  });
 
   window.addEventListener('resize', () => { canvas.setWidth(window.innerWidth); canvas.setHeight(window.innerHeight); });
 </script>
