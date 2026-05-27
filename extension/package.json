@@ -2,7 +2,7 @@
   "name": "vibezoo",
   "displayName": "VibeZoo (Local)",
   "description": "Zoo Code Companion Extension — 세상에서 가장 흐름이 끊기지 않는 바이브코딩 환경",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -93,6 +93,38 @@
       {
         "command": "vibezoo.stopWatching",
         "title": "VibeZoo: Stop Continuous Improvement (파일 감시 중지)"
+      },
+      {
+        "command": "vibezoo.explainCode",
+        "title": "VibeZoo: Explain Code at Cursor (코드 설명)"
+      },
+      {
+        "command": "vibezoo.analyzeChanges",
+        "title": "VibeZoo: Analyze Git Changes (변경 분석)"
+      },
+      {
+        "command": "vibezoo.reviewPR",
+        "title": "VibeZoo: Review Pull Request (PR 리뷰)"
+      },
+      {
+        "command": "vibezoo.refactorAcrossFiles",
+        "title": "VibeZoo: Refactor Across Files (멀티 파일 리팩토링)"
+      },
+      {
+        "command": "vibezoo.learnProject",
+        "title": "VibeZoo: Learn Project Knowledge (프로젝트 지식 학습)"
+      },
+      {
+        "command": "vibezoo.recallProject",
+        "title": "VibeZoo: Recall Project Knowledge (프로젝트 지식 회상)"
+      },
+      {
+        "command": "vibezoo.learnPreference",
+        "title": "VibeZoo: Learn Coding Preference (선호도 학습)"
+      },
+      {
+        "command": "vibezoo.getPreferences",
+        "title": "VibeZoo: Show Saved Preferences (선호도 조회)"
       }
     ],
     "viewsContainers": {

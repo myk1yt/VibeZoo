@@ -1,8 +1,9 @@
 // VibeZoo: StatusBar 통합 관리자
-// VibeZoo 상태, Crow 연결 상태, YOLO 모드, 권장 모드 제안 표시
+// VibeZoo 상태, Crow 연결 상태, YOLO 모드, CIM 모드, 권장 모드 제안 표시
 //
 // ★ 중요: setActive()와 setCrowStatus()가 서로의 tooltip을 덮어쓰지 않도록
 //   _baseTooltip(기본 메시지)과 _crowSuffix(Crow 상태)를 분리해서 관리한다.
+// ★ M3-F: CIM 모드 on/off 표시 추가
 
 import * as vscode from 'vscode';
 
@@ -13,6 +14,8 @@ export class StatusBarManager {
   private savedTooltip: string = '';
   private savedCommand: string | vscode.Command | undefined = '';
   private _crowConnected: boolean = false;
+  private _cimActive: boolean = false;
+  private _yoloActive: boolean = false;
 
   /** setActive()로 설정된 base tooltip (Crow 접미사 제외) */
   private _baseTooltip: string = 'VibeZoo: 활성화됨';
@@ -25,35 +28,53 @@ export class StatusBarManager {
     this.item.command = 'vibezoo.verifyFoundation';
   }
 
-  /** 내부: _baseTooltip + Crow 접미사로 tooltip 재구성 */
+  /** 내부: _baseTooltip + Crow 접미사 + CIM/YOLO 상태로 tooltip 재구성 */
   private _composeTooltip(): string {
+    let tooltip = this._baseTooltip;
     if (this._crowConnected) {
-      return `${this._baseTooltip} | Crow: 연결됨`;
+      tooltip += ' | Crow: 연결됨';
+    } else {
+      tooltip += ' | Crow: 없음';
     }
-    return `${this._baseTooltip} | Crow: 없음`;
+    if (this._cimActive) {
+      tooltip += ' | CIM: ON';
+    }
+    if (this._yoloActive) {
+      tooltip += ' | YOLO: ON';
+    }
+    return tooltip;
   }
 
-  /** VibeZoo 활성 상태 표시 (VibeZoo 자체는 항상 active)
-   *  setActive + setCrowStatus 통합: crowConnected를 함께 받아 tooltip을 한 번에 구성 */
+  /** 내부: CIM/YOLO 상태를 텍스트에 반영 */
+  private _composeText(): string {
+    let text = '$(zap) VibeZoo';
+    if (this._cimActive) {
+      text = '$(eye) VibeZoo';
+    }
+    if (this._yoloActive) {
+      text = '$(flame) VibeZoo YOLO';
+    }
+    return text;
+  }
+
+  /** VibeZoo 활성 상태 표시 */
   setActive(bridgeConnected: boolean, bridgePort?: number, crowConnected?: boolean): void {
     if (crowConnected !== undefined) {
       this._crowConnected = crowConnected;
     }
     if (bridgeConnected) {
-      this.item.text = '$(pulse) VibeZoo';
       this._baseTooltip = `VibeZoo Bridge: 연결됨 (:${bridgePort || 9027})`;
       this.item.backgroundColor = undefined;
     } else {
-      this.item.text = '$(check) VibeZoo';
       this._baseTooltip = 'VibeZoo: 활성화됨';
       this.item.backgroundColor = undefined;
     }
-    // Crow 상태를 통합하여 tooltip 한 번에 구성
+    this.item.text = this._composeText();
     this.item.tooltip = this._composeTooltip();
     this.item.show();
   }
 
-  /** Crow 연결 상태 표시 (setActive 통합으로 단독 호출 최소화, 필요시 유지) */
+  /** Crow 연결 상태 표시 */
   setCrowStatus(connected: boolean): void {
     this._crowConnected = connected;
     this.item.tooltip = this._composeTooltip();
@@ -62,20 +83,33 @@ export class StatusBarManager {
 
   /** YOLO 모드 상태 표시 */
   setYoloStatus(active: boolean): void {
+    this._yoloActive = active;
+    this.item.text = this._composeText();
+    this.item.tooltip = this._composeTooltip();
     if (active) {
-      this.item.text = '$(flame) VibeZoo YOLO';
-      this.item.backgroundColor = new vscode.ThemeColor(
-        'statusBarItem.errorBackground'
-      );
-      this.item.tooltip = 'YOLO 모드 활성화 — 모든 파일 변경이 자동 백업됩니다.';
+      this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+    } else {
+      this.item.backgroundColor = undefined;
     }
+    this.item.show();
+  }
+
+  /** CIM (Continuous Improvement Mode) 상태 표시 */
+  setCimStatus(active: boolean): void {
+    this._cimActive = active;
+    this.item.text = this._composeText();
+    this.item.tooltip = this._composeTooltip();
+    if (active) {
+      // CIM 활성화 시 반짝이는 효과
+      this.item.text = '$(eye) VibeZoo CIM';
+    }
+    this.item.show();
   }
 
   /** 권장 모드 제안 (5초 후 자동 복구) */
   suggestMode(mode: string, reason: string): void {
     if (this.modeSuggestionTimer) clearTimeout(this.modeSuggestionTimer);
 
-    // 직전 상태 저장 (Crow 상태 유지를 위해 _crowConnected도 캡처)
     this.savedText = this.item.text;
     this.savedTooltip = String(this.item.tooltip);
     this.savedCommand = this.item.command;
@@ -87,12 +121,9 @@ export class StatusBarManager {
 
     this.modeSuggestionTimer = setTimeout(() => {
       this.modeSuggestionTimer = null;
-      // 저장된 상태 복구 (Crow 상태는 현재 _crowConnected로 재반영)
-      this.item.text = this.savedText || '$(check) VibeZoo';
-      // _crowConnected가 true면 tooltip에 Crow 상태를 다시 붙임
+      this.item.text = this.savedText || this._composeText();
       this.item.tooltip = this.savedTooltip || this._composeTooltip();
       this.item.command = this.savedCommand || 'vibezoo.verifyFoundation';
-      // 저장 시점과 다른 Crow 상태였다면 tooltip 재구성
       if (this._crowConnected !== savedCrowConnected) {
         this.item.tooltip = this._composeTooltip();
       }

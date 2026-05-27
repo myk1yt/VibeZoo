@@ -6,6 +6,7 @@
 
 import asyncio
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -1610,6 +1611,708 @@ def generate_docs(target_path: str, format: str = "markdown") -> str:
 
     try_crow_ingest(f"generate_docs completed for {target_path} (format={format})", register="arch")
     return "\n\n---\n\n".join(sections)
+
+
+# ═══════════════════════════════════════════════════════════
+# M3-A: explain_code — AST 기반 코드 설명
+# ═══════════════════════════════════════════════════════════
+
+@mcp.tool
+def explain_code(file_path: str, line_number: int) -> str:
+    """지정된 파일의 특정 라인에 있는 코드가 무엇을 하는지 tree-sitter AST로 분석하여 설명합니다.
+    AST 노드 트리를 통해 해당 라인의 함수/클래스/인터페이스 컨텍스트를 파악하고 간단한 설명을 생성합니다.
+
+    Args:
+        file_path: 분석할 파일의 상대 경로
+        line_number: 설명을 원하는 1-based 라인 번호
+    """
+    root = Path(os.getcwd())
+    target = root / file_path
+    if not target.exists():
+        return f"File not found: {file_path}"
+
+    try:
+        content = target.read_text(encoding="utf-8", errors="ignore")
+    except Exception as e:
+        return f"Cannot read file: {e}"
+
+    lines = content.split("\n")
+    if line_number < 1 or line_number > len(lines):
+        return f"Line {line_number} is out of range (file has {len(lines)} lines)"
+
+    # Extract the line content
+    line_content = lines[line_number - 1].strip()
+    if not line_content:
+        return f"Line {line_number} is empty."
+
+    # Initialize tree-sitter
+    _init_tree_sitter()
+
+    output = f"# Code Explanation: `{file_path}:{line_number}`\n\n"
+    output += f"> `{line_content}`\n\n"
+
+    ext = target.suffix.lower()
+    if ext in (".ts", ".tsx", ".js", ".jsx") and _ts_available:
+        ast = _parse_with_tree_sitter(content, ext)
+
+        # Find enclosing function/class/interface
+        enclosing_func = None
+        enclosing_class = None
+        enclosing_iface = None
+
+        for fn in ast.get("functions", []):
+            if fn["line"] <= line_number <= fn["end_line"]:
+                enclosing_func = fn
+
+        for cls in ast.get("classes", []):
+            if cls["line"] <= line_number:
+                enclosing_class = cls
+
+        for iface in ast.get("interfaces", []):
+            if iface["line"] <= line_number:
+                enclosing_iface = iface
+
+        # Context summary
+        output += "## Context\n\n"
+        if enclosing_func:
+            output += f"- **Function**: `{enclosing_func['name']}` ({enclosing_func['type']}, lines {enclosing_func['line']}-{enclosing_func['end_line']})\n"
+        if enclosing_class:
+            output += f"- **Class**: `{enclosing_class['name']}` (line {enclosing_class['line']})\n"
+        if enclosing_iface:
+            output += f"- **Interface/Type**: `{enclosing_iface['name']}` ({enclosing_iface['type']}, line {enclosing_iface['line']})\n"
+        if not enclosing_func and not enclosing_class and not enclosing_iface:
+            output += "- Top-level code (no enclosing function or class)\n"
+
+        # Line type detection
+        output += "\n## Line Analysis\n\n"
+        line_lower = line_content.lower()
+
+        if line_content.startswith("import ") or line_content.startswith("from ") or line_content.startswith("require("):
+            output += "- **Import statement**: imports external module or dependency.\n"
+        elif line_content.startswith("export ") or line_content.startswith("module.exports"):
+            output += "- **Export statement**: exposes symbols to other modules.\n"
+        elif line_content.startswith("function ") or line_content.startswith("async function"):
+            output += "- **Function declaration**: defines a named function.\n"
+        elif line_content.startswith("const ") or line_content.startswith("let ") or line_content.startswith("var "):
+            output += "- **Variable declaration**: declares a new variable.\n"
+        elif line_content.startswith("class "):
+            output += "- **Class declaration**: defines a new class.\n"
+        elif line_content.startswith("interface "):
+            output += "- **Interface declaration**: defines a TypeScript interface.\n"
+        elif line_content.startswith("type "):
+            output += "- **Type alias**: defines a type alias.\n"
+        elif line_content.startswith("return "):
+            output += "- **Return statement**: returns a value from the current function.\n"
+        elif line_content.startswith("if ") or line_content.startswith("else ") or line_content.startswith("else if"):
+            output += "- **Conditional branch**: controls flow based on a condition.\n"
+        elif line_content.startswith("for ") or line_content.startswith("while ") or line_content.startswith("do "):
+            output += "- **Loop**: iterates over a collection or repeats execution.\n"
+        elif line_content.startswith("try ") or line_content.startswith("catch ") or line_content.startswith("finally "):
+            output += "- **Error handling**: catches and handles exceptions.\n"
+        elif line_content.startswith("switch ") or line_content.startswith("case ") or line_content.startswith("default:"):
+            output += "- **Switch/case**: multi-branch conditional.\n"
+        elif line_content.startswith("//") or line_content.startswith("#") or line_content.startswith("/*") or line_content.startswith("*"):
+            output += "- **Comment**: documentation or code note.\n"
+        elif line_content.startswith("}"):
+            output += "- **Closing brace**: closes a block (function, class, if, etc.).\n"
+        elif "=>" in line_content:
+            output += "- **Arrow function**: shorthand function expression.\n"
+        elif " = " in line_content and "(" in line_content:
+            output += "- **Assignment/call**: variable assignment with function call.\n"
+        elif "(" in line_content and ")" in line_content:
+            output += "- **Function/method call**: invokes a function or method.\n"
+        else:
+            output += "- Expression or statement.\n"
+
+    else:
+        # Fallback for non-TS/JS files or when tree-sitter is unavailable
+        output += "## Line Content\n\n"
+        output += f"```\n{line_content}\n```\n"
+        output += "\n> Note: tree-sitter AST analysis is only available for TypeScript/JavaScript files.\n"
+
+    # Show surrounding context
+    output += "\n## Surrounding Context\n\n"
+    start = max(0, line_number - 4)
+    end = min(len(lines), line_number + 3)
+    output += "```\n"
+    for i in range(start, end):
+        prefix = "→" if i + 1 == line_number else " "
+        output += f"{prefix} {i+1:4d} | {lines[i]}\n"
+    output += "```\n"
+
+    try_crow_ingest(f"explain_code: {file_path}:{line_number} — {line_content[:60]}", register="context")
+    return output
+
+
+# ═══════════════════════════════════════════════════════════
+# M3-B: analyze_changes / review_pr — Git Diff 분석
+# ═══════════════════════════════════════════════════════════
+
+@mcp.tool
+def analyze_changes() -> str:
+    """현재 워크스페이스의 git diff를 분석하여 변경된 파일 목록과 diff 내용을 반환합니다.
+    git diff --stat + git diff를 실행하여 변경 사항을 요약하고,
+    Crow Memory에서 관련 컨텍스트를 조회합니다.
+
+    Returns:
+        Markdown 보고서: 변경 파일 목록, diff 내용, 관련 Crow 기억
+    """
+    root = os.getcwd()
+    output = "# 📊 Git Changes Analysis\n\n"
+
+    try:
+        # git diff --stat
+        stat_result = subprocess.run(
+            ["git", "diff", "--stat"],
+            cwd=root, capture_output=True, text=True, timeout=10
+        )
+        stat_output = stat_result.stdout.strip()
+
+        # git diff (full)
+        diff_result = subprocess.run(
+            ["git", "diff"],
+            cwd=root, capture_output=True, text=True, timeout=10
+        )
+        diff_output = diff_result.stdout.strip()
+
+        if not stat_output:
+            output += "✅ No uncommitted changes detected.\n"
+            return output
+
+        # Parse changed files from --stat
+        changed_files = []
+        for line in stat_output.split("\n"):
+            if "|" in line:
+                parts = line.split("|")
+                file_path = parts[0].strip()
+                changed_files.append(file_path)
+
+        output += f"## Changed Files ({len(changed_files)})\n\n"
+        for f in changed_files:
+            output += f"- `{f}`\n"
+        output += "\n"
+
+        # Full diff (truncated)
+        output += "## Diff Content\n\n"
+        if len(diff_output) > 8000:
+            output += f"> Diff is too large ({len(diff_output)} chars), showing first 8000 chars\n\n"
+            output += "```diff\n" + diff_output[:8000] + "\n```\n"
+            output += f"\n> ... ({len(diff_output) - 8000} more chars)\n"
+        else:
+            output += "```diff\n" + diff_output + "\n```\n"
+
+        # Crow recall for related context
+        if changed_files:
+            output += "\n## 🧠 Related Crow Context\n\n"
+            for f in changed_files[:5]:  # Top 5 files
+                try:
+                    file_name = os.path.basename(f)
+                    past_context = try_crow_recall(
+                        query=f"file changes in {file_name}",
+                        register="context",
+                        limit=2
+                    )
+                    if past_context:
+                        for item in past_context:
+                            content = item.get("content", item.get("value", str(item)))
+                            output += f"- `{file_name}`: {content[:200]}\n"
+                    else:
+                        output += f"- `{file_name}`: No Crow context found.\n"
+                except Exception:
+                    output += f"- `{file_name}`: Could not query Crow.\n"
+
+    except FileNotFoundError:
+        output += "❌ Git not available. Make sure git is installed and this is a git repository.\n"
+    except subprocess.TimeoutExpired:
+        output += "❌ Git diff timed out.\n"
+    except Exception as e:
+        output += f"❌ Error: {e}\n"
+
+    try_crow_ingest(f"analyze_changes: {len(changed_files)} files changed", register="life_context")
+    return output
+
+
+@mcp.tool
+def review_pr(base_branch: str = "main", head_branch: str = "") -> str:
+    """analyze_changes + review_code를 통합하여 PR 리뷰 보고서를 생성합니다.
+    두 브랜치 간의 git diff를 분석하고, 변경된 파일들에 대해 코드 리뷰를 수행합니다.
+
+    Args:
+        base_branch: 기준 브랜치 (기본: main)
+        head_branch: 대상 브랜치 (기본: 현재 브랜치)
+
+    Returns:
+        Markdown PR 리뷰 보고서
+    """
+    root = os.getcwd()
+    output = "# 🔍 Pull Request Review\n\n"
+    output += f"> **Base**: `{base_branch}` → **Head**: `{head_branch or 'current'}`\n\n"
+
+    try:
+        # Build diff command
+        diff_cmd = ["git", "diff"]
+        if head_branch:
+            diff_cmd.extend([f"{base_branch}...{head_branch}"])
+        else:
+            diff_cmd.append(f"{base_branch}..HEAD")
+
+        # Get diff stat
+        stat_result = subprocess.run(
+            diff_cmd + ["--stat"],
+            cwd=root, capture_output=True, text=True, timeout=10
+        )
+        stat_output = stat_result.stdout.strip()
+
+        # Get full diff
+        diff_result = subprocess.run(
+            diff_cmd,
+            cwd=root, capture_output=True, text=True, timeout=10
+        )
+        diff_output = diff_result.stdout.strip()
+
+        if not stat_output:
+            output += "⚠️ No differences found between branches.\n"
+            return output
+
+        # Parse changed files
+        changed_files = []
+        for line in stat_output.split("\n"):
+            if "|" in line:
+                parts = line.split("|")
+                file_path = parts[0].strip()
+                changed_files.append(file_path)
+
+        output += f"## 📂 Changed Files ({len(changed_files)})\n\n"
+        for f in changed_files:
+            output += f"- `{f}`\n"
+        output += "\n"
+
+        # Summary statistics
+        total_additions = 0
+        total_deletions = 0
+        for line in stat_output.split("\n"):
+            m = re.search(r'(\d+) insertion', line)
+            if m:
+                total_additions += int(m.group(1))
+            m = re.search(r'(\d+) deletion', line)
+            if m:
+                total_deletions += int(m.group(1))
+
+        output += f"## 📈 Stats\n\n"
+        output += f"- **{len(changed_files)}** files changed\n"
+        output += f"- **+{total_additions}** / **-{total_deletions}** lines\n\n"
+
+        # Review each changed file
+        output += "## 📝 Code Review per File\n\n"
+        for f in changed_files[:10]:  # Limit to 10 files
+            output += f"### `{f}`\n\n"
+            p = Path(root) / f
+            if p.exists():
+                review_result = review_code(f)
+                for line in review_result.split("\n"):
+                    if "⚠️" in line or "📝" in line or "✅" in line or "Found" in line:
+                        output += line + "\n"
+            else:
+                output += "*(file deleted in this PR)*\n"
+            output += "\n"
+
+        # Show diff for context
+        output += "## 🔍 Diff Preview\n\n"
+        if len(diff_output) > 4000:
+            output += f"```diff\n{diff_output[:4000]}\n```\n"
+            output += f"\n> ... ({len(diff_output) - 4000} more chars)\n"
+        else:
+            output += f"```diff\n{diff_output}\n```\n"
+
+        # Crow recall for related context
+        output += "\n## 🧠 Crow Memory Context\n\n"
+        for f in changed_files[:3]:
+            file_name = os.path.basename(f)
+            past_context = try_crow_recall(query=f"review {file_name}", register="style", limit=2)
+            if past_context:
+                for item in past_context:
+                    content = item.get("content", item.get("value", str(item)))
+                    output += f"- `{file_name}`: {content[:200]}\n"
+        output += "\n"
+
+    except FileNotFoundError:
+        output += "❌ Git not available. Make sure git is installed and this is a git repository.\n"
+    except subprocess.TimeoutExpired:
+        output += "❌ Git diff timed out.\n"
+    except Exception as e:
+        output += f"❌ Error: {e}\n"
+
+    try_crow_ingest(
+        json.dumps({"action": "review_pr", "base": base_branch, "head": head_branch}),
+        register="context"
+    )
+    return output
+
+
+# ═══════════════════════════════════════════════════════════
+# M3-C: refactor_across_files — 멀티 파일 리팩토링
+# ═══════════════════════════════════════════════════════════
+
+@mcp.tool
+def refactor_across_files(pattern: str, new_pattern: str, file_patterns: Optional[str] = None) -> str:
+    """search_codebase로 패턴을 찾고, 모든 발생 위치에 대해 일괄 수정 제안을 생성합니다.
+    실제 파일 수정 없이 변경 제안서를 마크다운으로 반환합니다.
+
+    Args:
+        pattern: 찾을 코드 패턴 (검색어)
+        new_pattern: 대체할 새 패턴 (변경 제안)
+        file_patterns: 검색 대상 파일 패턴 (예: *.ts,*.tsx). 쉼표로 구분.
+
+    Returns:
+        Markdown 리팩토링 제안서: 각 발생 위치와 제안된 변경 사항
+    """
+    output = "# 🔧 Multi-File Refactoring Proposal\n\n"
+    output += f"> **Search**: `{pattern}`\n"
+    output += f"> **Replace with**: `{new_pattern}`\n"
+    output += f"> **File patterns**: `{file_patterns or '*.ts,*.tsx,*.js,*.jsx,*.py'}`\n\n"
+
+    # Search for the pattern
+    search_result = search_codebase(query=pattern, file_patterns=file_patterns, max_results=50)
+
+    # Parse search results to extract file:line entries
+    occurrences = []
+    for line in search_result.split("\n"):
+        m = re.match(r'^- `(.+?:\d+):', line)
+        if m:
+            occurrences.append(m.group(1))
+        m2 = re.match(r'^- `(.+?:\d+)`', line)
+        if m2:
+            occurrences.append(m2.group(1))
+
+    if not occurrences:
+        output += "✅ No occurrences found for this pattern.\n"
+        return output
+
+    output += f"## Found {len(occurrences)} Occurrences\n\n"
+
+    # Group by file
+    from collections import defaultdict
+    by_file = defaultdict(list)
+    for occ in occurrences:
+        parts = occ.split(":")
+        if len(parts) >= 2:
+            file_path = parts[0]
+            line_num = parts[1]
+            by_file[file_path].append(line_num)
+
+    output += f"### Files Affected: {len(by_file)}\n\n"
+    for file_path, lines in sorted(by_file.items()):
+        line_list = ", ".join(lines[:10])
+        suffix = f" ... and {len(lines)-10} more" if len(lines) > 10 else ""
+        output += f"- `{file_path}` — lines {line_list}{suffix}\n"
+
+    # Generate replacement suggestions
+    output += "\n## Suggested Changes\n\n"
+    for file_path, lines in sorted(by_file.items())[:10]:  # Limit to 10 files
+        actual_path = Path(os.getcwd()) / file_path
+        if not actual_path.exists():
+            continue
+        try:
+            content = actual_path.read_text(encoding="utf-8", errors="ignore")
+            file_lines = content.split("\n")
+        except Exception:
+            continue
+
+        output += f"### `{file_path}`\n\n"
+        output += f"```diff\n"
+        for line_num_str in lines[:5]:  # Show up to 5 changes per file
+            idx = int(line_num_str) - 1
+            if 0 <= idx < len(file_lines):
+                original = file_lines[idx]
+                output += f"-{original}\n"
+                suggested = original.replace(pattern, new_pattern)
+                output += f"+{suggested}\n"
+        output += f"```\n\n"
+
+    # Risk analysis
+    output += "## ⚠️ Risk Assessment\n\n"
+    output += f"- **Scale**: {len(occurrences)} changes across {len(by_file)} files\n"
+    output += "- **Pattern type**: text replacement\n"
+    output += "- **Recommendation**: Review each change manually before applying\n"
+    output += "- **Rollback**: Use YOLO rewind if changes cause issues\n"
+
+    output += "\n> Note: This is a **proposal only**. No files have been modified.\n"
+    output += "> To apply changes, use your editor's find-and-replace or manual editing.\n"
+
+    try_crow_ingest(
+        json.dumps({
+            "action": "refactor_across_files",
+            "pattern": pattern,
+            "new_pattern": new_pattern,
+            "occurrences": len(occurrences),
+            "files_affected": len(by_file),
+        }),
+        register="style"
+    )
+    return output
+
+
+# ═══════════════════════════════════════════════════════════
+# M3-D: learn_project / recall_project — 프로젝트 지식 Crow 축적
+# ═══════════════════════════════════════════════════════════
+
+@mcp.tool
+def learn_project(target_path: Optional[str] = None) -> str:
+    """summarize_architecture + extract_patterns + map_dependencies 결과를 Crow Memory에 축적합니다.
+    프로젝트 분석 결과를 Crow arch/style/life_context 레지스터에 각각 저장하여,
+    이후 세션에서 프로젝트 컨텍스트를 자동으로 복원할 수 있게 합니다.
+
+    Args:
+        target_path: 분석 대상 디렉토리 경로 (기본: 현재 작업 디렉토리)
+
+    Returns:
+        Markdown 보고서: Crow에 저장된 내용 요약
+    """
+    root = Path(get_project_root(target_path))
+    output = "# 🧠 Project Knowledge Ingestion\n\n"
+    output += f"> Target: `{root}`\n\n"
+
+    # 1. Summarize architecture
+    output += "## 1. Architecture Summary\n\n"
+    arch_summary = summarize_architecture(target_path=str(root))
+    try_crow_ingest(
+        json.dumps({
+            "action": "learn_project",
+            "type": "architecture",
+            "target": str(root),
+            "summary": arch_summary[:1000],
+            "timestamp": time.time(),
+        }),
+        register="arch"
+    )
+    for line in arch_summary.split("\n"):
+        if "file types" in line:
+            output += f"- {line.strip()}\n"
+    output += "- ✅ Architecture stored in Crow `arch` register\n\n"
+
+    # 2. Extract patterns
+    output += "## 2. Code Patterns\n\n"
+    patterns = extract_patterns(target_path=str(root), min_occurrences=3)
+    try_crow_ingest(
+        json.dumps({
+            "action": "learn_project",
+            "type": "patterns",
+            "target": str(root),
+            "patterns": patterns[:1000],
+            "timestamp": time.time(),
+        }),
+        register="style"
+    )
+    for line in patterns.split("\n"):
+        if "occurrences" in line:
+            output += f"- {line.strip()}\n"
+    output += "- ✅ Patterns stored in Crow `style` register\n\n"
+
+    # 3. Map dependencies
+    output += "## 3. Dependency Map\n\n"
+    deps = map_dependencies(target_path=str(root))
+    try_crow_ingest(
+        json.dumps({
+            "action": "learn_project",
+            "type": "dependencies",
+            "target": str(root),
+            "deps": deps[:1000],
+            "timestamp": time.time(),
+        }),
+        register="arch"
+    )
+    for line in deps.split("\n"):
+        if "circular" in line.lower() or "import" in line.lower() or "dependencies" in line:
+            output += f"- {line.strip()}\n"
+    output += "- ✅ Dependencies stored in Crow `arch` register\n\n"
+
+    # 4. Project identity (life_context)
+    project_key = f"project:{hashlib.md5(str(root).encode()).hexdigest()[:8]}"
+    try_crow_ingest(
+        json.dumps({
+            "action": "learn_project",
+            "type": "identity",
+            "project_key": project_key,
+            "target": str(root),
+            "timestamp": time.time(),
+        }),
+        register="life_context"
+    )
+    output += f"- ✅ Project identity stored in Crow `life_context` (key: `{project_key}`)\n\n"
+
+    output += "---\n"
+    output += "✅ **Project knowledge ingestion complete.**\n"
+
+    return output
+
+
+@mcp.tool
+def recall_project(target_path: Optional[str] = None) -> str:
+    """Crow Memory에서 learn_project로 저장된 프로젝트 지식을 회상합니다.
+    arch, style, life_context 레지스터에서 관련 정보를 조회하여 반환합니다.
+
+    Args:
+        target_path: 분석 대상 디렉토리 경로 (기본: 현재 작업 디렉토리)
+
+    Returns:
+        Markdown 보고서: Crow에서 회상된 프로젝트 지식
+    """
+    root = Path(get_project_root(target_path))
+    root_str = str(root)
+    project_key = f"project:{hashlib.md5(root_str.encode()).hexdigest()[:8]}"
+
+    output = "# 🧠 Project Knowledge Recall\n\n"
+    output += f"> Target: `{root}`\n"
+    output += f"> Project key: `{project_key}`\n\n"
+
+    # 1. Query arch register
+    output += "## 🏗️ Architecture (arch register)\n\n"
+    arch_results = try_crow_recall(query=root_str, register="arch", limit=5)
+    if arch_results:
+        for item in arch_results:
+            content = item.get("content", item.get("value", str(item)))
+            output += f"- {content[:300]}\n"
+    else:
+        output += "- No architecture data found in Crow.\n"
+        output += "  → Run `learn_project()` first to store project knowledge.\n"
+
+    # 2. Query style register (patterns)
+    output += "\n## 📊 Code Patterns (style register)\n\n"
+    style_results = try_crow_recall(query=root_str, register="style", limit=5)
+    if style_results:
+        for item in style_results:
+            content = item.get("content", item.get("value", str(item)))
+            output += f"- {content[:300]}\n"
+    else:
+        output += "- No pattern data found in Crow.\n"
+
+    # 3. Query life_context for project identity
+    output += "\n## 🔑 Project Identity (life_context)\n\n"
+    life_results = try_crow_recall(query=project_key, register="life_context", limit=3)
+    if life_results:
+        for item in life_results:
+            content = item.get("content", item.get("value", str(item)))
+            output += f"- {content[:300]}\n"
+    else:
+        output += "- No project identity found in Crow.\n"
+
+    # 4. Summary
+    total = len(arch_results) + len(style_results) + len(life_results)
+    output += f"\n---\n**Total {total} knowledge items recalled from Crow.**\n"
+
+    return output
+
+
+# ═══════════════════════════════════════════════════════════
+# M3-E: learn_preference / get_preferences — 사용자 선호도 학습
+# ═══════════════════════════════════════════════════════════
+
+PREFERENCES_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-preferences.json")
+
+
+@mcp.tool
+def learn_preference(rule: str, category: str = "coding_style") -> str:
+    """사용자의 코딩 스타일 규칙이나 선호도를 Crow Memory에 저장합니다.
+    예: "함수형 컴포넌트 선호", "interface보다 type 사용", "tab width: 2"
+
+    Args:
+        rule: 저장할 규칙 또는 선호도 설명
+        category: 카테고리 (coding_style, naming, formatting, architecture, workflow)
+
+    Returns:
+        저장 확인 메시지
+    """
+    # Store in local preferences file
+    try:
+        prefs = {}
+        if os.path.exists(PREFERENCES_FILE):
+            try:
+                with open(PREFERENCES_FILE) as f:
+                    prefs = json.load(f)
+            except Exception:
+                prefs = {}
+        if category not in prefs:
+            prefs[category] = []
+        prefs[category].append({
+            "rule": rule,
+            "timestamp": time.time(),
+        })
+        with open(PREFERENCES_FILE, "w") as f:
+            json.dump(prefs, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+    # Also store in Crow life_context
+    try_crow_ingest(
+        json.dumps({
+            "action": "learn_preference",
+            "category": category,
+            "rule": rule,
+            "timestamp": time.time(),
+        }),
+        register="life_context"
+    )
+
+    return f"✅ Preference saved: [{category}] {rule}\n\nStored in local preferences file and Crow Memory (life_context)."
+
+
+@mcp.tool
+def get_preferences(category: Optional[str] = None) -> str:
+    """저장된 모든 사용자 선호도/규칙을 조회합니다.
+
+    Args:
+        category: 특정 카테고리만 조회 (생략 시 전체)
+
+    Returns:
+        Markdown 형식의 저장된 선호도 목록
+    """
+    output = "# 🎨 User Preferences\n\n"
+
+    # Read from local file
+    prefs = {}
+    if os.path.exists(PREFERENCES_FILE):
+        try:
+            with open(PREFERENCES_FILE) as f:
+                prefs = json.load(f)
+        except Exception:
+            prefs = {}
+
+    if not prefs:
+        output += "No preferences saved yet.\n"
+        output += "\n> Use `learn_preference(rule, category)` to save your first preference.\n"
+        return output
+
+    categories_to_show = [category] if category else list(prefs.keys())
+
+    for cat in categories_to_show:
+        if cat not in prefs:
+            output += f"### {cat}\n\n⚠️ Category not found.\n\n"
+            continue
+        rules = prefs[cat]
+        if not rules:
+            continue
+        output += f"## {cat}\n\n"
+        for i, entry in enumerate(rules, 1):
+            rule_text = entry.get("rule", str(entry))
+            ts = entry.get("timestamp", 0)
+            if ts:
+                d = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
+                output += f"{i}. `{rule_text}` _(saved: {d})_\n"
+            else:
+                output += f"{i}. `{rule_text}`\n"
+        output += "\n"
+
+    # Also recall from Crow
+    output += "## 🔄 Crow Memory (life_context)\n\n"
+    crow_prefs = try_crow_recall(query="learn_preference", register="life_context", limit=5)
+    if crow_prefs:
+        for item in crow_prefs:
+            content = item.get("content", item.get("value", str(item)))
+            output += f"- {content[:200]}\n"
+    else:
+        output += "- No preference data in Crow.\n"
+
+    return output
 
 
 # ═══════════════════════════════════════════════════════════
