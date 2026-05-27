@@ -63,12 +63,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // VibeZoo는 항상 active (Crow/Bridge 상태와 무관)
   statusBar.setActive(true);
-  statusBar.setCrowStatus(false); // "Crow: 없음"
+  statusBar.setCrowStatus(false); // "Crow: 없음" (initial, will be updated)
 
   // Crow 상태 → StatusBar (비동기 — 실패해도 VibeZoo는 정상)
   crowServer.onStatusChange(({ connected }) => {
     statusBar.setCrowStatus(connected);
   });
+
+  // ── Crow 연결 확인 (Bridge 시작과 독립적으로 조기 실행) ──
+  // ★ 이전에는 spawnBridge().then() 내부에서만 호출되어,
+  //    Bridge 시작 실패 시 Crow health check 자체가 누락됐음.
+  // ★ 이제 Bridge 결과와 무관하게 항상 Crow 연결을 시도한다.
+  const autoReconnect = vscode.workspace.getConfiguration('vibezoo').get('crow.autoReconnect', true);
+  if (autoReconnect) {
+    crowServer.reconnect().catch(() => {
+      console.warn('[VibeZoo] Crow 초기 연결 실패 (Bridge 시작 후 재시도됨)');
+    });
+  }
 
   // ── Wave 1: Flow Keepers ─────────────────────────────────
   registerBuildTaskProvider(context);
@@ -105,22 +116,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── MCP Bridge 자동 시작 (백그라운드) ──────────────────
   subagentManager = new SubagentManager(context);
 
-  // Bridge 시작 후 Crow 연결 확인 (실패해도 VibeZoo는 정상)
+  // Bridge 시작 후 Crow 연결 재확인 (이미 조기 연결 시도했으나 Bridge 이후 다시 확인)
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
     autoConfigureMCP();
 
-    // Zoo Code의 Crow 서버 연결 확인 (재시작 없이 감지만)
-    const autoReconnect = vscode.workspace.getConfiguration('vibezoo').get('crow.autoReconnect', true);
-    if (autoReconnect) {
+    // ★ Bridge 시작 후에도 Crow 연결이 아직 안 잡혔으면 재시도
+    if (!crowServer.lastHealthy) {
+      console.log('[VibeZoo] Crow 조기 연결 실패 상태 — Bridge 이후 재시도');
       const ok = await crowServer.reconnect().catch(() => false);
       statusBar.setCrowStatus(ok);
+    } else {
+      console.log('[VibeZoo] Crow 조기 연결 성공 상태 유지');
     }
   }).catch((err: any) => {
     console.warn('[VibeZoo] MCP Bridge failed:', err.message);
     statusBar.setActive(true); // Bridge 실패해도 VibeZoo는 active
-    statusBar.setCrowStatus(false);
+    statusBar.setCrowStatus(crowServer?.lastHealthy ?? false);
   });
 
   // ── TreeView Providers ──────────────────────────────────
