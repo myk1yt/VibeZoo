@@ -19,10 +19,28 @@ export class VisualVibePanels {
   private diagramPanel: vscode.WebviewPanel | null = null;
   private watchTimer: NodeJS.Timeout | null = null;
   private homedir: string;
+  private _activated = false;
 
   constructor() {
     this.homedir = os.homedir();
+    // NOTE: startWatching()은 activate()에서 호출 — 생성자에서 즉시 폴링하지 않음
+  }
+
+  /** Visual 감시 시작 (activate()에서 조건부 호출) */
+  activate(): void {
+    if (this._activated) return;
+    this._activated = true;
     this.startWatching();
+  }
+
+  /** 파일의 현재 mtime을 반환 (없으면 0) */
+  private getCurrentMtime(filePath: string): number {
+    try {
+      const stat = fs.statSync(filePath);
+      return stat.mtimeMs;
+    } catch {
+      return 0;
+    }
   }
 
   /** AI가 MCP 도구로 호출한 Whiteboard/UI 명령 파일 감시 (비동기 폴링) */
@@ -31,11 +49,12 @@ export class VisualVibePanels {
     const wbAction = path.join(this.homedir, '.vibezoo-whiteboard-action.json');
     const uiAction = path.join(this.homedir, '.vibezoo-ui-action.json');
 
-    let lastWbMtime = 0;
-    let lastActionMtime = 0;
-    let lastUiMtime = 0;
+    // ★ 중요: lastMtime을 0이 아닌 현재 파일 mtime으로 초기화
+    //    기존 파일이 있더라도 "이미 처리된 변경"으로 간주하여 무한 트리거 방지
+    let lastWbMtime = this.getCurrentMtime(wbFile);
+    let lastActionMtime = this.getCurrentMtime(wbAction);
+    let lastUiMtime = this.getCurrentMtime(uiAction);
 
-    // 각 파일에 대해 fs.watchFile 사용 (이벤트 기반 → 폴링 오버헤드 제거)
     const checkFile = async (filePath: string, lastMtime: { current: number }, onChange: (content: any, stat: fs.Stats) => void): Promise<void> => {
       try {
         const stat = await fs.promises.stat(filePath);

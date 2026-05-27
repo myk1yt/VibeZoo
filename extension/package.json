@@ -1,9 +1,9 @@
 {
   "name": "vibezoo",
-  "displayName": "VibeZoo",
+  "displayName": "VibeZoo (Local)",
   "description": "Zoo Code Companion Extension — 세상에서 가장 흐름이 끊기지 않는 바이브코딩 환경",
-  "version": "0.10.0",
-  "publisher": "vibezoo",
+  "version": "0.11.1",
+  "publisher": "local",
   "license": "MIT",
   "repository": {
     "type": "git",

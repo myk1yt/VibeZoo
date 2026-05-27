@@ -36,9 +36,14 @@ export class StatusBarManager {
   setCrowStatus(connected: boolean, freshness?: number): void {
     const current = String(this.item.tooltip || 'VibeZoo');
     const base = current.split(' | Crow')[0];
-    this.item.tooltip = connected
-      ? `${base} | Crow: 연결됨 (${freshness ?? 100}% fresh)`
-      : `${base} | Crow: 연결 안 됨`;
+    if (connected) {
+      this.item.tooltip = `${base} | Crow: 연결됨 (${freshness ?? 100}% fresh)`;
+    } else if (freshness === 0) {
+      // 재연결 시도 중 (freshness=0 은 '연결 대기 중' 신호)
+      this.item.tooltip = `${base} | Crow: 연결 대기 중…`;
+    } else {
+      this.item.tooltip = `${base} | Crow: 연결 안 됨`;
+    }
     this.item.show();
   }
 

@@ -92,36 +92,40 @@ export class CrowServerManager {
     return this.child.pid!;
   }
 
-  /** Crow SSE 서버 재연결 (외부 시스템 — PID 파일이나 스크립트 없이 헬스체크만) */
-  async reconnect(): Promise<boolean> {
+  /** Crow SSE 서버 재연결 (외부 시스템 — PID 파일이나 스크립트 없이 헬스체크만)
+   *  5초 간격으로 최대 maxRetries회 재시도, 각 시도 전 onStatusChange에 '연결 대기 중' emit */
+  async reconnect(maxRetries: number = 3): Promise<boolean> {
     if (this.reconnectInProgress) return false;
     this.reconnectInProgress = true;
+    this.restartAttempts = 0;
 
     try {
-      // 기존 서버 헬스체크 (외부 Crow 시스템 — PID 불필요)
-      const healthy = await this.healthCheck();
-      if (healthy) {
-        this.restartAttempts = 0;
-        console.log(`[VibeZoo] Crow 서버 연결 확인: 포트 ${this.config.port}`);
-        this.startHealthCheck();
-        this._onStatusChange.fire({ connected: true, freshness: await this.getFreshness().catch(() => undefined) });
-        return true;
-      }
+      while (this.restartAttempts < maxRetries) {
+        // 연결 대기 중 상태 emit (VibeZoo 자체는 정상)
+        this._onStatusChange.fire({ connected: false, freshness: 0 });
 
-      // health check가 false를 반환한 경우 — 최대 재시도 횟수 제한 적용
-      if (this.config.autoRestart && this.restartAttempts < this.config.maxRestartAttempts) {
+        const healthy = await this.healthCheck();
+        if (healthy) {
+          this.restartAttempts = 0;
+          console.log(`[VibeZoo] Crow 서버 연결 확인: 포트 ${this.config.port}`);
+          this.startHealthCheck();
+          this._onStatusChange.fire({ connected: true, freshness: await this.getFreshness().catch(() => undefined) });
+          return true;
+        }
+
         this.restartAttempts++;
-        console.log(`[VibeZoo] Crow 서버 재시도 (${this.restartAttempts}/${this.config.maxRestartAttempts})`);
-        await this.start();
-        return true;
+        console.log(`[VibeZoo] Crow 서버 응답 없음 (${this.restartAttempts}/${maxRetries}). 5초 후 재시도…`);
+        if (this.restartAttempts < maxRetries) {
+          await new Promise((r) => setTimeout(r, 5000));
+        }
       }
 
-      // 재시도 불가 또는 최대 횟수 도달
+      // 최대 재시도 횟수 도달
+      console.warn(`[VibeZoo] Crow 서버 연결 최종 실패 (${maxRetries}회 시도).`);
       this._onStatusChange.fire({ connected: false });
       return false;
-    } catch {
-      // health check 실패 (예외) — Crow가 꺼져 있거나 다른 포트 사용 중
-      console.log(`[VibeZoo] Crow 서버 응답 없음 (${this.config.port}). 외부 시스템이므로 넘어갑니다.`);
+    } catch (err) {
+      console.warn(`[VibeZoo] Crow 서버 재연결 중 예외:`, err);
       this._onStatusChange.fire({ connected: false });
       return false;
     } finally {

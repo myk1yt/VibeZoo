@@ -22,6 +22,9 @@ import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
 
+// ── 중복 활성화 방지 ───────────────────────────────────────
+const _activeExtensions = new Set<string>();
+
 let crowServer: CrowServerManager;
 let statusBar: StatusBarManager;
 let yocto: YoctoManager;
@@ -40,6 +43,14 @@ let visualPanels: VisualVibePanels;
 // ── Activate ─────────────────────────────────────────────────
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // ── 중복 활성화 방지 ─────────────────────────────────────
+  const extId = context.extension.id; // "local.vibezoo" 등
+  if (_activeExtensions.has(extId)) {
+    console.warn(`[VibeZoo] 중복 activate 감지 (${extId}) — 무시합니다.`);
+    return;
+  }
+  _activeExtensions.add(extId);
+
   console.log('[VibeZoo] 🚀 활성화 시작...');
 
   // ── Phase 0: Foundation ──────────────────────────────────
@@ -49,25 +60,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   crowServer = new CrowServerManager();
   statusBar = new StatusBarManager();
 
-  // Bridge 상태 → StatusBar 메인
-  statusBar.setActive(false);
+  // VibeZoo는 항상 active (Crow/Bridge 상태와 무관)
+  statusBar.setActive(true);
+  statusBar.setCrowStatus(false, 0); // "연결 대기 중"
 
-  // Crow 상태 → StatusBar 툴팁
+  // Crow 상태 → StatusBar 툴팁 (비동기 — 실패해도 VibeZoo는 정상)
   crowServer.onStatusChange(({ connected, freshness }) => {
     statusBar.setCrowStatus(connected, freshness);
   });
-
-  const autoReconnect = vscode.workspace.getConfiguration('vibezoo').get('crow.autoReconnect', true);
-  if (autoReconnect) {
-    crowServer.reconnect().catch((err) =>
-      console.warn('[VibeZoo] Crow 연결 실패:', err.message)
-    );
-  }
-
-  // 초기 상태
-  const connected = crowServer.isRunning() && (await crowServer.healthCheck());
-  const freshness = connected ? await crowServer.getFreshness() : undefined;
-  statusBar.setCrowStatus(connected, freshness);
 
   // ── Wave 1: Flow Keepers ─────────────────────────────────
   registerBuildTaskProvider(context);
@@ -97,31 +97,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   sessionResume = new SessionResume();
   emotionalDetector = new EmotionalDetector();
 
-  if (vscode.workspace.getConfiguration('vibezoo').get('context.showFreshness', true)) {
-    const status = await contextIndicator.getFreshnessStatus();
-    statusBar.setCrowStatus(connected, status.percentage);
-  }
-
   if (vscode.workspace.getConfiguration('vibezoo').get('session.autoResume', true)) {
     sessionResume.show(context);
   }
 
-  // ── MCP Bridge 자동 시작 ──────────────────────────────
+  // Context freshness (Crow.bin 접근 시간 기반 — Crow 서버와 무관)
+  if (vscode.workspace.getConfiguration('vibezoo').get('context.showFreshness', true)) {
+    contextIndicator.getFreshnessStatus().then((status) => {
+      statusBar.setCrowStatus(false, status.percentage);
+    }).catch(() => {});
+  }
+
+  // ── MCP Bridge 자동 시작 (백그라운드) ──────────────────
   subagentManager = new SubagentManager(context);
 
-  // 백그라운드에서 자동 시작
+  // Bridge 시작 후 Crow 재연결 시도
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
-    crowServer.reconnect().catch(() => {});
     autoConfigureMCP();
-    const fresh = await crowServer.getFreshness().catch(() => 0);
-    statusBar.setCrowStatus(fresh > 0, fresh);
-  }).catch(async (err: any) => {
+
+    // Crow 재연결 (실패해도 VibeZoo는 정상)
+    const autoReconnect = vscode.workspace.getConfiguration('vibezoo').get('crow.autoReconnect', true);
+    if (autoReconnect) {
+      const ok = await crowServer.reconnect().catch(() => false);
+      if (ok) {
+        const fresh = await crowServer.getFreshness().catch(() => 0);
+        statusBar.setCrowStatus(true, fresh);
+      } else {
+        statusBar.setCrowStatus(false); // "연결 안 됨"
+      }
+    }
+  }).catch((err: any) => {
     console.warn('[VibeZoo] MCP Bridge failed:', err.message);
-    statusBar.setActive(false);
-    const connected = crowServer.isRunning() && await crowServer.healthCheck().catch(() => false);
-    statusBar.setCrowStatus(connected);
+    statusBar.setActive(true); // Bridge 실패해도 VibeZoo는 active
+    statusBar.setCrowStatus(false);
   });
 
   // ── TreeView Providers ──────────────────────────────────
@@ -143,6 +153,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Wave 5: Visual Vibe ──────────────────────────────────
   visualPanels = new VisualVibePanels();
+  // ★ 생성자에서 startWatching()을 호출하지 않으므로 명시적 activate() 필요
+  visualPanels.activate();
 
   // ── Commands ─────────────────────────────────────────────
 
