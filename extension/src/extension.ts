@@ -307,7 +307,7 @@ function autoConfigureMCP(): void {
   const mcpConfig = {
     mcpServers: {
       vibezoo: {
-        url: 'http://localhost:9027',
+        url: 'http://localhost:9027/sse',
         transport: 'sse',
       },
     },
