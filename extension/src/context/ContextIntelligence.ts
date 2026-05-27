@@ -2,6 +2,9 @@
 // Crow Memory freshness 표시, 세션 복원, 설명 패턴 감지, 감정 신호 분석
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 export class ContextIndicator {
   /** Crow Context 복합 지표 계산 및 StatusBar 표시 */
@@ -20,9 +23,6 @@ export class ContextIndicator {
 
   private async tryStatCrowBin(): Promise<{ atimeMs: number } | null> {
     try {
-      const fs = require('fs');
-      const path = require('path');
-      const os = require('os');
       const crowBinPath = path.join(os.homedir(), '.zoo-code', 'crow', 'crow.bin');
       return fs.statSync(crowBinPath);
     } catch {
@@ -68,7 +68,7 @@ export class SessionResume {
   private panel: vscode.WebviewPanel | null = null;
 
   /** 이전 세션 요약을 Webview로 표시 */
-  async show(context: vscode.ExtensionContext): Promise<void> {
+  show(context: vscode.ExtensionContext): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Two);
       return;
@@ -137,14 +137,15 @@ export class EmotionalDetector {
       pattern.keywords.some((kw) => message.toLowerCase().includes(kw.toLowerCase()))
     );
 
-    if (isRejection) {
-      this.consecutiveRejections++;
-    } else if (this.isPositive(message)) {
+    // 긍정 키워드가 우선: 거절+긍정 중첩 시 긍정으로 분류
+    if (this.isPositive(message)) {
       this.consecutiveRejections = 0;
+    } else if (isRejection) {
+      this.consecutiveRejections++;
     } else {
       // 중립 메시지는 카운터 유지 (급격한 리셋 방지)
       if (this.consecutiveRejections > 0) {
-        this.consecutiveRejections = Math.max(0, this.consecutiveRejections - 0.5);
+        this.consecutiveRejections = Math.max(0, this.consecutiveRejections - 1);
       }
     }
 

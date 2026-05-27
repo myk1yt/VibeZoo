@@ -6,11 +6,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import { SubagentNode } from '../types';
 
 const BRIDGE_NAME = 'vibezoo-bridge';
-const BRIDGE_PORT = 9027;
 
 export class SubagentManager {
   private child: ChildProcess | null = null;
@@ -34,10 +33,15 @@ export class SubagentManager {
     }
   }
 
+  private getBridgePort(): number {
+    return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9027);
+  }
+
   /** Bridge 서버 시작 (Python — FastMCP SSE) */
   async spawnBridge(): Promise<number> {
+    const port = this.getBridgePort();
     if (this.child) {
-      return BRIDGE_PORT;
+      return port;
     }
 
     if (!this.bridgeScript) {
@@ -57,7 +61,7 @@ export class SubagentManager {
 
     const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
 
-    this.child = spawn('python', [this.bridgeScript, '--port', String(BRIDGE_PORT)], {
+    this.child = spawn('python', [this.bridgeScript, '--port', String(port)], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
@@ -78,19 +82,19 @@ export class SubagentManager {
       name: 'VibeZoo Bridge',
       status: 'running',
       currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer',
-      port: BRIDGE_PORT,
+      port: port,
       startTime: Date.now(),
     };
 
     // 준비 대기 (최대 10초)
-    await this.waitForReady(BRIDGE_PORT, 10000);
+    await this.waitForReady(port, 10000);
 
     if (this.node && this.node.startTime) {
       this.node.elapsedMs = Date.now() - this.node.startTime;
     }
     this._onChange.fire(this.node);
-    console.log(`[VibeZoo] MCP Bridge started on port ${BRIDGE_PORT}`);
-    return BRIDGE_PORT;
+    console.log(`[VibeZoo] MCP Bridge started on port ${this.getBridgePort()}`);
+    return this.getBridgePort();
   }
 
   updateNodeStatus(status: SubagentNode['status'], task?: string): void {
@@ -109,20 +113,25 @@ export class SubagentManager {
   }
 
   getPort(): number {
-    return BRIDGE_PORT;
+    return this.getBridgePort();
   }
 
   terminate(): void {
     if (this.child) {
-      this.child.kill('SIGTERM');
+      const child = this.child;
+      child.kill('SIGTERM');
+
+      child.on('exit', () => {
+        console.log('[VibeZoo] Bridge process exited');
+      });
+
       setTimeout(() => {
         if (this.child) {
           this.child.kill('SIGKILL');
-          this.child = null;
         }
+        this.child = null;
+        this.node = null;
       }, 5000);
-      this.child = null;
-      this.node = null;
     }
   }
 
@@ -133,7 +142,6 @@ export class SubagentManager {
 
     for (const pkg of requirements) {
       try {
-        const { execSync } = require('child_process');
         execSync(`python -c "import ${pkg.replace('-', '_')}"`, { stdio: 'ignore' });
       } catch {
         missing.push(pkg);
@@ -142,7 +150,6 @@ export class SubagentManager {
 
     if (missing.length > 0) {
       console.log(`[VibeZoo] Installing missing Python packages: ${missing.join(', ')}`);
-      const { execSync } = require('child_process');
       execSync(`pip install ${missing.join(' ')}`, { stdio: 'pipe', timeout: 60000 });
       console.log('[VibeZoo] Python packages installed successfully');
     }

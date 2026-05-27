@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -617,8 +618,6 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
 # Whiteboard: AI-사용자 양방향 드로잉
 # ═══════════════════════════════════════════════════════════
 
-WHITEBOARD_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard.json")
-
 @mcp.tool
 def draw_on_whiteboard(commands: str) -> str:
     """AI가 화이트보드에 그림을 그립니다. VibeZoo가 이 명령을 받아 Webview에 렌더링합니다.
@@ -679,8 +678,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VibeZoo MCP Bridge Server")
     parser.add_argument("--port", type=int, default=9027, help="SSE server port")
     args = parser.parse_args()
-
-    import time  # for whiteboard
 
     print(f"🚀 VibeZoo MCP Bridge starting on port {args.port}...")
     print(f"   Crow Memory: {CROW_URL}")

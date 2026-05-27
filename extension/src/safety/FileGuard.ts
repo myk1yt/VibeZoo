@@ -123,18 +123,33 @@ export class FileGuard {
     const yoctoDir = path.join(os.homedir(), '.zoo-code', 'yocto');
     if (!fs.existsSync(yoctoDir)) return null;
 
-    // 세션 디렉토리 순회하며 가장 최근 백업 찾기
-    const sessions = fs.readdirSync(yoctoDir).sort().reverse();
+    const relativePath = path.relative(
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+      originalPath
+    );
+
+    // 세션 디렉토리 목록 (역순 정렬로 최신 세션 우선)
+    const sessions = fs.readdirSync(yoctoDir)
+      .filter((s) => {
+        try { return fs.statSync(path.join(yoctoDir, s)).isDirectory(); }
+        catch { return false; }
+      })
+      .sort()
+      .reverse();
+
     for (const session of sessions) {
       const sessionDir = path.join(yoctoDir, session);
-      if (!fs.statSync(sessionDir).isDirectory()) continue;
+      // 각 세션에서 가장 최근 타임스탬프 디렉토리만 확인 (이전 타임스탬프는 덮어쓰여졌을 가능성 낮음)
+      const timestamps = fs.readdirSync(sessionDir)
+        .filter((t) => {
+          try { return fs.statSync(path.join(sessionDir, t)).isDirectory(); }
+          catch { return false; }
+        })
+        .sort()
+        .reverse();
 
-      const timestamps = fs.readdirSync(sessionDir).sort().reverse();
-      for (const ts of timestamps) {
-        const backupPath = path.join(sessionDir, ts, path.relative(
-          vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
-          originalPath
-        ));
+      if (timestamps.length > 0) {
+        const backupPath = path.join(sessionDir, timestamps[0], relativePath);
         if (fs.existsSync(backupPath)) return backupPath;
       }
     }

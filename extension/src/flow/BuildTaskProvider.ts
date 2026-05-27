@@ -10,7 +10,7 @@ const BUILD_DEFS: Record<string, { command: string; args: string[]; problemMatch
   node: { command: 'npm', args: ['run', 'build'], problemMatcher: '$tsc-watch' },
   rust: { command: 'cargo', args: ['build'], problemMatcher: '$rustc' },
   go: { command: 'go', args: ['build', './...'], problemMatcher: '$go' },
-  python: { command: 'python', args: ['-m', 'pytest'], problemMatcher: '$pytest' },
+  python: { command: 'python', args: ['-m', 'py_compile'], problemMatcher: '$python' },
   java: { command: 'mvn', args: ['compile'], problemMatcher: '$lessCompile' },
 };
 

@@ -2,6 +2,8 @@
 // YOLO 진입/퇴장 시 Git stash를 자동으로 생성/복원한다.
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -75,7 +77,7 @@ export class GitStashManager {
       if (this.stashName) {
         try {
           await execAsync(
-            `git stash pop stash^{/${this.stashName}}`,
+            `git stash pop 'stash@{/${this.stashName}}'`,
             { cwd: this.cwd }
           );
         } catch (err: any) {
@@ -90,8 +92,8 @@ export class GitStashManager {
   /** Git 저장소인지 확인 */
   isGitRepo(): boolean {
     try {
-      const gitDir = require('path').join(this.workspaceRoot || '', '.git');
-      return require('fs').existsSync(gitDir);
+      const gitDir = path.join(this.workspaceRoot || '', '.git');
+      return fs.existsSync(gitDir);
     } catch {
       return false;
     }

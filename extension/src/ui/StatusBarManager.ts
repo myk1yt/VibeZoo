@@ -6,6 +6,9 @@ import * as vscode from 'vscode';
 export class StatusBarManager {
   private item: vscode.StatusBarItem;
   private modeSuggestionTimer: NodeJS.Timeout | null = null;
+  private savedText: string = '';
+  private savedTooltip: string = '';
+  private savedCommand: string | vscode.Command | undefined = '';
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(
@@ -34,7 +37,7 @@ export class StatusBarManager {
     const current = String(this.item.tooltip || 'VibeZoo');
     const base = current.split(' | Crow')[0];
     this.item.tooltip = connected
-      ? `${base} | Crow: 연결됨 (${freshness || 100}% fresh)`
+      ? `${base} | Crow: 연결됨 (${freshness ?? 100}% fresh)`
       : `${base} | Crow: 연결 안 됨`;
     this.item.show();
   }
@@ -50,16 +53,25 @@ export class StatusBarManager {
     }
   }
 
-  /** 권장 모드 제안 (3초 후 자동 사라짐) */
+  /** 권장 모드 제안 (5초 후 자동 복구) */
   suggestMode(mode: string, reason: string): void {
     if (this.modeSuggestionTimer) clearTimeout(this.modeSuggestionTimer);
 
+    // 직전 상태 저장
+    this.savedText = this.item.text;
+    this.savedTooltip = String(this.item.tooltip);
+    this.savedCommand = this.item.command;
+
     this.item.text = `$(gear) 권장: ${mode}`;
     this.item.tooltip = `VibeZoo: ${reason}\n클릭하여 모드 변경`;
-    this.item.command = undefined; // 모드 제안일 뿐, Zoo Code 모드를 직접 변경할 수 없음
+    this.item.command = undefined;
 
     this.modeSuggestionTimer = setTimeout(() => {
       this.modeSuggestionTimer = null;
+      // 저장된 상태 복구
+      this.item.text = this.savedText || '$(check) VibeZoo';
+      this.item.tooltip = this.savedTooltip || 'VibeZoo: 활성화됨';
+      this.item.command = this.savedCommand || 'vibezoo.verifyFoundation';
     }, 5000);
   }
 

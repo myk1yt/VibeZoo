@@ -103,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   if (vscode.workspace.getConfiguration('vibezoo').get('session.autoResume', true)) {
-    sessionResume.show(context).catch(() => {});
+    sessionResume.show(context);
   }
 
   // ── MCP Bridge 자동 시작 ──────────────────────────────
@@ -357,7 +357,6 @@ function autoConfigureMCP(): void {
   if (!folders?.[0]) return;
 
   const root = folders[0].uri.fsPath;
-  const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
   const zooMCPDir = path.join(root, '.roo');
   const zooMCPPath = path.join(zooMCPDir, 'mcp.json');
 

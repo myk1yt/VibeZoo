@@ -40,6 +40,9 @@ export class YoctoManager {
 
     context.subscriptions.push(this.watcher);
 
+    // activate 시 자동 스냅샷 생성 (Extension 재시작 후 첫 백업 대비)
+    this.createSnapshot('auto');
+
     // 주기적 정리: 30일 이상 지난 스냅샷 삭제
     this.cleanupOldSnapshots(30);
   }
@@ -58,22 +61,86 @@ export class YoctoManager {
     return snapshot;
   }
 
+  /** 디스크에서 최신 스냅샷 파일 목록을 로드 (인메모리 의존성 제거) */
+  private loadSnapshotFromDisk(targetSession: string): { files: Array<{ originalPath: string; backupPath: string }> } {
+    const sessionDir = path.join(this.snapshotsDir, targetSession);
+    if (!fs.existsSync(sessionDir)) {
+      return { files: [] };
+    }
+
+    // 세션 디렉토리 내의 타임스탬프 서브디렉토리들을 내림차순 정렬
+    const entries = fs.readdirSync(sessionDir)
+      .map((name) => ({ name, fullPath: path.join(sessionDir, name) }))
+      .filter((e) => fs.statSync(e.fullPath).isDirectory())
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    if (entries.length === 0) return { files: [] };
+
+    // 가장 최근 스냅샷 디렉토리에서 파일 목록 수집
+    const latestSnapshotDir = entries[0].fullPath;
+    const files: Array<{ originalPath: string; backupPath: string }> = [];
+
+    const walkDir = (dir: string) => {
+      let items;
+      try {
+        items = fs.readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const item of items) {
+        const itemPath = path.join(dir, item);
+        try {
+          if (fs.statSync(itemPath).isDirectory()) {
+            walkDir(itemPath);
+          } else {
+            // backupPath에서 originalPath를 역산:
+            // backupPath = <snapshotsDir>/<sessionId>/<timestamp>/<relativePath>
+            const rel = path.relative(latestSnapshotDir, itemPath);
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders && workspaceFolders.length > 0) {
+              const originalPath = path.join(workspaceFolders[0].uri.fsPath, rel);
+              files.push({ originalPath, backupPath: itemPath });
+            }
+          }
+        } catch {
+          // 파일/디렉토리 읽기 실패 시 무시
+        }
+      }
+    };
+
+    walkDir(latestSnapshotDir);
+    return { files };
+  }
+
   /** Instant Rewind — 마지막 YOLO 스냅샷의 모든 파일 복구 */
   async instantRewind(sessionId?: string): Promise<{ restoredFiles: number; totalFiles: number; durationMs: number }> {
     const targetSession = sessionId || this.currentSessionId;
-    const snapshot = this.activeSnapshots
+
+    // 1) 인메모리 스냅샷 우선 시도
+    let snapshot = this.activeSnapshots
       .filter((s) => s.sessionId === targetSession)
       .sort((a, b) => b.timestamp - a.timestamp)[0];
 
+    // 2) 인메모리에 없으면 디스크에서 직접 로드
+    let diskFiles: Array<{ originalPath: string; backupPath: string }> = [];
     if (!snapshot || snapshot.files.length === 0) {
-      throw new Error('되돌릴 스냅샷이 없습니다.');
+      const loaded = this.loadSnapshotFromDisk(targetSession);
+      diskFiles = loaded.files;
+      if (diskFiles.length === 0) {
+        throw new Error('되돌릴 스냅샷이 없습니다.');
+      }
     }
 
     const startTime = Date.now();
     let restored = 0;
 
+    // snapshot.files (인메모리) 또는 diskFiles (디스크) 사용
+    const fileList = snapshot && snapshot.files.length > 0
+      ? snapshot.files.map((f) => ({ originalPath: f.originalPath, backupPath: f.backupPath }))
+      : diskFiles;
+
     // 역순으로 복구
-    const reversedFiles = [...snapshot.files].reverse();
+    const reversedFiles = [...fileList].reverse();
     for (const file of reversedFiles) {
       try {
         if (fs.existsSync(file.backupPath)) {
@@ -136,11 +203,12 @@ export class YoctoManager {
         mtime: stat.mtimeMs,
       };
 
-      // 가장 최근 스냅샷에 추가
-      const latest = this.activeSnapshots[this.activeSnapshots.length - 1];
-      if (latest) {
-        latest.files.push(entry);
+      // 가장 최근 스냅샷에 추가 (없으면 자동 생성)
+      let latest = this.activeSnapshots[this.activeSnapshots.length - 1];
+      if (!latest) {
+        latest = await this.createSnapshot('auto');
       }
+      latest.files.push(entry);
     } catch (err) {
       console.error(`[Yocto] 백업 실패: ${uri.fsPath}`, err);
     }

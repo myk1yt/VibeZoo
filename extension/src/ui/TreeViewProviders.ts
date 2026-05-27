@@ -102,6 +102,14 @@ export class YoloHistoryProvider implements vscode.TreeDataProvider<YoloHistoryI
   }
 
   getChildren(_element?: YoloHistoryItem): Thenable<YoloHistoryItem[]> {
+    if (this.snapshots.length === 0) {
+      const placeholder = new vscode.TreeItem('아직 YOLO 세션 기록이 없습니다', vscode.TreeItemCollapsibleState.None);
+      placeholder.description = 'YOLO 모드로 작업 시 자동 기록됩니다';
+      placeholder.iconPath = undefined;
+      placeholder.label = '$(history) YOLO 기록 없음';
+      placeholder.tooltip = 'YOLO(Yocto OnLine Offline) 모드로 YOCTO 스냅샷을 생성하면 여기에 기록이 표시됩니다.';
+      return Promise.resolve([placeholder as any]);
+    }
     return Promise.resolve(
       this.snapshots.map((s) => new YoloHistoryItem(s))
     );
