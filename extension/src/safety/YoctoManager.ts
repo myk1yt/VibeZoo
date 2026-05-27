@@ -112,6 +112,21 @@ export class YoctoManager {
     return { files };
   }
 
+  /** ~/.zoo-code/yocto/ 디렉토리에서 세션 폴더 목록 반환 (최신순) */
+  listSessions(): string[] {
+    try {
+      if (!fs.existsSync(this.snapshotsDir)) return [];
+      const entries = fs.readdirSync(this.snapshotsDir, { withFileTypes: true });
+      return entries
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort((a, b) => b.localeCompare(a)) // 최신순
+        .slice(0, 50);
+    } catch {
+      return [];
+    }
+  }
+
   /** Instant Rewind — 마지막 YOLO 스냅샷의 모든 파일 복구 */
   async instantRewind(sessionId?: string): Promise<{ restoredFiles: number; totalFiles: number; durationMs: number }> {
     const targetSession = sessionId || this.currentSessionId;

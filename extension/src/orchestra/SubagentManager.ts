@@ -37,6 +37,17 @@ export class SubagentManager {
     return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9027);
   }
 
+  /** 개별 에이전트 포트 목록 */
+  private getAgentPorts(): Array<{ id: string; name: string; port: number }> {
+    const config = vscode.workspace.getConfiguration('vibezoo');
+    return [
+      { id: 'scout', name: 'Scout', port: config.get('scout.port', 9022) },
+      { id: 'reviewer', name: 'Reviewer', port: config.get('reviewer.port', 9023) },
+      { id: 'tester', name: 'Tester', port: config.get('tester.port', 9024) },
+      { id: 'deepAnalyzer', name: 'Deep Analyzer', port: config.get('deepAnalyzer.port', 9026) },
+    ];
+  }
+
   /** Bridge 서버 시작 (Python — FastMCP SSE) */
   async spawnBridge(): Promise<number> {
     const port = this.getBridgePort();
@@ -93,6 +104,20 @@ export class SubagentManager {
       this.node.elapsedMs = Date.now() - this.node.startTime;
     }
     this._onChange.fire(this.node);
+
+    // 개별 에이전트 노드들도 함께 발행
+    const agentPorts = this.getAgentPorts();
+    for (const agent of agentPorts) {
+      this._onChange.fire({
+        id: agent.id,
+        name: agent.name,
+        status: 'running',
+        currentTask: `${agent.name} ready via Bridge (:${port})`,
+        port: agent.port,
+        startTime: Date.now(),
+      });
+    }
+
     console.log(`[VibeZoo] MCP Bridge started on port ${this.getBridgePort()}`);
     return this.getBridgePort();
   }

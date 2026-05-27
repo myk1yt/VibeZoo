@@ -81,6 +81,12 @@
           "name": "YOLO History",
           "type": "tree",
           "contextualTitle": "VibeZoo YOLO Sessions"
+        },
+        {
+          "id": "vibezoo.sessionResume",
+          "name": "Session Resume",
+          "type": "tree",
+          "contextualTitle": "VibeZoo Session Resume"
         }
       ]
     },

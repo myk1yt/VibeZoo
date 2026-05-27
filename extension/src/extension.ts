@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { CrowServerManager } from './crow/CrowServerManager';
 import { StatusBarManager } from './ui/StatusBarManager';
-import { ActiveSubagentsProvider, YoloHistoryProvider } from './ui/TreeViewProviders';
+import { ActiveSubagentsProvider, YoloHistoryProvider, SessionResumeProvider } from './ui/TreeViewProviders';
 import { registerBuildTaskProvider } from './flow/BuildTaskProvider';
 import { activateBuildFeedback } from './flow/BuildFeedback';
 import { activateProjectDetector } from './flow/ProjectDetector';
@@ -109,8 +109,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   sessionResume = new SessionResume();
   emotionalDetector = new EmotionalDetector();
 
+  // session.autoResume이 true면 SessionResume.refresh() 호출 (TreeView 데이터 로드)
   if (vscode.workspace.getConfiguration('vibezoo').get('session.autoResume', true)) {
-    sessionResume.show(context);
+    sessionResume.refresh().catch(() => {});
   }
 
   // ── MCP Bridge 자동 시작 (백그라운드) ──────────────────
@@ -121,6 +122,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
     autoConfigureMCP();
+
+    // ★ Bridge 시작 후 개별 에이전트 노드 초기화
+    subagentsProvider.initializeAgentNodes(port);
 
     // ★ Bridge 시작 후에도 Crow 연결이 아직 안 잡혔으면 재시도
     if (!crowServer.lastHealthy) {
@@ -139,6 +143,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── TreeView Providers ──────────────────────────────────
   const subagentsProvider = new ActiveSubagentsProvider();
   const yoloHistoryProvider = new YoloHistoryProvider();
+  const sessionResumeProvider = new SessionResumeProvider();
+
+  // SessionResumeProvider에 SessionResume.refresh() 연결
+  sessionResumeProvider.setRefreshFn(() => sessionResume.refresh());
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('vibezoo.activeSubagents', subagentsProvider)
@@ -146,8 +154,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('vibezoo.yoloHistory', yoloHistoryProvider)
   );
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('vibezoo.sessionResume', sessionResumeProvider)
+  );
 
+  // SubagentManager onChange → ActiveSubagentsProvider
   subagentManager.onChange((node) => subagentsProvider.updateNode(node));
+
+  // YOLO History 초기 로드 (YoctoManager의 listSessions 활용)
+  if (yocto) {
+    const sessions = yocto.listSessions();
+    for (const s of sessions) {
+      yoloHistoryProvider.addSnapshot(s);
+    }
+  }
 
   // ── Wave 4: Orchestra ────────────────────────────────────
   mentionRouter = new MentionRouter(subagentManager);
@@ -160,15 +180,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Commands ─────────────────────────────────────────────
 
-  // Instant Rewind
+  // Instant Rewind (선택적 sessionName 인자 — YOLO History TreeItem에서 전달)
   context.subscriptions.push(
-    vscode.commands.registerCommand('vibezoo.instantRewind', async () => {
+    vscode.commands.registerCommand('vibezoo.instantRewind', async (sessionName?: string) => {
       if (!yocto) {
         vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
         return;
       }
       try {
-        const result = await yocto.instantRewind();
+        const result = await yocto.instantRewind(sessionName);
         vscode.window.showInformationMessage(
           `YOLO Rewind 완료: ${result.restoredFiles}/${result.totalFiles} 파일 복구 (${result.durationMs}ms)`
         );
@@ -276,10 +296,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // Show Session Resume
+  // Show Agent Info (TreeView 아이템 클릭 시)
   context.subscriptions.push(
-    vscode.commands.registerCommand('vibezoo.showSessionResume', () => {
-      sessionResume.show(context);
+    vscode.commands.registerCommand('vibezoo.showAgentInfo', (node: any) => {
+      if (node?.name) {
+        vscode.window.showInformationMessage(
+          `🔍 ${node.name}: ${node.currentTask || node.status || 'ready'} (port: ${node.port})`
+        );
+      }
+    })
+  );
+
+  // Show Session Resume — TreeView로 대체되어 Webview를 열지 않음
+  // 대신 VibeZoo 사이드바의 "Session Resume" 뷰를 포커스
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.showSessionResume', async () => {
+      // Session Resume 데이터 새로고침 후 TreeView에 포커스
+      await sessionResume.refresh();
+      await sessionResumeProvider.refresh();
+      vscode.commands.executeCommand('vibezoo.sessionResume.focus');
     })
   );
 

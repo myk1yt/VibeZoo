@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { SessionSummary } from '../types';
 
 export class ContextIndicator {
   /** Crow Context 복합 지표 계산 및 StatusBar 표시 */
@@ -64,60 +65,110 @@ export class ExplainLessSuggestor {
   }
 }
 
+/**
+ * SessionResume — WebviewPanel 대신 TreeView 데이터 제공을 위한 클래스
+ * Crow Memory 또는 로컬 파일에서 이전 세션 요약 정보를 가져온다.
+ */
 export class SessionResume {
-  private panel: vscode.WebviewPanel | null = null;
+  private sessions: SessionSummary[] = [];
 
-  /** 이전 세션 요약을 Webview로 표시 */
-  show(context: vscode.ExtensionContext): void {
-    if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Two);
-      return;
+  /** 세션 요약을 불러온다 (Crow recall 또는 로컬 파일에서) */
+  async refresh(): Promise<SessionSummary[]> {
+    const loaded: SessionSummary[] = [];
+
+    // 1) Crow Memory recall 시도
+    try {
+      const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
+      const resp = await fetch(`http://localhost:${crowPort}/recall?q=session+summary&top_k=5`);
+      if (resp.ok) {
+        const data: any = await resp.json();
+        if (Array.isArray(data)) {
+          loaded.push(...data.map((item: any) => this.toSessionSummary(item)));
+        } else if (data.summary) {
+          loaded.push(this.toSessionSummary(data));
+        }
+      }
+    } catch {
+      // Crow 연결 실패 — 로컬 파일로 fallback
     }
 
-    this.panel = vscode.window.createWebviewPanel(
-      'vibezoo-session-resume',
-      'VibeZoo: Session Resume',
-      vscode.ViewColumn.Two,
-      {
-        enableScripts: false,
-        retainContextWhenHidden: true,
+    // 2) 로컬 세션 히스토리 파일
+    if (loaded.length === 0) {
+      try {
+        const historyPath = path.join(os.homedir(), '.zoo-code', 'session-history.json');
+        if (fs.existsSync(historyPath)) {
+          const raw = fs.readFileSync(historyPath, 'utf-8');
+          const parsed: any = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            loaded.push(...parsed.map((item: any) => this.toSessionSummary(item)));
+          } else if (parsed.sessionId) {
+            loaded.push(this.toSessionSummary(parsed));
+          }
+        }
+      } catch {
+        // 파일 읽기 실패
       }
-    );
+    }
 
-    this.panel.webview.html = this.buildHtml();
+    // 3) YOLO yocto 디렉토리에서 세션 폴더 스캔 (fallback)
+    if (loaded.length === 0) {
+      try {
+        const yoctoDir = path.join(os.homedir(), '.zoo-code', 'yocto');
+        if (fs.existsSync(yoctoDir)) {
+          const entries = fs.readdirSync(yoctoDir, { withFileTypes: true });
+          for (const entry of entries.sort((a, b) => b.name.localeCompare(a.name)).slice(0, 10)) {
+            if (entry.isDirectory()) {
+              loaded.push({
+                sessionId: entry.name,
+                projectPath: '',
+                startedAt: this.parseTimestampFromName(entry.name),
+                endedAt: this.parseTimestampFromName(entry.name),
+                summary: 'YOLO 백업 세션',
+                keyDecisions: [],
+                touchedFiles: [],
+                pendingTasks: [],
+                mode: 'unknown',
+              });
+            }
+          }
+        }
+      } catch {
+        // 무시
+      }
+    }
 
-    this.panel.onDidDispose(() => {
-      this.panel = null;
-    });
+    this.sessions = loaded;
+    return this.sessions;
   }
 
-  private buildHtml(): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-foreground); }
-    h2 { color: var(--vscode-textLink-foreground); }
-    .summary { background: var(--vscode-textCodeBlock-background); padding: 12px; border-radius: 6px; }
-    .files { margin-top: 12px; }
-    .file { padding: 4px 0; color: var(--vscode-textPreformat-foreground); }
-  </style>
-</head>
-<body>
-  <h2>🔄 VibeZoo Session Resume</h2>
-  <p>이전 세션의 작업 맥락을 복원합니다.</p>
-  <div class="summary">
-    <p>Crow Memory가 기억하는 마지막 세션 정보가 여기에 표시됩니다.</p>
-  </div>
-  <div class="files">
-    <p><em>Crow Memory에서 마지막 세션 요약을 불러오는 중...</em></p>
-  </div>
-</body>
-</html>`;
+  getSessions(): SessionSummary[] {
+    return this.sessions;
+  }
+
+  private toSessionSummary(raw: any): SessionSummary {
+    return {
+      sessionId: raw.sessionId || raw.id || `session-${Date.now()}`,
+      projectPath: raw.projectPath || raw.project_path || '',
+      startedAt: raw.startedAt || raw.started_at || Date.now(),
+      endedAt: raw.endedAt || raw.ended_at || Date.now(),
+      summary: raw.summary || raw.description || '',
+      keyDecisions: raw.keyDecisions || raw.key_decisions || [],
+      touchedFiles: raw.touchedFiles || raw.touched_files || [],
+      pendingTasks: raw.pendingTasks || raw.pending_tasks || [],
+      mode: raw.mode || 'unknown',
+    };
+  }
+
+  private parseTimestampFromName(name: string): number {
+    const match = name.match(/(\d{13})/);
+    if (match) return parseInt(match[1], 10);
+    const match2 = name.match(/session[-_]?(\d+)/);
+    if (match2) return parseInt(match2[1], 10);
+    return Date.now();
   }
 
   dispose(): void {
-    this.panel?.dispose();
+    this.sessions = [];
   }
 }
 
