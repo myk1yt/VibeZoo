@@ -1,13 +1,14 @@
 // VibeZoo: 공통 타입 정의
 
+/**
+ * Crow Memory 감지 설정.
+ * VibeZoo는 Crow 서버를 직접 실행하지 않고, Zoo Code가 관리하는 Crow 서버를 감지만 한다.
+ */
 export interface CrowServerConfig {
+  /** Crow HTTP 서버 포트 (기본 9020) */
   port: number;
-  crowBinPath: string;
-  logPath: string;
-  pidPath: string;
+  /** 헬스체크 주기 (ms) */
   healthCheckIntervalMs: number;
-  autoRestart: boolean;
-  maxRestartAttempts: number;
 }
 
 export interface YoctoSnapshot {

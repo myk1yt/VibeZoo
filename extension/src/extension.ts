@@ -1,6 +1,7 @@
 // VibeZoo: VS Code Extension — 통합 진입점
 // Zoo Code 소스 코드를 전혀 수정하지 않는 독립 동반자 확장.
 // Phase 0 + Wave 1~6의 모든 모듈을 연결한다.
+// Crow Memory는 Zoo Code가 관리하므로, VibeZoo는 감지만 수행한다.
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -62,11 +63,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // VibeZoo는 항상 active (Crow/Bridge 상태와 무관)
   statusBar.setActive(true);
-  statusBar.setCrowStatus(false, 0); // "연결 대기 중"
+  statusBar.setCrowStatus(false); // "Crow: 없음"
 
-  // Crow 상태 → StatusBar 툴팁 (비동기 — 실패해도 VibeZoo는 정상)
-  crowServer.onStatusChange(({ connected, freshness }) => {
-    statusBar.setCrowStatus(connected, freshness);
+  // Crow 상태 → StatusBar (비동기 — 실패해도 VibeZoo는 정상)
+  crowServer.onStatusChange(({ connected }) => {
+    statusBar.setCrowStatus(connected);
   });
 
   // ── Wave 1: Flow Keepers ─────────────────────────────────
@@ -101,32 +102,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionResume.show(context);
   }
 
-  // Context freshness (Crow.bin 접근 시간 기반 — Crow 서버와 무관)
-  if (vscode.workspace.getConfiguration('vibezoo').get('context.showFreshness', true)) {
-    contextIndicator.getFreshnessStatus().then((status) => {
-      statusBar.setCrowStatus(false, status.percentage);
-    }).catch(() => {});
-  }
-
   // ── MCP Bridge 자동 시작 (백그라운드) ──────────────────
   subagentManager = new SubagentManager(context);
 
-  // Bridge 시작 후 Crow 재연결 시도
+  // Bridge 시작 후 Crow 연결 확인 (실패해도 VibeZoo는 정상)
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
     autoConfigureMCP();
 
-    // Crow 재연결 (실패해도 VibeZoo는 정상)
+    // Zoo Code의 Crow 서버 연결 확인 (재시작 없이 감지만)
     const autoReconnect = vscode.workspace.getConfiguration('vibezoo').get('crow.autoReconnect', true);
     if (autoReconnect) {
       const ok = await crowServer.reconnect().catch(() => false);
-      if (ok) {
-        const fresh = await crowServer.getFreshness().catch(() => 0);
-        statusBar.setCrowStatus(true, fresh);
-      } else {
-        statusBar.setCrowStatus(false); // "연결 안 됨"
-      }
+      statusBar.setCrowStatus(ok);
     }
   }).catch((err: any) => {
     console.warn('[VibeZoo] MCP Bridge failed:', err.message);
@@ -207,9 +196,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.verifyFoundation', async () => {
       const lines = ['# 🔍 VibeZoo Foundation 진단', ''];
-      const crowRunning = crowServer.isRunning();
-      const crowHealthy = crowRunning ? await crowServer.healthCheck() : false;
-      lines.push(crowHealthy ? '✅ Crow Memory: 연결됨' : '❌ Crow Memory: 연결 실패');
+      const crowHealthy = await crowServer.healthCheck();
+      lines.push(crowHealthy ? '✅ Zoo Code Crow Memory: 연결됨' : '❌ Zoo Code Crow Memory: 연결 실패');
       lines.push('✅ VibeZoo Extension: 활성화됨');
 
       const yoctoDir = path.join(os.homedir(), '.zoo-code', 'yocto');
@@ -238,12 +226,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // Reconnect Crow
+  // Reconnect Crow (Zoo Code Crow 연결 확인)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.reconnectCrow', async () => {
       try {
-        await crowServer.reconnect();
-        vscode.window.showInformationMessage('✅ VibeZoo: Crow Memory 재연결 성공!');
+        const ok = await crowServer.reconnect();
+        if (ok) {
+          vscode.window.showInformationMessage('✅ VibeZoo: Zoo Code Crow Memory 연결 확인 성공!');
+        } else {
+          vscode.window.showWarningMessage('⚠️ VibeZoo: Zoo Code Crow Memory에 연결할 수 없습니다.');
+        }
       } catch (err: any) {
         vscode.window.showErrorMessage(`❌ Crow 연결 실패: ${err.message}`);
       }
@@ -282,7 +274,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.showHelp', async () => {
       const help = [
-        '# 🚀 VibeZoo v0.10.0',
+        '# 🚀 VibeZoo v0.11.1',
         '',
         '## 단축키',
         '| 키 | 기능 |',
@@ -350,7 +342,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 // ── Deactivate ───────────────────────────────────────────────
 
 export function deactivate(): void {
-  console.log('[VibeZoo] 비활성화 — Crow 서버는 계속 실행됩니다.');
+  console.log('[VibeZoo] 비활성화 — Crow 서버는 Zoo Code가 계속 관리합니다.');
 
   crowServer?.onDeactivate();
   treeScanner?.dispose();
@@ -390,8 +382,8 @@ function autoConfigureMCP(): void {
 
   const existingServers = existing.mcpServers || {};
 
-  // 이미 crow나 vibezoo가 등록되어 있으면 덮어쓰지 않음
-  if (!existingServers.crow && !existingServers.vibezoo) {
+  // 이미 vibezoo가 등록되어 있으면 덮어쓰지 않음
+  if (!existingServers.vibezoo) {
     fs.mkdirSync(zooMCPDir, { recursive: true });
     const merged = {
       mcpServers: {
@@ -411,7 +403,6 @@ function autoConfigureMCP(): void {
 function ensureDirectories(): void {
   const dirs = [
     path.join(os.homedir(), '.zoo-code', 'yocto'),
-    path.join(os.homedir(), '.zoo-code', 'crow'),
   ];
   for (const dir of dirs) {
     fs.mkdirSync(dir, { recursive: true });

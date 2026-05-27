@@ -31,6 +31,9 @@ Thumbs.db
 dist/
 build/
 
+# Test scripts (temporary)
+test_*.py
+
 # VibeZoo data (user local)
 .zoo-code/
 

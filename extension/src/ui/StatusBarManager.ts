@@ -1,5 +1,5 @@
 // VibeZoo: StatusBar 통합 관리자
-// Crow 연결, 모드 제안, Context freshness, YOLO 상태 표시
+// VibeZoo 상태, Crow 연결 상태, YOLO 모드, 권장 모드 제안 표시
 
 import * as vscode from 'vscode';
 
@@ -9,6 +9,7 @@ export class StatusBarManager {
   private savedText: string = '';
   private savedTooltip: string = '';
   private savedCommand: string | vscode.Command | undefined = '';
+  private _crowConnected: boolean = false;
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(
@@ -18,7 +19,7 @@ export class StatusBarManager {
     this.item.command = 'vibezoo.verifyFoundation';
   }
 
-  /** VibeZoo 활성 상태 표시 (Bridge 연결 기준) */
+  /** VibeZoo 활성 상태 표시 (VibeZoo 자체는 항상 active) */
   setActive(bridgeConnected: boolean, bridgePort?: number): void {
     if (bridgeConnected) {
       this.item.text = '$(pulse) VibeZoo';
@@ -32,17 +33,15 @@ export class StatusBarManager {
     this.item.show();
   }
 
-  /** Crow 연결 상태 (툴팁에만) */
-  setCrowStatus(connected: boolean, freshness?: number): void {
+  /** Crow 연결 상태 표시 (간결하게) */
+  setCrowStatus(connected: boolean): void {
+    this._crowConnected = connected;
     const current = String(this.item.tooltip || 'VibeZoo');
     const base = current.split(' | Crow')[0];
     if (connected) {
-      this.item.tooltip = `${base} | Crow: 연결됨 (${freshness ?? 100}% fresh)`;
-    } else if (freshness === 0) {
-      // 재연결 시도 중 (freshness=0 은 '연결 대기 중' 신호)
-      this.item.tooltip = `${base} | Crow: 연결 대기 중…`;
+      this.item.tooltip = `${base} | Crow: 연결됨`;
     } else {
-      this.item.tooltip = `${base} | Crow: 연결 안 됨`;
+      this.item.tooltip = `${base} | Crow: 없음`;
     }
     this.item.show();
   }
