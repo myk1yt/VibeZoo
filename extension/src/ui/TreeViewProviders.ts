@@ -37,9 +37,16 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
   }
 
   getChildren(_element?: SubagentTreeItem): Thenable<SubagentTreeItem[]> {
-    const items = Array.from(this.nodes.values()).map(
-      (node) => new SubagentTreeItem(node)
-    );
+    const nodes = Array.from(this.nodes.values());
+    if (nodes.length === 0) {
+      const placeholder = new vscode.TreeItem('브릿지 연결 시 자동 표시됩니다', vscode.TreeItemCollapsibleState.None);
+      placeholder.description = '현재 대기 중';
+      placeholder.iconPath = undefined;
+      placeholder.label = '$(sync~spin) VibeZoo 대기 중...';
+      placeholder.tooltip = 'VibeZoo MCP Bridge가 연결되면 Scout·Reviewer·Tester가 여기에 표시됩니다.';
+      return Promise.resolve([placeholder as any]);
+    }
+    const items = nodes.map((node) => new SubagentTreeItem(node));
     return Promise.resolve(items);
   }
 }

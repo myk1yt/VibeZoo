@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { exec } from 'child_process';
 
 const log = (msg: string, ...args: any[]) => {
   if (process.env.VIBEZOO_DEBUG) console.log(`[VibeZoo::Visual] ${msg}`, ...args);
@@ -72,9 +73,12 @@ export class VisualVibePanels {
             // Whiteboard가 아직 안 열렸으면 자동 열기
             if (!this.whiteboardPanel) {
               this.openWhiteboard();
+              // Webview HTML 로드 대기 → ready 메시지에서 pending commands 전송
+              (this as any)._pendingDrawCommands = content.commands;
+            } else {
+              // 드로잉 명령 Webview에 전달
+              this.sendToWhiteboard(content.commands);
             }
-            // 드로잉 명령 Webview에 전달
-            this.sendToWhiteboard(content.commands);
           }
         }
       } catch {}
@@ -117,29 +121,15 @@ export class VisualVibePanels {
         } catch {}
       }
       if (message.type === 'captureScreenshot') {
-        // Windows Snipping Tool로 영역 선택 캡처 → 클립보드에서 자동 로드
-        const { exec } = require('child_process');
-        const tmpFile = path.join(os.tmpdir(), `vibezoo-capture-${Date.now()}.png`);
-        // Step 1: Start snipping tool
-        exec('powershell -Command "Start-Process ms-screenclip: -Wait"', (err1: any) => {
-          // Step 2: Save clipboard image to temp file
-          const psScript = `Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $img.Save('${tmpFile.replace(/\\/g, '\\\\')}') }`;
-          exec(`powershell -Command "${psScript}"`, (err2: any) => {
-            // Step 3: Read temp file and send to Webview
-            setTimeout(() => {
-              try {
-                if (fs.existsSync(tmpFile)) {
-                  const imgData = fs.readFileSync(tmpFile, 'base64');
-                  fs.unlinkSync(tmpFile);
-                  this.whiteboardPanel?.webview.postMessage({
-                    type: 'loadLatestScreenshot',
-                    dataUrl: `data:image/png;base64,${imgData}`
-                  });
-                }
-              } catch {}
-            }, 500);
-          });
-        });
+        // 캡처 도구 실행 → 클립보드 이미지 자동 로드
+        this.handleCaptureScreenshot();
+      }
+      if (message.type === 'ready') {
+        // Webview HTML 로드 완료 → 대기 중인 드로잉 명령 전송
+        if ((this as any)._pendingDrawCommands) {
+          this.sendToWhiteboard((this as any)._pendingDrawCommands);
+          delete (this as any)._pendingDrawCommands;
+        }
       }
     });
 
@@ -147,10 +137,58 @@ export class VisualVibePanels {
     return this.whiteboardPanel;
   }
 
+  /** 캡처 도구 실행 → 클립보드 이미지를 Whiteboard에 자동 로드 */
+  private handleCaptureScreenshot(): void {
+    const tmpFile = path.join(os.tmpdir(), `vibezoo-capture-${Date.now()}.png`);
+
+    // Step 1: 캡처 도구 실행 (Windows: Snipping Tool, macOS: screencapture)
+    const openCaptureTool = process.platform === 'win32'
+      ? 'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; Start-Process ms-screenclip: -Wait -WindowStyle Hidden; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $img.Save(\'' + tmpFile.replace(/\\/g, '\\\\') + '\', [System.Drawing.Imaging.ImageFormat]::Png) }"'
+      : process.platform === 'darwin'
+        ? `screencapture -i -c "${tmpFile}" 2>/dev/null; osascript -e 'tell app "System Events" to set theImage to the clipboard as «class PNGf»' -e 'if theImage is not missing value then set imgFile to open for access "${tmpFile}" with write permission' -e 'write theImage to imgFile' -e 'close access imgFile'`
+        : null;
+
+    if (!openCaptureTool) {
+      log('Capture not supported on this platform');
+      return;
+    }
+
+    exec(openCaptureTool, { timeout: 60000 }, (err) => {
+      if (err) {
+        log('Capture tool error:', err.message);
+        // 클립보드에 이미지가 없으면 조용히 무시
+        try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+        return;
+      }
+      // Step 2: 임시 파일 읽어서 Webview로 전송
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 0) {
+            const imgData = fs.readFileSync(tmpFile, 'base64');
+            fs.unlinkSync(tmpFile);
+            this.whiteboardPanel?.webview.postMessage({
+              type: 'loadLatestScreenshot',
+              dataUrl: `data:image/png;base64,${imgData}`
+            });
+          } else {
+            try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+          }
+        } catch (e: any) {
+          log('Capture read error:', e.message);
+          try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+        }
+      }, 500);
+    });
+  }
+
   /** UI Preview 열기 — React/Vue 컴포넌트 실시간 렌더링 */
   openUIPreview(initialCode?: string, _framework?: string): vscode.WebviewPanel {
     if (this.uiPreviewPanel) {
       this.uiPreviewPanel.reveal(vscode.ViewColumn.Two);
+      // 기존 패널에 새 코드 전송
+      if (initialCode) {
+        this.uiPreviewPanel.webview.postMessage({ type: 'render', code: initialCode });
+      }
       return this.uiPreviewPanel;
     }
 
@@ -167,15 +205,23 @@ export class VisualVibePanels {
     this.uiPreviewPanel.webview.html = this.uiPreviewHtml();
     this.uiPreviewPanel.onDidDispose(() => { this.uiPreviewPanel = null; });
 
-    // AI 코드 생성 시 postMessage로 코드 전달
-    this.uiPreviewPanel.webview.onDidReceiveMessage((message) => {
-      if (message.type === 'render') {
-        this.uiPreviewPanel?.webview.postMessage({
-          type: 'render',
-          code: message.code,
-        });
-      }
-    });
+    // Webview 로드 완료 후 초기 코드 전송
+    if (initialCode) {
+      const panel = this.uiPreviewPanel;
+      const checkReady = (msg: any) => {
+        if (msg.type === 'ready') {
+          panel.webview.postMessage({ type: 'render', code: initialCode });
+          panel.webview.onDidReceiveMessage((m) => {
+            if (m.type === 'ready') {} // no-op after first ready
+          });
+        }
+      };
+      panel.webview.onDidReceiveMessage(checkReady);
+      // fallback: ready 신호가 없어도 600ms 후 전송
+      setTimeout(() => {
+        try { panel.webview.postMessage({ type: 'render', code: initialCode }); } catch {}
+      }, 600);
+    }
 
     return this.uiPreviewPanel;
   }
@@ -250,6 +296,10 @@ export class VisualVibePanels {
   });
   canvas.freeDrawingBrush.color = '#ffffff';
   canvas.freeDrawingBrush.width = 3;
+
+  // Webview 로드 완료 → Extension에 ready 신호 전송 (pending draw commands flush)
+  const vscodeApi = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+  if (vscodeApi) vscodeApi.postMessage({ type: 'ready' });
 
   // Auto-save on every change → sends to extension via postMessage
   function sendState() {
@@ -383,10 +433,18 @@ export class VisualVibePanels {
   <p>AI가 React/Vue 컴포넌트 코드를 생성하면 이곳에 실시간 렌더링됩니다.</p>
 </div>
 <script>
+  const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+  if (vscode) vscode.postMessage({ type: 'ready' });
+
   window.addEventListener('message', (event) => {
     if (event.data.type === 'render' && event.data.code) {
-      document.body.innerHTML = '<iframe sandbox="allow-scripts" srcdoc="' +
-        event.data.code.replace(/"/g, '"') + '"></iframe>';
+      // HTML 엔티티 이스케이프 (srcdoc 속성용)
+      const escaped = event.data.code
+        .replace(/&/g, '&' + 'amp;')
+        .replace(/"/g, '&' + 'quot;')
+        .replace(/</g, '&' + 'lt;')
+        .replace(/>/g, '&' + 'gt;');
+      document.body.innerHTML = '<iframe sandbox="allow-scripts" srcdoc="' + escaped + '"></iframe>';
     }
   });
 </script>
@@ -410,10 +468,18 @@ export class VisualVibePanels {
 </div>
 <script>
   mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+  let mermaidRenderId = 0;
   window.addEventListener('message', async (event) => {
     if (event.data.type === 'render' && event.data.mermaidCode) {
-      const { svg } = await mermaid.render('diagram', event.data.mermaidCode);
-      document.getElementById('diagram').innerHTML = svg;
+      const container = document.getElementById('diagram');
+      container.innerHTML = '';
+      const uniqueId = 'mermaid-diagram-' + (++mermaidRenderId);
+      try {
+        const { svg } = await mermaid.render(uniqueId, event.data.mermaidCode);
+        container.innerHTML = svg;
+      } catch (err) {
+        container.innerHTML = '<p style="color:#f44747">Mermaid 렌더링 오류: ' + err.message + '</p>';
+      }
     }
   });
 </script>
