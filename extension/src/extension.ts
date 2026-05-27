@@ -306,10 +306,6 @@ function autoConfigureMCP(): void {
 
   const mcpConfig = {
     mcpServers: {
-      crow: {
-        url: `http://localhost:${crowPort}`,
-        transport: 'sse',
-      },
       vibezoo: {
         url: 'http://localhost:9027',
         transport: 'sse',

@@ -581,6 +581,64 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
     return output
 
 # ═══════════════════════════════════════════════════════════
+# Whiteboard: AI-사용자 양방향 드로잉
+# ═══════════════════════════════════════════════════════════
+
+WHITEBOARD_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard.json")
+
+@mcp.tool
+def draw_on_whiteboard(commands: str) -> str:
+    """AI가 화이트보드에 그림을 그립니다. VibeZoo가 이 명령을 받아 Webview에 렌더링합니다.
+    
+    Args:
+        commands: JSON 배열 형태의 Fabric.js 드로잉 명령.
+                 각 명령: {"type":"rect|circle|line|text|arrow|freehand|clear", "props":{...}}
+    """
+    try:
+        parsed = json.loads(commands)
+        data = {"timestamp": time.time(), "commands": parsed}
+        with open(WHITEBOARD_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+        try_crow_ingest(f"Whiteboard: {len(parsed)} drawing commands", register="context")
+        return f"Drew {len(parsed)} shapes on whiteboard. User can now modify and discuss."
+    except Exception as e:
+        return f"Failed to draw on whiteboard: {e}"
+
+@mcp.tool
+def get_whiteboard_state() -> str:
+    """현재 화이트보드의 상태를 조회합니다. 사용자가 수정한 내용을 확인합니다."""
+    try:
+        if os.path.exists(WHITEBOARD_FILE):
+            with open(WHITEBOARD_FILE) as f:
+                return f.read()
+        return '{"commands":[], "timestamp":0}'
+    except Exception as e:
+        return f"Failed: {e}"
+
+@mcp.tool
+def open_whiteboard(message: str = "") -> str:
+    """VibeZoo 화이트보드를 엽니다. AI가 시각적 설명이 필요할 때 호출합니다."""
+    try:
+        data = {"action": "open", "message": message, "timestamp": time.time()}
+        with open(WHITEBOARD_FILE.replace(".json", "-action.json"), "w") as f:
+            json.dump(data, f)
+        return f"Whiteboard opened. {message}"
+    except Exception as e:
+        return f"Failed: {e}"
+
+@mcp.tool
+def open_ui_preview(code: str = "", framework: str = "react") -> str:
+    """UI Preview 패널을 열고 코드를 렌더링합니다."""
+    try:
+        data = {"action": "open_ui", "code": code, "framework": framework, "timestamp": time.time()}
+        action_file = os.path.join(os.path.expanduser("~"), ".vibezoo-ui-action.json")
+        with open(action_file, "w") as f:
+            json.dump(data, f)
+        return f"UI Preview opened. Rendering {framework} component."
+    except Exception as e:
+        return f"Failed: {e}"
+
+# ═══════════════════════════════════════════════════════════
 # 메인 — SSE 서버 시작
 # ═══════════════════════════════════════════════════════════
 
@@ -589,12 +647,9 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=9027, help="SSE server port")
     args = parser.parse_args()
 
-    # Health check endpoint (FastMCP에서 제공하지 않으므로)
-    from fastmcp.server import Server
-    import uvicorn
+    import time  # for whiteboard
 
     print(f"🚀 VibeZoo MCP Bridge starting on port {args.port}...")
     print(f"   Crow Memory: {CROW_URL}")
 
-    # FastMCP의 SSE transport로 실행
     mcp.run(transport="sse", host="127.0.0.1", port=args.port)

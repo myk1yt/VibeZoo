@@ -1,12 +1,88 @@
 // VibeZoo Wave 5: Visual Vibe 통합 패널
 // Whiteboard, UI Preview, Diagram 등 Webview 패널 생성
+// AI가 MCP 도구(draw_on_whiteboard, open_whiteboard)를 호출하면
+// 파일 감시를 통해 자동으로 패널을 열고 그림을 렌더링한다.
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 export class VisualVibePanels {
   private whiteboardPanel: vscode.WebviewPanel | null = null;
   private uiPreviewPanel: vscode.WebviewPanel | null = null;
   private diagramPanel: vscode.WebviewPanel | null = null;
+  private watchTimer: NodeJS.Timeout | null = null;
+  private homedir: string;
+
+  constructor() {
+    this.homedir = os.homedir();
+    this.startWatching();
+  }
+
+  /** AI가 MCP 도구로 호출한 Whiteboard/UI 명령 파일 감시 */
+  private startWatching(): void {
+    const wbFile = path.join(this.homedir, '.vibezoo-whiteboard.json');
+    const wbAction = path.join(this.homedir, '.vibezoo-whiteboard-action.json');
+    const uiAction = path.join(this.homedir, '.vibezoo-ui-action.json');
+
+    let lastWbMtime = 0;
+    let lastActionMtime = 0;
+    let lastUiMtime = 0;
+
+    this.watchTimer = setInterval(() => {
+      // Whiteboard action 감지 (open_whiteboard 호출)
+      try {
+        const wbStat = fs.statSync(wbAction);
+        if (wbStat.mtimeMs > lastActionMtime) {
+          lastActionMtime = wbStat.mtimeMs;
+          const content = JSON.parse(fs.readFileSync(wbAction, 'utf-8'));
+          if (content.action === 'open') {
+            this.openWhiteboard();
+            if (content.message) {
+              vscode.window.showInformationMessage(`🎨 VibeZoo: ${content.message}`);
+            }
+          }
+        }
+      } catch {}
+
+      // UI Preview action 감지 (open_ui_preview 호출)
+      try {
+        const uiStat = fs.statSync(uiAction);
+        if (uiStat.mtimeMs > lastUiMtime) {
+          lastUiMtime = uiStat.mtimeMs;
+          const content = JSON.parse(fs.readFileSync(uiAction, 'utf-8'));
+          if (content.action === 'open_ui') {
+            this.openUIPreview(content.code || '', content.framework || 'react');
+          }
+        }
+      } catch {}
+
+      // Whiteboard drawing 명령 감지 (draw_on_whiteboard 호출)
+      try {
+        const wbStat = fs.statSync(wbFile);
+        if (wbStat.mtimeMs > lastWbMtime) {
+          lastWbMtime = wbStat.mtimeMs;
+          const content = JSON.parse(fs.readFileSync(wbFile, 'utf-8'));
+          if (content.commands && content.commands.length > 0) {
+            // Whiteboard가 아직 안 열렸으면 자동 열기
+            if (!this.whiteboardPanel) {
+              this.openWhiteboard();
+            }
+            // 드로잉 명령 Webview에 전달
+            this.sendToWhiteboard(content.commands);
+          }
+        }
+      } catch {}
+    }, 1000); // 1초 폴링
+  }
+
+  /** AI의 드로잉 명령을 Whiteboard Webview로 전달 */
+  private sendToWhiteboard(commands: any[]): void {
+    if (this.whiteboardPanel) {
+      this.whiteboardPanel.webview.postMessage({ type: 'draw', commands });
+    }
+  }
 
   /** Whiteboard 열기 — Fabric.js 기반 드로잉 캔버스 */
   openWhiteboard(): vscode.WebviewPanel {
@@ -31,7 +107,7 @@ export class VisualVibePanels {
   }
 
   /** UI Preview 열기 — React/Vue 컴포넌트 실시간 렌더링 */
-  openUIPreview(): vscode.WebviewPanel {
+  openUIPreview(initialCode?: string, _framework?: string): vscode.WebviewPanel {
     if (this.uiPreviewPanel) {
       this.uiPreviewPanel.reveal(vscode.ViewColumn.Two);
       return this.uiPreviewPanel;
