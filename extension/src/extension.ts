@@ -16,7 +16,7 @@ import { activateProjectDetector } from './flow/ProjectDetector';
 import { ProjectTreeScanner } from './flow/ProjectTreeScanner';
 import { YoctoManager } from './safety/YoctoManager';
 import { FileGuard } from './safety/FileGuard';
-import { AutoBuildFix } from './safety/AutoBuildFix';
+import { FixLoopManager } from './orchestra/FixLoopManager';
 import { GitStashManager } from './safety/GitStashManager';
 import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetector } from './context/ContextIntelligence';
 import { SubagentManager } from './orchestra/SubagentManager';
@@ -30,7 +30,7 @@ let crowServer: CrowServerManager;
 let statusBar: StatusBarManager;
 let yocto: YoctoManager;
 let fileGuard: FileGuard;
-let autoBuildFix: AutoBuildFix;
+let fixLoopManager: FixLoopManager;
 let gitStash: GitStashManager;
 let treeScanner: ProjectTreeScanner;
 let contextIndicator: ContextIndicator;
@@ -98,7 +98,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     fileGuard = new FileGuard(yocto);
     fileGuard.activate(context);
 
-    autoBuildFix = new AutoBuildFix();
+    fixLoopManager = new FixLoopManager();
     gitStash = new GitStashManager();
   }
 
@@ -375,17 +375,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 2000);
   }
 
-  // AutoBuildFix 내부 커맨드
+  // FixLoopManager 내부 커맨드 — 빌드 실패 시 FixLoopManager에 전달
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo._autoBuildFix', async (result: any) => {
-      if (autoBuildFix) {
-        const outcome = await autoBuildFix.run(result);
-        if (outcome.status === 'success') {
-          vscode.window.showInformationMessage(
-            `VibeZoo: AutoBuildFix 성공 (${outcome.attempt}회 시도)`
-          );
-        }
+      if (fixLoopManager && result?.diagnostics) {
+        fixLoopManager.onBuildFailure(result.diagnostics, result.stderr || '', result.taskName);
       }
+    })
+  );
+
+  // FixLoopManager 내부 커맨드 — 빌드 성공 시 FixLoopManager에 알림
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo._buildSuccess', () => {
+      fixLoopManager?.markResolved();
+    })
+  );
+
+  // FixLoop: pause / resume / abort 커맨드
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.pauseFixLoop', () => {
+      fixLoopManager?.pause();
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.resumeFixLoop', () => {
+      fixLoopManager?.resume();
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.abortFixLoop', () => {
+      fixLoopManager?.abort();
     })
   );
 
@@ -490,6 +509,7 @@ export function deactivate(): void {
   treeScanner?.dispose();
   yocto?.dispose();
   fileGuard?.dispose();
+  fixLoopManager?.dispose();
   sessionResume?.dispose();
   visualPanels?.dispose();
   subagentManager?.terminate();

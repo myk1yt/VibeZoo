@@ -73,6 +73,18 @@
       {
         "command": "vibezoo.generateDocs",
         "title": "VibeZoo: Generate Documentation (문서 자동 생성)"
+      },
+      {
+        "command": "vibezoo.pauseFixLoop",
+        "title": "VibeZoo: Pause Auto-Fix Loop"
+      },
+      {
+        "command": "vibezoo.resumeFixLoop",
+        "title": "VibeZoo: Resume Auto-Fix Loop"
+      },
+      {
+        "command": "vibezoo.abortFixLoop",
+        "title": "VibeZoo: Abort Auto-Fix Loop"
       }
     ],
     "viewsContainers": {

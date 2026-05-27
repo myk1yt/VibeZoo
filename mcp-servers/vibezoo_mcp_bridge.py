@@ -59,6 +59,107 @@ WHITEBOARD_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard.jso
 
 # ── 도우미 함수 ──────────────────────────────────────────
 
+# Tree-sitter 초기화 (M1-B: AST 파싱)
+_ts_available = False
+_ts_parser = None
+_ts_ts_language = None
+_ts_ts_language_js = None
+
+
+def _init_tree_sitter():
+    """Tree-sitter 초기화 — 실패 시 False 반환 (regex fallback)"""
+    global _ts_available, _ts_parser
+    if _ts_available:
+        return True
+    try:
+        # tree-sitter 설치 시도
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "tree-sitter", "--quiet"],
+            capture_output=True, text=True, timeout=30
+        )
+    except Exception:
+        pass
+    try:
+        import tree_sitter as ts
+        _ts_parser = ts.Parser()
+        # TypeScript/JavaScript 언어 로드 시도
+        try:
+            from tree_sitter_languages import get_language
+            _ts_ts_language = get_language("typescript")
+            _ts_ts_language_js = get_language("javascript")
+        except ImportError:
+            # tree_sitter_languages가 없으면 tree-sitter-typescript 시도
+            try:
+                from tree_sitter_typescript import language as ts_lang
+                from tree_sitter_javascript import language as js_lang
+                _ts_ts_language = ts_lang()
+                _ts_ts_language_js = js_lang()
+            except ImportError:
+                print("[VibeZoo] tree-sitter languages not available, using regex fallback")
+                return False
+        _ts_available = True
+        return True
+    except Exception as e:
+        print(f"[VibeZoo] tree-sitter init failed: {e}, using regex fallback")
+        return False
+
+
+def _parse_with_tree_sitter(content: str, file_ext: str) -> dict:
+    """Tree-sitter로 파일 파싱하여 구조적 정보 반환"""
+    if not _ts_available:
+        return {}
+    try:
+        lang = _ts_ts_language if file_ext in (".ts", ".tsx") else _ts_ts_language_js
+        if not lang:
+            return {}
+        _ts_parser.set_language(lang)
+        tree = _ts_parser.parse(bytes(content, "utf-8"))
+        root = tree.root_node
+
+        functions = []
+        classes = []
+        interfaces = []
+
+        def walk(node, depth=0):
+            if depth > 50:
+                return
+            node_type = node.type
+            if node_type in ("function_declaration", "method_definition", "arrow_function"):
+                name_node = node.child_by_field_name("name")
+                if name_node:
+                    start = node.start_point
+                    end = node.end_point
+                    functions.append({
+                        "name": content[name_node.start_byte:name_node.end_byte],
+                        "line": start[0] + 1,
+                        "end_line": end[0] + 1,
+                        "type": node_type,
+                    })
+            elif node_type in ("class_declaration",):
+                name_node = node.child_by_field_name("name")
+                if name_node:
+                    classes.append({
+                        "name": content[name_node.start_byte:name_node.end_byte],
+                        "line": node.start_point[0] + 1,
+                    })
+            elif node_type in ("interface_declaration", "type_alias_declaration"):
+                name_node = node.child_by_field_name("name")
+                if name_node:
+                    interfaces.append({
+                        "name": content[name_node.start_byte:name_node.end_byte],
+                        "line": node.start_point[0] + 1,
+                        "type": node_type,
+                    })
+            for child in node.children:
+                walk(child, depth + 1)
+
+        walk(root)
+        return {"functions": functions, "classes": classes, "interfaces": interfaces}
+    except Exception as e:
+        print(f"[VibeZoo] tree-sitter parse error: {e}")
+        return {}
+
+
 @mcp.tool
 def capture_screen() -> str:
     """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다."""
@@ -149,12 +250,13 @@ def try_crow_recall(query: str, register: str = "context", limit: int = 5) -> li
     return []
 
 # ═══════════════════════════════════════════════════════════
-# Scout: 코드 탐색 도구
+# Scout: 코드 탐색 도구 (M1-B: tree-sitter AST 업그레이드)
 # ═══════════════════════════════════════════════════════════
 
 @mcp.tool
 def search_codebase(query: str, file_patterns: Optional[str] = None, max_results: int = 10) -> str:
     """프로젝트 코드베이스에서 쿼리와 관련된 코드를 검색합니다.
+    tree-sitter AST 파싱을 우선 시도하고, 실패 시 regex로 폴백합니다.
     
     Args:
         query: 검색할 내용 (자연어 또는 코드 스니펫)
@@ -164,18 +266,56 @@ def search_codebase(query: str, file_patterns: Optional[str] = None, max_results
     patterns = file_patterns.split(",") if file_patterns else ["*.ts", "*.tsx", "*.js", "*.jsx", "*.py", "*.go", "*.rs"]
     root = Path(os.getcwd())
     results = []
+    ast_results = []
     exclude = {".git", "node_modules", ".zoo-code", "dist", "build", ".next", "vendor", "__pycache__"}
 
-    # ripgrep 우선, grep 폴백
+    # tree-sitter 초기화 시도
+    _init_tree_sitter()
+
+    # 쿼리 유형 감지: AST 구조 검색인가, 일반 텍스트 검색인가
+    is_ast_query = any(keyword in query.lower() for keyword in [
+        "function ", "class ", "interface ", "type ", "method ",
+        "함수", "클래스", "인터페이스"
+    ])
+
     for pattern in patterns:
         for p in root.rglob(pattern):
             if any(part in str(p) for part in exclude):
                 continue
             try:
                 content = p.read_text(encoding="utf-8", errors="ignore")
+                rel = str(p.relative_to(root))
+                ext = p.suffix.lower()
+
+                # tree-sitter AST 파싱 (TS/JS만)
+                if is_ast_query and ext in (".ts", ".tsx", ".js", ".jsx"):
+                    ast = _parse_with_tree_sitter(content, ext)
+                    query_lower = query.lower()
+
+                    # 함수 검색
+                    for fn in ast.get("functions", []):
+                        if query_lower in fn["name"].lower():
+                            ast_results.append(
+                                f"{rel}:{fn['line']}: `{fn['type']} {fn['name']}` (lines {fn['line']}-{fn['end_line']})"
+                            )
+
+                    # 클래스 검색
+                    for cls in ast.get("classes", []):
+                        if query_lower in cls["name"].lower():
+                            ast_results.append(
+                                f"{rel}:{cls['line']}: `class {cls['name']}`"
+                            )
+
+                    # 인터페이스 검색
+                    for iface in ast.get("interfaces", []):
+                        if query_lower in iface["name"].lower():
+                            ast_results.append(
+                                f"{rel}:{iface['line']}: `{iface['type']} {iface['name']}`"
+                            )
+
+                # regex line search (fallback + 일반 검색)
                 for i, line in enumerate(content.split("\n"), 1):
                     if query.lower() in line.lower():
-                        rel = str(p.relative_to(root))
                         results.append(f"{rel}:{i}: {line.strip()[:120]}")
                         if len(results) >= max_results:
                             break
@@ -186,12 +326,25 @@ def search_codebase(query: str, file_patterns: Optional[str] = None, max_results
         if len(results) >= max_results:
             break
 
-    output = f"# Search Results for: {query}\n\nFound {len(results)} results\n\n"
+    output = f"# Search Results for: {query}\n\n"
+
+    # AST 결과 우선 표시
+    if ast_results:
+        output += f"## 🔍 AST Structure Results\n\nFound {len(ast_results)} structural matches\n\n"
+        for r in ast_results[:max_results]:
+            output += f"- `{r}`\n"
+        output += "\n"
+
+    # 일반 검색 결과
+    output += f"## 📄 Line Search Results\n\nFound {len(results)} matches\n\n"
     for r in results[:max_results]:
         output += f"- `{r}`\n"
 
+    if not ast_results and not results:
+        output += "No results found.\n"
+
     # Crow에 검색 기록 저장
-    try_crow_ingest(f"Searched: {query}, found {len(results)} results", register="life_context")
+    try_crow_ingest(f"Searched: {query}, found {len(results)} line + {len(ast_results)} AST results", register="life_context")
 
     return output
 
@@ -699,6 +852,205 @@ def open_ui_preview(code: str = "", framework: str = "react") -> str:
         return f"Failed: {e}"
 
 # ═══════════════════════════════════════════════════════════
+# M1-A: Auto-Fix Loop — MCP 도구
+# ═══════════════════════════════════════════════════════════
+
+FIX_REQUEST_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-fix-request.json")
+CHAT_PENDING_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-chat-pending.json")
+
+
+@mcp.tool
+def auto_fix_status() -> str:
+    """현재 진행 중인 Auto-Fix 세션의 상태와 에러 정보를 조회합니다.
+    LLM이 빌드 에러를 분석하고 수정을 시작할 때 호출합니다.
+    과거 유사 에러 패턴을 Crow Memory에서 조회하여 함께 반환합니다.
+
+    Returns:
+        JSON: { status, attempt, maxAttempts, diagnostics, history, pastFixes }
+    """
+    if not os.path.exists(FIX_REQUEST_FILE):
+        return json.dumps({"status": "idle", "message": "No active fix request"})
+
+    try:
+        with open(FIX_REQUEST_FILE) as f:
+            data = json.load(f)
+
+        # 상태를 in_progress로 변경
+        data["status"] = "in_progress"
+        data["lastReadAt"] = time.time()
+        with open(FIX_REQUEST_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+
+        # Crow Memory recall — 과거 유사 에러 패턴 조회 (register="bug")
+        error_code = ""
+        if data.get("history"):
+            last = data["history"][-1]
+            if last.get("diagnostics"):
+                error_code = last["diagnostics"][0].get("code", "")
+        if error_code:
+            past_fixes = try_crow_recall(
+                query=f"build error {error_code}",
+                register="bug",
+                limit=3
+            )
+            if past_fixes:
+                data["pastFixes"] = past_fixes
+
+        return json.dumps(data, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool
+def retry_build() -> str:
+    """빌드를 재실행하고 결과를 반환합니다.
+    LLM이 수정 코드를 적용한 후 빌드 성공 여부를 확인할 때 호출합니다.
+
+    Returns:
+        JSON: { exitCode, stdout, stderr, success, diagnostics }
+    """
+    import subprocess
+    import sys
+
+    root = os.getcwd()
+
+    # 프로젝트 타입 감지
+    pkg_json = Path(root) / "package.json"
+    if pkg_json.exists():
+        cmd = ["npx.cmd" if sys.platform == "win32" else "npx", "tsc", "--noEmit"]
+    else:
+        return json.dumps({
+            "exitCode": -1,
+            "diagnostics": [],
+            "success": False,
+            "error": "No build command detected (package.json not found)"
+        })
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        # 결과를 fix-request 파일에 기록
+        if os.path.exists(FIX_REQUEST_FILE):
+            try:
+                with open(FIX_REQUEST_FILE) as f:
+                    fix_data = json.load(f)
+                # 새 attempt 추가
+                attempt_num = len(fix_data.get("history", [])) + 1
+                if "history" not in fix_data:
+                    fix_data["history"] = []
+                fix_data["history"].append({
+                    "attempt": attempt_num,
+                    "exitCode": result.returncode,
+                    "stderr": result.stderr[-500:],
+                    "stdout": result.stdout[-500:],
+                    "fixApplied": None,
+                    "timestamp": time.time()
+                })
+                fix_data["attempt"] = attempt_num
+                if result.returncode == 0:
+                    fix_data["status"] = "resolved"
+                else:
+                    fix_data["status"] = "pending" if attempt_num < fix_data.get("maxAttempts", 3) else "abandoned"
+                with open(FIX_REQUEST_FILE, "w") as f:
+                    json.dump(fix_data, f, indent=2)
+
+                # Crow ingest — 실패 시 에러 패턴 저장
+                if result.returncode != 0:
+                    try_crow_ingest(
+                        json.dumps({
+                            "error": result.stderr[-500:],
+                            "exitCode": result.returncode,
+                            "attempt": attempt_num,
+                        }),
+                        register="bug"
+                    )
+            except Exception:
+                pass
+
+        return json.dumps({
+            "exitCode": result.returncode,
+            "stdout": result.stdout[-2000:],
+            "stderr": result.stderr[-2000:],
+            "success": result.returncode == 0
+        }, indent=2, ensure_ascii=False)
+
+    except subprocess.TimeoutExpired:
+        return json.dumps({
+            "exitCode": -1,
+            "success": False,
+            "error": "Build timed out after 60s"
+        })
+    except Exception as e:
+        return json.dumps({
+            "exitCode": -1,
+            "success": False,
+            "error": str(e)
+        })
+
+
+@mcp.tool
+def check_intervention() -> str:
+    """Auto-Fix Loop 진행 전 사용자 개입 여부를 확인합니다.
+    Whiteboard 상태와 대기 중인 채팅 메시지를 조회합니다.
+
+    Returns:
+        JSON: { whiteboard_annotations, pending_messages, user_guidance, should_pause }
+    """
+    result = {
+        "whiteboard_annotations": [],
+        "pending_messages": [],
+        "user_guidance": None,
+        "should_pause": False
+    }
+
+    # 1. Whiteboard 확인
+    if os.path.exists(WHITEBOARD_FILE):
+        try:
+            with open(WHITEBOARD_FILE) as f:
+                wb_data = json.load(f)
+            # 텍스트 객체만 추출 (사용자 메모)
+            for cmd in wb_data.get("commands", []):
+                if cmd.get("type") == "text":
+                    result["whiteboard_annotations"].append({
+                        "text": cmd.get("props", {}).get("text", ""),
+                        "position": {
+                            "left": cmd.get("props", {}).get("left", 0),
+                            "top": cmd.get("props", {}).get("top", 0)
+                        }
+                    })
+        except Exception:
+            pass
+
+    # 2. Pending chat messages 확인
+    if os.path.exists(CHAT_PENDING_FILE):
+        try:
+            with open(CHAT_PENDING_FILE) as f:
+                pending = json.load(f)
+            result["pending_messages"] = pending.get("messages", [])
+            os.remove(CHAT_PENDING_FILE)  # 중복 처리 방지
+        except Exception:
+            pass
+
+    # 3. 사용자 가이드라인 종합
+    if result["whiteboard_annotations"] or result["pending_messages"]:
+        guidance_parts = []
+        if result["whiteboard_annotations"]:
+            guidance_parts.append("Whiteboard annotations found")
+        if result["pending_messages"]:
+            guidance_parts.append("Pending chat messages found")
+        result["user_guidance"] = "; ".join(guidance_parts)
+        result["should_pause"] = bool(result["pending_messages"])
+
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+# ═══════════════════════════════════════════════════════════
 # Q1: Quick Win — 시나리오 통합 MCP 도구 4개
 # ═══════════════════════════════════════════════════════════
 
@@ -771,7 +1123,16 @@ def review_project(target_path: str) -> str:
     patterns = _run_tool("extract_patterns", target_path=target_path, min_occurrences=3)
     sections.append(patterns)
 
-    try_crow_ingest(f"review_project completed for {target_path}", register="arch")
+    # M1-C: Crow ingest (register="style") — 리뷰 결과를 코딩 스타일 학습에 저장
+    try_crow_ingest(
+        json.dumps({
+            "action": "review_project",
+            "target": target_path,
+            "patterns_found": patterns.count("⚠️") + patterns.count("✅"),
+            "timestamp": time.time(),
+        }),
+        register="style"
+    )
     return "\n\n---\n\n".join(sections)
 
 
@@ -810,7 +1171,15 @@ def find_bugs(target_path: str) -> str:
     else:
         sections.append("- No relevant bug patterns found in Crow memory.\n")
 
-    try_crow_ingest(f"find_bugs completed for {target_path}", register="bug")
+    # M1-C: Crow ingest (register="bug") — 찾은 버그 패턴을 버그 학습에 저장
+    bug_summary = {
+        "action": "find_bugs",
+        "target": target_path,
+        "suspicious_count": len([s for s in sections if "Suspicious" in s]),
+        "crow_recall_count": len(crow_results),
+        "timestamp": time.time(),
+    }
+    try_crow_ingest(json.dumps(bug_summary), register="bug")
     return "\n\n---\n\n".join(sections)
 
 
@@ -841,7 +1210,25 @@ def suggest_refactor(target_path: str) -> str:
     callgraph = _run_tool("analyze_call_graph", file_path=target_path, depth=3)
     sections.append(callgraph)
 
-    try_crow_ingest(f"suggest_refactor completed for {target_path}", register="arch")
+    # M1-C: Crow recall (register="style") — 과거 코딩 스타일 규칙 조회
+    style_rules = try_crow_recall(query="coding style rules patterns", register="style", limit=5)
+    if style_rules:
+        sections.append("\n\n## 🎨 Crow Style Rules\n")
+        sections.append("### Previous coding style rules from Crow memory:\n")
+        for item in style_rules:
+            content = item.get("content", item.get("value", str(item)))
+            sections.append(f"- {content[:300]}")
+        sections.append("\n")
+
+    try_crow_ingest(
+        json.dumps({
+            "action": "suggest_refactor",
+            "target": target_path,
+            "style_rules_found": len(style_rules),
+            "timestamp": time.time(),
+        }),
+        register="style"
+    )
     return "\n\n---\n\n".join(sections)
 
 
