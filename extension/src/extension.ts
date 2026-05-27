@@ -408,6 +408,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  // ── M3-B: Continuous Improvement Mode ─────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.startWatching', () => {
+      fixLoopManager?.startWatching();
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.stopWatching', () => {
+      fixLoopManager?.stopWatching();
+    })
+  );
+
   // ── Q4: Quick Win — 시나리오 통합 MCP 도구 VS Code 명령어 ──
   const BRIDGE_URL = 'http://localhost:9027';
 

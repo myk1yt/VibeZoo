@@ -410,9 +410,157 @@ export class FixLoopManager {
     }
   }
 
+  // ── M3-B: Continuous Improvement Mode (지속적 감시) ──────
+
+  private _watcher: vscode.FileSystemWatcher | null = null;
+  private _isWatching = false;
+  private _watchDisposables: vscode.Disposable[] = [];
+  private _buildInProgress = false;
+
+  /** 파일 저장 감시 시작 — tsc 자동 실행 → 에러 시 auto-fix */
+  startWatching(): void {
+    if (this._isWatching) {
+      vscode.window.showInformationMessage('VibeZoo: 이미 감시 중입니다.');
+      return;
+    }
+
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.[0]) {
+      vscode.window.showWarningMessage('VibeZoo: 열려있는 프로젝트가 없어 감시를 시작할 수 없습니다.');
+      return;
+    }
+
+    const workspaceRoot = folders[0].uri.fsPath;
+
+    // 문서 저장 이벤트 감시 (tsc 자동 실행)
+    const onSave = vscode.workspace.onDidSaveTextDocument(async (doc: vscode.TextDocument) => {
+      // TS/JS 파일만 처리
+      if (!/\.(ts|tsx|js|jsx)$/.test(doc.fileName)) return;
+      if (doc.fileName.includes('node_modules')) return;
+      if (this._buildInProgress) return;
+      this._buildInProgress = true;
+
+      console.log(`[VibeZoo:CIM] File saved: ${doc.fileName}`);
+      try {
+        const success = await this.runAutoBuild(workspaceRoot);
+        if (!success) {
+          console.log('[VibeZoo:CIM] Build failed → auto-fix triggered');
+        }
+      } finally {
+        this._buildInProgress = false;
+      }
+    });
+
+    // 상태바 표시
+    const statusItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100
+    );
+    statusItem.text = '$(eye) VibeZoo: Watching';
+    statusItem.tooltip = '파일 저장 시 자동 tsc 검사';
+    statusItem.command = 'vibezoo.stopWatching';
+    statusItem.show();
+
+    this._watchDisposables.push(onSave, statusItem);
+    this._isWatching = true;
+
+    vscode.window.showInformationMessage(
+      '👁️ VibeZoo: Continuous Improvement Mode 시작됨 — 파일 저장 시 자동 tsc 검사'
+    );
+    console.log('[VibeZoo:CIM] Watching started for', workspaceRoot);
+  }
+
+  /** tsc --noEmit 실행 후 결과 반환 */
+  private async runAutoBuild(workspaceRoot: string): Promise<boolean> {
+    try {
+      const { exec } = await import('child_process');
+      return new Promise<boolean>((resolve) => {
+        const tscPath = /^win/.test(process.platform) ? 'npx.cmd' : 'npx';
+        const child = exec(
+          `${tscPath} tsc --noEmit`,
+          { cwd: workspaceRoot, timeout: 60000 },
+          (error, stdout, stderr) => {
+            const exitCode = error ? (error as any).code || 1 : 0;
+            if (exitCode === 0) {
+              console.log('[VibeZoo:CIM] tsc passed');
+              resolve(true);
+            } else {
+              console.log('[VibeZoo:CIM] tsc failed');
+              // 진단 정보 수집
+              const diagnostics = this.parseTscDiagnostics(stderr || stdout);
+              // auto-fix loop 트리거
+              this.onBuildFailure(
+                diagnostics,
+                stderr || stdout,
+                'vibezoo:cim:autobuild'
+              );
+              vscode.window.showWarningMessage(
+                `⚠️ VibeZoo: tsc 에러 감지 (${diagnostics.length}개) — 자동 수정 시도 중...`
+              );
+              resolve(false);
+            }
+          }
+        );
+        child?.stdout?.on('data', (data: string) => {
+          console.log(`[VibeZoo:CIM] tsc: ${data.trim()}`);
+        });
+        child?.stderr?.on('data', (data: string) => {
+          console.log(`[VibeZoo:CIM] tsc err: ${data.trim()}`);
+        });
+      });
+    } catch (err) {
+      console.error('[VibeZoo:CIM] Build error:', err);
+      return false;
+    }
+  }
+
+  /** tsc stderr/stdout → Diagnostic[] 파싱 */
+  private parseTscDiagnostics(output: string): import('../types').Diagnostic[] {
+    const diagnostics: import('../types').Diagnostic[] = [];
+    // TS 에러 패턴: file(line,col): error TS1234: message
+    const pattern = /(.+)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(output)) !== null) {
+      diagnostics.push({
+        file: match[1].trim(),
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        severity: match[4] === 'error' ? 'error' : 'warning',
+        code: match[5],
+        message: match[6].trim(),
+        source: 'typescript',
+      });
+    }
+    return diagnostics;
+  }
+
+  /** 감시 중지 */
+  stopWatching(): void {
+    if (!this._isWatching) {
+      vscode.window.showInformationMessage('VibeZoo: 현재 감시 중이 아닙니다.');
+      return;
+    }
+
+    for (const d of this._watchDisposables) {
+      d.dispose();
+    }
+    this._watchDisposables = [];
+    this._watcher = null;
+    this._isWatching = false;
+
+    vscode.window.showInformationMessage('⏹️ VibeZoo: Continuous Improvement Mode 중지됨');
+    console.log('[VibeZoo:CIM] Watching stopped');
+  }
+
+  /** 감시 상태 확인 */
+  isWatching(): boolean {
+    return this._isWatching;
+  }
+
   /** dispose */
   dispose(): void {
     this.clearSessionTimeout();
     this.statusBarMessage?.dispose();
+    this.stopWatching();
   }
 }

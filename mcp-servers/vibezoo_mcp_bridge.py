@@ -160,6 +160,169 @@ def _parse_with_tree_sitter(content: str, file_ext: str) -> dict:
         return {}
 
 
+def _extract_ast_calls(content: str, file_ext: str) -> list:
+    """Tree-sitter로 call_expression 노드 추출 — 실제 함수 호출 관계"""
+    if not _ts_available:
+        return []
+    try:
+        lang = _ts_ts_language if file_ext in (".ts", ".tsx") else _ts_ts_language_js
+        if not lang:
+            return []
+        _ts_parser.set_language(lang)
+        tree = _ts_parser.parse(bytes(content, "utf-8"))
+        root = tree.root_node
+
+        calls = []
+        def walk(node, depth=0):
+            if depth > 30:
+                return
+            if node.type == "call_expression":
+                func_node = node.child_by_field_name("function")
+                if func_node:
+                    name = content[func_node.start_byte:func_node.end_byte]
+                    # 내장 호출 제외 (단순화)
+                    if name not in ("require", "import"):
+                        calls.append({
+                            "name": name,
+                            "line": node.start_point[0] + 1,
+                        })
+            for child in node.children:
+                walk(child, depth + 1)
+
+        walk(root)
+        return calls
+    except Exception as e:
+        print(f"[VibeZoo] AST call extraction error: {e}")
+        return []
+
+
+def _extract_ast_imports(content: str, file_ext: str) -> list:
+    """Tree-sitter로 import/require 문 정확히 추출 (AST 기반)"""
+    if not _ts_available:
+        return []
+    try:
+        lang = _ts_ts_language if file_ext in (".ts", ".tsx") else _ts_ts_language_js
+        if not lang:
+            return []
+        _ts_parser.set_language(lang)
+        tree = _ts_parser.parse(bytes(content, "utf-8"))
+        root = tree.root_node
+
+        imports = []
+        def walk(node, depth=0):
+            if depth > 30:
+                return
+            # import { ... } from 'module'
+            if node.type == "import_statement":
+                source_node = node.child_by_field_name("source")
+                if source_node:
+                    module = content[source_node.start_byte:source_node.end_byte]
+                    imports.append({
+                        "module": module.strip("'\""),
+                        "type": "import",
+                        "line": node.start_point[0] + 1,
+                    })
+            # require('module') call
+            elif node.type == "call_expression":
+                func_node = node.child_by_field_name("function")
+                if func_node and content[func_node.start_byte:func_node.end_byte] == "require":
+                    args_node = node.child_by_field_name("arguments")
+                    if args_node and args_node.children:
+                        arg = args_node.children[0]
+                        if arg.type == "string":
+                            module = content[arg.start_byte:arg.end_byte]
+                            imports.append({
+                                "module": module.strip("'\""),
+                                "type": "require",
+                                "line": node.start_point[0] + 1,
+                            })
+            # import.meta / dynamic import
+            elif node.type == "import_expression":
+                imports.append({
+                    "module": "dynamic import",
+                    "type": "import",
+                    "line": node.start_point[0] + 1,
+                })
+            for child in node.children:
+                walk(child, depth + 1)
+
+        walk(root)
+        return imports
+    except Exception as e:
+        print(f"[VibeZoo] AST import extraction error: {e}")
+        return []
+
+
+def _extract_ast_fields(content: str, file_ext: str) -> dict:
+    """Tree-sitter로 interface/class의 실제 필드 추출"""
+    if not _ts_available:
+        return {}
+    try:
+        lang = _ts_ts_language if file_ext in (".ts", ".tsx") else _ts_ts_language_js
+        if not lang:
+            return {}
+        _ts_parser.set_language(lang)
+        tree = _ts_parser.parse(bytes(content, "utf-8"))
+        root = tree.root_node
+
+        models = []
+        def walk(node, depth=0):
+            if depth > 50:
+                return
+            if node.type in ("interface_declaration", "class_declaration", "type_alias_declaration"):
+                name_node = node.child_by_field_name("name")
+                name = content[name_node.start_byte:name_node.end_byte] if name_node else "anonymous"
+
+                fields = []
+                # object_type 내부의 property_signature 찾기
+                def find_properties(n, d=0):
+                    if d > 20:
+                        return
+                    if n.type == "property_signature":
+                        prop_name_node = n.child_by_field_name("name")
+                        prop_type_node = n.child_by_field_name("type")
+                        if prop_name_node:
+                            pname = content[prop_name_node.start_byte:prop_name_node.end_byte]
+                            ptype = content[prop_type_node.start_byte:prop_type_node.end_byte] if prop_type_node else "any"
+                            fields.append({"name": pname, "type": ptype})
+                    elif n.type == "method_signature":
+                        prop_name_node = n.child_by_field_name("name")
+                        if prop_name_node:
+                            pname = content[prop_name_node.start_byte:prop_name_node.end_byte]
+                            fields.append({"name": pname, "type": "method"})
+                    elif n.type == "property_definition":
+                        prop_name_node = n.child_by_field_name("name")
+                        if prop_name_node:
+                            pname = content[prop_name_node.start_byte:prop_name_node.end_byte]
+                            # 타입이 명시되지 않았을 수 있음
+                            ptype = "any"
+                            try:
+                                type_ann = n.child_by_field_name("type")
+                                if type_ann:
+                                    ptype = content[type_ann.start_byte:type_ann.end_byte]
+                            except Exception:
+                                pass
+                            fields.append({"name": pname, "type": ptype})
+                    for child in n.children:
+                        find_properties(child, d + 1)
+
+                find_properties(node)
+                models.append({
+                    "name": name,
+                    "type": node.type,
+                    "line": node.start_point[0] + 1,
+                    "fields": fields,
+                })
+            for child in node.children:
+                walk(child, depth + 1)
+
+        walk(root)
+        return {"models": models}
+    except Exception as e:
+        print(f"[VibeZoo] AST field extraction error: {e}")
+        return {}
+
+
 @mcp.tool
 def capture_screen() -> str:
     """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다."""
@@ -499,6 +662,7 @@ def check_quality(target_path: Optional[str] = None) -> str:
 @mcp.tool
 def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     """프로젝트의 함수 호출 그래프를 분석합니다.
+    tree-sitter AST로 실제 call_expression 노드를 추출하여 정확한 호출 관계를 파악합니다.
     
     Args:
         file_path: 분석할 파일 경로 (기본: 전체 프로젝트)
@@ -506,6 +670,9 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     """
     root = Path(get_project_root(file_path))
     output = "# Call Graph Analysis\n\n"
+
+    # tree-sitter 초기화
+    _init_tree_sitter()
 
     if (root / "go.mod").exists():
         try:
@@ -515,21 +682,65 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
         except Exception:
             output += "## Go call graph: go not available\n"
 
-    # TypeScript: import 관계 분석
-    output += "\n## File-Level Dependencies\n\n"
-    for p in root.rglob("*.ts") if list(root.rglob("*.ts")) else root.rglob("*.tsx"):
-        if any(part in str(p) for part in [".git", "node_modules"]):
+    # TypeScript/JavaScript: AST 기반 함수 호출 분석
+    output += "\n## Function Call Graph (AST)\n\n"
+    total_calls = 0
+    from collections import Counter
+    for p in sorted(root.rglob("*")):
+        if not p.is_file() or p.suffix not in (".ts", ".tsx", ".js", ".jsx"):
+            continue
+        if any(part in str(p) for part in [".git", "node_modules", "dist", "build"]):
+            continue
+        try:
+            content = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
             continue
         rel = p.relative_to(root)
-        imports = extract_imports(str(p))
-        if imports:
-            output += f"- `{rel}` → imports {len(imports)} modules\n"
+        calls = _extract_ast_calls(content, p.suffix)
+        if calls:
+            call_counts = Counter(c["name"] for c in calls)
+            top_calls = call_counts.most_common(10)
+            output += f"### `{rel}`\n\n"
+            output += f"- **Total calls**: {len(calls)}\n"
+            output += f"- **Unique functions called**: {len(call_counts)}\n"
+            for func_name, count in top_calls:
+                output += f"  - `{func_name}` ({count}x)\n"
+            output += "\n"
+            total_calls += len(calls)
 
+    if total_calls == 0:
+        output += "- No function calls detected via AST.\n"
+
+    # 파일 간 의존성 (AST 기반 import)
+    output += "\n## File-Level Dependencies (AST)\n\n"
+    dep_count = 0
+    for p in sorted(root.rglob("*")):
+        if not p.is_file() or p.suffix not in (".ts", ".tsx", ".js", ".jsx"):
+            continue
+        if any(part in str(p) for part in [".git", "node_modules", "dist", "build"]):
+            continue
+        try:
+            content = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        rel = p.relative_to(root)
+        ast_imports = _extract_ast_imports(content, p.suffix)
+        if ast_imports:
+            modules = list(set(i["module"] for i in ast_imports if not i["module"].startswith(".")))
+            local = list(set(i["module"] for i in ast_imports if i["module"].startswith(".")))
+            output += f"- `{rel}` → {len(modules)} external + {len(local)} local imports\n"
+            dep_count += 1
+
+    if dep_count == 0:
+        output += "- No dependencies detected.\n"
+
+    try_crow_ingest(f"Call graph: {total_calls} calls across {dep_count} files", register="arch")
     return output
 
 @mcp.tool
 def map_dependencies(target_path: Optional[str] = None) -> str:
     """프로젝트 파일 간 의존성을 분석하고 순환 참조를 탐지합니다.
+    tree-sitter AST로 import/require 문을 정확히 분석합니다.
     
     Args:
         target_path: 분석 대상 경로
@@ -537,7 +748,10 @@ def map_dependencies(target_path: Optional[str] = None) -> str:
     root = Path(get_project_root(target_path))
     output = "# Dependency Map\n\n"
 
-    # 모든 파일에서 import 수집
+    # tree-sitter 초기화
+    _init_tree_sitter()
+
+    # 모든 파일에서 import 수집 (AST 우선, regex fallback)
     deps = {}
     for p in root.rglob("*"):
         if not p.is_file():
@@ -548,6 +762,19 @@ def map_dependencies(target_path: Optional[str] = None) -> str:
         if any(part in str(p) for part in [".git", "node_modules", ".zoo-code"]):
             continue
         rel = str(p.relative_to(root))
+
+        # AST 기반 import 추출 (TS/JS/JSX)
+        if ext in (".ts", ".tsx", ".js", ".jsx"):
+            try:
+                content = p.read_text(encoding="utf-8", errors="ignore")
+                ast_imports = _extract_ast_imports(content, ext)
+                if ast_imports:
+                    deps[rel] = [i["module"] for i in ast_imports]
+                    continue
+            except Exception:
+                pass
+
+        # regex fallback (Python, Go, 또는 AST 실패 시)
         imports = extract_imports(str(p))
         if imports:
             deps[rel] = imports
@@ -587,7 +814,7 @@ def map_dependencies(target_path: Optional[str] = None) -> str:
     for file, imports in sorted(deps.items(), key=lambda x: -len(x[1]))[:20]:
         output += f"- `{file}`: **{len(imports)}** imports\n"
 
-    try_crow_ingest(f"Dep analysis: {len(deps)} files, {len(all_cycles)} cycles", register="arch")
+    try_crow_ingest(f"Dep analysis: {len(deps)} files, {len(all_cycles)} cycles (AST)", register="arch")
     return output
 
 @mcp.tool
@@ -652,6 +879,7 @@ def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3
 @mcp.tool
 def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown") -> str:
     """코드베이스로부터 아키텍처 문서, API 명세, ERD를 자동 생성합니다.
+    tree-sitter AST로 데이터 모델의 실제 필드까지 추출합니다.
     
     Args:
         target_path: 분석 대상 경로
@@ -659,6 +887,9 @@ def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown"
     """
     root = Path(get_project_root(target_path))
     output = "# Reverse Engineering Report\n\n"
+
+    # tree-sitter 초기화
+    _init_tree_sitter()
 
     # 프로젝트 메타데이터
     pkg_json = root / "package.json"
@@ -692,20 +923,44 @@ def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown"
     if not endpoints:
         output += "- No API endpoints detected.\n"
 
-    # 데이터 모델
+    # 데이터 모델 (AST 기반 필드 추출)
     output += "\n## Data Models\n\n"
     models = []
+    all_fields = {}  # model_name -> [fields]
     for p in root.rglob("*"):
-        if not p.is_file() or p.suffix not in (".ts", ".tsx", ".go"):
+        if not p.is_file() or p.suffix not in (".ts", ".tsx", ".js", ".jsx", ".go"):
             continue
         if any(part in str(p) for part in [".git", "node_modules"]):
             continue
         try:
             content = p.read_text(encoding="utf-8", errors="ignore")
-            for match in re.finditer(r'(?:interface|class|struct|type)\s+(\w+)', content):
-                models.append(f"- `{match.group(1)}` ({p.relative_to(root)})")
         except Exception:
             continue
+        rel = p.relative_to(root)
+
+        # AST 기반 필드 추출 (TS/JS)
+        if p.suffix in (".ts", ".tsx", ".js", ".jsx"):
+            ast_fields = _extract_ast_fields(content, p.suffix)
+            for model in ast_fields.get("models", []):
+                model_name = model["name"]
+                field_list = model["fields"]
+                models.append(f"- `{model_name}` → **{len(field_list)} fields** ({rel})")
+                if field_list:
+                    all_fields[model_name] = field_list
+        else:
+            # Go: regex fallback
+            for match in re.finditer(r'(?:type\s+)?(\w+)\s+struct\s*\{', content):
+                models.append(f"- `{match.group(1)}` ({rel})")
+
+    # 필드 상세 정보 출력
+    if all_fields:
+        output += "\n### Field Details\n\n"
+        for model_name, fields in all_fields.items():
+            output += f"**{model_name}**\n\n"
+            for f in fields:
+                output += f"- `{f['name']}`: `{f['type']}`\n"
+            output += "\n"
+
     for m in models[:20]:
         output += m + "\n"
     if not models:
@@ -713,7 +968,18 @@ def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown"
 
     # 형식별 출력
     if format == "mermaid":
-        output += "\n## ER Diagram (Mermaid)\n\n```mermaid\nerDiagram\n  User ||--o{ Order : places\n  Order ||--|{ OrderItem : contains\n```\n"
+        # 동적 Mermaid ERD 생성
+        output += "\n## ER Diagram (Mermaid)\n\n```mermaid\nerDiagram\n"
+        if all_fields:
+            for model_name, fields in all_fields.items():
+                output += f"  {model_name} {{\n"
+                for f in fields:
+                    ftype = f["type"].replace("|", " or ")
+                    output += f"    {f['type']} {f['name']}\n"
+                output += "  }\n"
+        else:
+            output += "  User ||--o{ Order : places\n  Order ||--|{ OrderItem : contains\n"
+        output += "```\n"
     elif format == "openapi":
         output += "\n## OpenAPI 3.0 Spec\n\n```yaml\nopenapi: 3.0.0\ninfo:\n  title: Auto-detected API\n  version: 0.1.0\npaths: {}\n```\n"
 
@@ -1236,6 +1502,7 @@ def suggest_refactor(target_path: str) -> str:
 def generate_docs(target_path: str, format: str = "markdown") -> str:
     """reverse_engineer + summarize_architecture + draw_on_whiteboard(architecture diagram) 통합.
     프로젝트 문서를 자동 생성하고 아키텍처 다이어그램을 화이트보드에 그립니다.
+    format='mermaid' 시 ERD 다이어그램을 함께 생성합니다.
 
     Args:
         target_path: 분석 대상 디렉토리 경로
@@ -1250,32 +1517,94 @@ def generate_docs(target_path: str, format: str = "markdown") -> str:
     arch = _run_tool("summarize_architecture", target_path=target_path)
     sections.append(arch)
 
-    # 2. reverse_engineer
+    # 2. reverse_engineer (AST 기반 데이터 모델 필드 포함)
     sections.append("## 🔄 Reverse Engineering\n")
     rev = _run_tool("reverse_engineer", target_path=target_path, format=format)
     sections.append(rev)
 
-    # 3. draw_on_whiteboard — 아키텍처 다이어그램 자동 생성
+    # 3. draw_on_whiteboard — 개선된 아키텍처 다이어그램 (recursive 디렉토리 구조 + 파일 포함)
     sections.append("## 🎨 Architecture Diagram (Whiteboard)\n")
     try:
         root = Path(get_project_root(target_path))
-        # 디렉토리 구조 기반 간단한 박스+화살표 다이어그램 생성
-        dirs = []
-        for p in sorted(root.iterdir()):
-            if p.is_dir() and not p.name.startswith(".") and p.name not in ("node_modules", "dist", "build", "__pycache__"):
-                dirs.append(p.name)
         commands = []
+        # 재귀적으로 디렉토리 구조 수집 (depth 2)
+        entries = []
+        def collect(p, depth=0):
+            if depth > 2:
+                return
+            for child in sorted(p.iterdir()):
+                if child.name.startswith(".") or child.name in ("node_modules", "dist", "build", "__pycache__"):
+                    continue
+                entries.append((child, depth))
+                if child.is_dir():
+                    collect(child, depth + 1)
+        collect(root)
+
         y = 50
-        for i, d in enumerate(dirs[:8]):
-            commands.append({"type": "rect", "props": {"left": 80, "top": y + i * 70, "width": 180, "height": 50, "fill": "transparent", "stroke": "#4ec9ff", "rx": 6}})
-            commands.append({"type": "text", "props": {"left": 90, "top": y + i * 70 + 15, "text": f"📁 {d}", "fontSize": 14, "fill": "#ffffff"}})
-            if i > 0:
-                commands.append({"type": "arrow", "props": {"x1": 170, "y1": y + (i - 1) * 70 + 50, "x2": 170, "y2": y + i * 70, "stroke": "#ffd700", "strokeWidth": 1.5}})
+        x_offset = 80
+        colors = ["#4ec9ff", "#6acb6a", "#d4a0ff", "#ffd700"]
+        for i, (entry, depth) in enumerate(entries[:15]):
+            indent = depth * 25
+            color = colors[depth % len(colors)]
+            icon = "📁" if entry.is_dir() else "📄"
+            commands.append({
+                "type": "rect",
+                "props": {
+                    "left": x_offset + indent, "top": y + i * 42,
+                    "width": 200 - indent, "height": 34,
+                    "fill": "transparent", "stroke": color, "rx": 4
+                }
+            })
+            commands.append({
+                "type": "text",
+                "props": {
+                    "left": x_offset + indent + 8, "top": y + i * 42 + 8,
+                    "text": f"{icon} {entry.name}",
+                    "fontSize": 12, "fill": "#ffffff"
+                }
+            })
+
         if commands:
             draw_result = _run_tool("draw_on_whiteboard", commands=json.dumps(commands))
             sections.append(f"- {draw_result}")
         else:
             sections.append("- No directory structure to visualize.\n")
+
+        # 4. Mermaid ERD 다이어그램 문자열 생성 (format=mermaid)
+        if format == "mermaid":
+            sections.append("\n## 📊 Mermaid ER Diagram\n\n")
+            try:
+                # reverse_engineer 결과에서 데이터 모델 파싱
+                models_found = []
+                for line in rev.split("\n"):
+                    m = re.match(r'^- `(\w+)` → \*\*(\d+)\*\* fields', line)
+                    if m:
+                        models_found.append((m.group(1), int(m.group(2))))
+
+                if models_found:
+                    mermaid_lines = ["```mermaid", "erDiagram"]
+                    for model_name, field_count in models_found:
+                        mermaid_lines.append(f"  {model_name} {{")
+                        # 필드 상세 정보 찾기
+                        in_model = False
+                        for line in rev.split("\n"):
+                            if f"**{model_name}**" in line:
+                                in_model = True
+                                continue
+                            if in_model:
+                                if line.startswith("**") and not line.startswith(f"**{model_name}**"):
+                                    break
+                                fm = re.match(r'^- `(\w+)`: `(.+)`', line)
+                                if fm:
+                                    mermaid_lines.append(f"    {fm.group(2)} {fm.group(1)}")
+                        mermaid_lines.append("  }")
+                    mermaid_lines.append("```")
+                    sections.append("\n".join(mermaid_lines))
+                else:
+                    sections.append("```mermaid\nerDiagram\n  User ||--o{ Order : places\n  Order ||--|{ OrderItem : contains\n```\n")
+            except Exception:
+                sections.append("```mermaid\nerDiagram\n  User ||--o{ Order : places\n```\n")
+
     except Exception as e:
         sections.append(f"- Could not draw diagram: {e}\n")
 

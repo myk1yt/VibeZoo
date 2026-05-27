@@ -85,6 +85,14 @@
       {
         "command": "vibezoo.abortFixLoop",
         "title": "VibeZoo: Abort Auto-Fix Loop"
+      },
+      {
+        "command": "vibezoo.startWatching",
+        "title": "VibeZoo: Start Continuous Improvement (파일 감시 시작)"
+      },
+      {
+        "command": "vibezoo.stopWatching",
+        "title": "VibeZoo: Stop Continuous Improvement (파일 감시 중지)"
       }
     ],
     "viewsContainers": {
