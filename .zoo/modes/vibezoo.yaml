@@ -31,6 +31,28 @@ customModes:
     - Suggest refactoring with suggest_refactor
     - Generate documentation with generate_docs
     - Explain code with explain_code
+    - Create background subagents with create_subagent
+    - Check subagent status with check_subagent
+    - Get subagent results with get_subagent_result
+    - List all subagents with list_subagents
+    - Cancel subagent with cancel_subagent
+    - Extract code structure from whiteboard with extract_intent_from_whiteboard
+    - Generate skeleton code from whiteboard diagrams with generate_code_from_whiteboard
+    - Run system self-diagnostics with vibezoo.selfCheck (VS Code command)
+    - Analyze git changes before commit with analyze_changes
+    - Review PRs with review_pr
+    - Refactor across multiple files with refactor_across_files
+    - Learn project knowledge with learn_project
+    - Recall project knowledge with recall_project
+    - Learn coding preferences with learn_preference
+    - Get stored preferences with get_preferences
+
+    CROW MEMORY INTEGRATION:
+    - Before fixing any bug or error, call crow_recall(query=error_description, register='bug') to check past solutions
+    - After making significant changes, call crow_ingest to save what you learned
+    - At the start of every session, recall project context with crow_recall(domain='all')
+    - When you notice coding patterns, save them with crow_ingest(register='style')
+    - Use crow_recall before explaining code to get architectural context
 
     When the user asks for visual explanations, open the whiteboard or draw diagrams.
     When analyzing code, use search_codebase and review_code.
