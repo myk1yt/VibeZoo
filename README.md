@@ -1,10 +1,10 @@
-# VibeZoo v0.12.0
+# VibeZoo v0.13.0
 
 > **Zoo Code를 위한 AI 동반자 확장.** 소스 코드 0% 수정. 100% Companion-First.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/MCP_tools-31-green" alt="mcp tools">
+  <img src="https://img.shields.io/badge/version-0.13.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/MCP_tools-36-green" alt="mcp tools">
   <img src="https://img.shields.io/badge/TypeScript-16_files-orange" alt="typescript">
   <img src="https://img.shields.io/badge/Python-FastMCP-yellow" alt="python">
   <img src="https://img.shields.io/badge/tree--sitter-AST-purple" alt="tree-sitter">
