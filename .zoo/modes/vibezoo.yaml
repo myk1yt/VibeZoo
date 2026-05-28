@@ -72,3 +72,23 @@ customModes:
     - suggest_refactor(target_path): 리팩터링 제안
     - generate_docs(target_path, format?): 문서 자동 생성
     - explain_code(file_path, line?): 코드 설명
+    - create_subagent(role, task): Create background subagent (scout/reviewer/tester/deep)
+    - check_subagent(task_id): Check subagent status
+    - get_subagent_result(task_id): Get completed subagent result
+    - list_subagents(): List all subagents
+    - cancel_subagent(task_id): Cancel running subagent
+    - extract_intent_from_whiteboard(): Extract code structure from whiteboard drawings
+    - generate_code_from_whiteboard(output_dir?): Generate TypeScript skeleton from whiteboard
+    - analyze_changes(): Analyze git diff changes
+    - review_pr(): Review pull request
+    - refactor_across_files(): Multi-file refactoring
+    - learn_project(): Save project knowledge to Crow
+    - recall_project(): Recall project knowledge from Crow
+    - learn_preference(): Save coding preference
+    - get_preferences(): Get stored preferences
+
+    CROW MEMORY TOOLS (always available):
+    - crow_recall(query, register?, domain?): Recall past knowledge before acting
+    - crow_ingest(key, value, polarity, register): Save discoveries for future sessions
+
+    RULE: Always crow_recall before fixing errors. Always crow_ingest after learning something new.
