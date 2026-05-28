@@ -1,162 +1,162 @@
-# VibeZoo 개발 일지
+# VibeZoo Development Journal
 
-> 우측 상단의 `목차` 클릭 → 원하는 날짜로 이동
-> 새로운 변경사항은 **맨 위**에 추가
-
----
-
-- [2026-05-28 - v0.13.0: Phase 1~6 전면 구현](#2026-05-28-v0130-phase-16-전면-구현)
-- [2026-05-27 - v0.10.0 최종: Go 파일 정리, SSE 경로 수정](#2026-05-27-v0100-최종-go-파일-정리-sse-경로-수정)
-- [2026-05-27 - v0.10.0: MCP 자동 설정 수정, Whiteboard 자동 연동](#2026-05-27-v0100-mcp-자동-설정-수정-whiteboard-자동-연동)
-- [2026-05-27 - v0.10.0: AI 자동 Whiteboard + UI Preview 연동](#2026-05-27-v0100-ai-자동-whiteboard--ui-preview-연동)
-- [2026-05-27 - v0.10.0: Python MCP 브릿지 전환 + Go 제거](#2026-05-27-v0100-python-mcp-브릿지-전환--go-제거)
-- [2026-05-27 - v0.10.0: 초기 구현 완료 (26개 파일)](#2026-05-27-v0100-초기-구현-완료-26개-파일)
-- [2026-05-27 - Architecture 설계 시작](#2026-05-27-architecture-설계-시작)
+> Click `Table of Contents` in the upper right → navigate to desired date
+> New changes are added at the **top**
 
 ---
 
-## 2026-05-27 - v0.10.0 최종: Go 파일 정리, SSE 경로 수정
+- [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
+- [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
+- [2026-05-27 - v0.10.0: MCP auto-config fix, Whiteboard auto-integration](#2026-05-27-v0100-mcp-auto-config-fix-whiteboard-auto-integration)
+- [2026-05-27 - v0.10.0: AI auto Whiteboard + UI Preview integration](#2026-05-27-v0100-ai-auto-whiteboard--ui-preview-integration)
+- [2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal](#2026-05-27-v0100-python-mcp-bridge-migration--go-removal)
+- [2026-05-27 - v0.10.0: Initial implementation complete (26 files)](#2026-05-27-v0100-initial-implementation-complete-26-files)
+- [2026-05-27 - Architecture design started](#2026-05-27-architecture-design-started)
 
-**변경**:
-- Go MCP 서버 파일 6개 전부 삭제 (`mcp-servers/cmd/`, `go.mod`, `build.ps1`) — 1,074줄 제거
-- `.roo/mcp.json` SSE 경로 수정: `http://localhost:9027` → `http://localhost:9027/sse`
-- `extension.ts` autoConfigureMCP() 수정: 같은 변경 반영 + Crow 중복 추가 제거
-- VSIX 재빌드 + 재설치 완료
+---
 
-**설치 완료**:
-- VibeZoo VS Code Extension 설치됨 (onStartupFinished 자동 실행)
-- VibeZoo Bridge (9027/sse) Zoo Code 연결 성공 (200 OK, 202 Accepted 확인)
-- Crow Memory (9020)는 기존 사용자 설정 유지
+## 2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix
 
-**파일 목록**:
-| 파일 | 용도 |
+**Changes**:
+- All 6 Go MCP server files deleted (`mcp-servers/cmd/`, `go.mod`, `build.ps1`) — 1,074 lines removed
+- `.roo/mcp.json` SSE path fix: `http://localhost:9027` → `http://localhost:9027/sse`
+- `extension.ts` autoConfigureMCP() updated: same change reflected + duplicate Crow addition removed
+- VSIX rebuilt + reinstalled
+
+**Installation Complete**:
+- VibeZoo VS Code Extension installed (onStartupFinished auto-run)
+- VibeZoo Bridge (9027/sse) Zoo Code connection successful (200 OK, 202 Accepted confirmed)
+- Crow Memory (9020) retains existing user settings
+
+**File List**:
+| File | Purpose |
 |:---|:---|
-| `extension/` | VS Code Extension (TypeScript 16개 파일) |
-| `mcp-servers/vibezoo_mcp_bridge.py` | 통합 MCP 브릿지 (Scout·Reviewer·Tester·DeepAnalyzer·Whiteboard) |
-| `templates/` | yoloignore, zoo-config, vscode-settings 기본 템플릿 |
-| `fromscratch/` | Architecture.md, PLAN.md, 분석 문서 |
+| `extension/` | VS Code Extension (TypeScript 16 files) |
+| `mcp-servers/vibezoo_mcp_bridge.py` | Unified MCP bridge (Scout·Reviewer·Tester·DeepAnalyzer·Whiteboard) |
+| `templates/` | yoloignore, zoo-config, vscode-settings default templates |
+| `fromscratch/` | Architecture.md, PLAN.md, analysis documents |
 
 ---
 
-## 2026-05-27 - v0.10.0: MCP 자동 설정 수정, Whiteboard 자동 연동
+## 2026-05-27 - v0.10.0: MCP auto-config fix, Whiteboard auto-integration
 
-**변경**:
-- `extension.ts` autoConfigureMCP() 수정: Crow는 추가하지 않도록 변경 (사용자 기존 설정 유지)
-- `.roo/mcp.json`에서 Crow 제거, VibeZoo만 유지
-
----
-
-## 2026-05-27 - v0.10.0: AI 자동 Whiteboard + UI Preview 연동
-
-**변경**:
-- `vibezoo_mcp_bridge.py`에 새 MCP 도구 추가:
-  - `draw_on_whiteboard(commands)` — AI가 Fabric.js 드로잉 명령 전송
-  - `get_whiteboard_state()` — 사용자 수정 내용 조회
-  - `open_whiteboard(message)` — AI가 화이트보드 패널 열기 요청
-  - `open_ui_preview(code, framework)` — AI가 UI Preview 열기 요청
-- `VisualVibePanels.ts` — 파일 감시(watch) 기능 추가:
-  - AI의 `draw_on_whiteboard` 호출 감지 → 자동 Whiteboard 열기 + 렌더링
-  - AI의 `open_ui_preview` 호출 감지 → 자동 UI Preview 열기
-  - 1초 간격 폴링으로 상태 변화 감지
+**Changes**:
+- `extension.ts` autoConfigureMCP() updated: Crow no longer added (preserves existing user config)
+- Crow removed from `.roo/mcp.json`, only VibeZoo remains
 
 ---
 
-## 2026-05-27 - v0.10.0: Python MCP 브릿지 전환 + Go 제거
+## 2026-05-27 - v0.10.0: AI auto Whiteboard + UI Preview integration
 
-**변경**:
-- Go MCP 서버(Scout·Reviewer·Tester·DeepAnalyzer·build.ps1·go.mod) → `vibezoo_mcp_bridge.py` 단일 파일로 통합
-- `SubagentManager.ts` 대폭 수정: Go spawn → Python FastMCP spawn
-- Python 자동 의존성 설치 추가 (`fastmcp`, `uvicorn`, `requests`)
+**Changes**:
+- New MCP tools added to `vibezoo_mcp_bridge.py`:
+  - `draw_on_whiteboard(commands)` — AI sends Fabric.js drawing commands
+  - `get_whiteboard_state()` — Query user modifications
+  - `open_whiteboard(message)` — AI requests opening whiteboard panel
+  - `open_ui_preview(code, framework)` — AI requests opening UI Preview
+- `VisualVibePanels.ts` — File watch functionality added:
+  - Detects AI's `draw_on_whiteboard` call → auto open Whiteboard + render
+  - Detects AI's `open_ui_preview` call → auto open UI Preview
+  - 1-second interval polling for state change detection
 
-**아키텍처 변경**:
+---
+
+## 2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal
+
+**Changes**:
+- Go MCP servers (Scout·Reviewer·Tester·DeepAnalyzer·build.ps1·go.mod) → unified into single `vibezoo_mcp_bridge.py` file
+- `SubagentManager.ts` heavily modified: Go spawn → Python FastMCP spawn
+- Auto Python dependency installation added (`fastmcp`, `uvicorn`, `requests`)
+
+**Architecture Change**:
 ```
-Before: VibeZoo Extension + Go MCP 4개 서버 + Crow(외부)
-After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1개 + Crow(외부)
+Before: VibeZoo Extension + Go MCP 4 servers + Crow(external)
+After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1 file + Crow(external)
 ```
 
 ---
 
-## 2026-05-27 - v0.10.0: 초기 구현 완료 (26개 파일)
+## 2026-05-27 - v0.10.0: Initial implementation complete (26 files)
 
-**생성된 파일** (26개):
-- `extension/src/` — 16개 TypeScript 파일
-- `mcp-servers/` — Go 서버 5개 + go.mod + build.ps1
-- `templates/` — 3개 템플릿
+**Files Created** (26):
+- `extension/src/` — 16 TypeScript files
+- `mcp-servers/` — 5 Go servers + go.mod + build.ps1
+- `templates/` — 3 templates
 - `fromscratch/` — Architecture.md + PLAN.md
 - `README.md`, `package.json`, `tsconfig.json`
 
-**Wave 1-5 기능 구현**:
-| Wave | 기능 |
+**Wave 1-5 Features Implemented**:
+| Wave | Feature |
 |:---|:---|
-| Phase 0 | Crow 연결, StatusBar, 디렉토리 템플릿 |
-| Wave 1 | Silent Build, 빌드 에러 캡처, 프로젝트 감지, 트리 스캔 |
-| Wave 2 | yocto 백업, Instant Rewind, File Guard, Git Stash, AutoBuildFix |
-| Wave 3 | ContextFreshness, ExplainLess 감지, SessionResume, EmotionalDetector |
-| Wave 4 | SubagentManager, @mention 라우팅 |
-| Wave 5 | Whiteboard, UI Preview, Diagram Webview 패널 |
-| Wave 6 | Deep Analyzer (vibezoo_mcp_bridge.py에 통합) |
+| Phase 0 | Crow connection, StatusBar, directory templates |
+| Wave 1 | Silent Build, build error capture, project detection, tree scan |
+| Wave 2 | yocto backup, Instant Rewind, File Guard, Git Stash, AutoBuildFix |
+| Wave 3 | ContextFreshness, ExplainLess detection, SessionResume, EmotionalDetector |
+| Wave 4 | SubagentManager, @mention routing |
+| Wave 5 | Whiteboard, UI Preview, Diagram Webview panels |
+| Wave 6 | Deep Analyzer (integrated into vibezoo_mcp_bridge.py) |
 
 ---
 
-## 2026-05-27 - Architecture 설계 시작
+## 2026-05-27 - Architecture design started
 
-**분석 완료**:
-- `reportfromgemini.md` — 201줄 보고서 분석
-- `zoo_code_upgrade.agent.final.md` — 6,704줄 상세 설계 분석
+**Analysis Completed**:
+- `reportfromgemini.md` — 201-line report analysis
+- `zoo_code_upgrade.agent.final.md` — 6,704-line detailed design analysis
 
-**결정 사항**:
-- VS Code 소스 수정 0% 전략
-- Companion-First 아키텍처 (Zoo Code에 붙는 확장팩)
-- API 기반 LLM (로컬 모델 불필요)
-- Crow Memory는 외부 독립 시스템
+**Decisions**:
+- VS Code source modification 0% strategy
+- Companion-First architecture (extension pack for Zoo Code)
+- API-based LLM (no local model needed)
+- Crow Memory as external independent system
 
 ---
 
-## 2026-05-28 - v0.13.0: Phase 1~6 전면 구현
+## 2026-05-28 - v0.13.0: Phase 1~6 Full Implementation
 
-**Phase 0 완료** (기존):
+**Phase 0 Completed** (existing):
 - SelfCheck.ts (AlarmMonitor + SelfChecker) ✅
 - StatusBarManager.ts (NotificationThrottle + GuardMode) ✅
 - types/index.ts (SelfCheckReport, ThrottleEntry) ✅
-- FileGuard.ts (쿨다운 + syncFromCrow 필터) ✅
-- .roo/mcp.json (vibezoo SSE 등록) ✅
+- FileGuard.ts (cooldown + syncFromCrow filter) ✅
+- .roo/mcp.json (vibezoo SSE registration) ✅
 
-**Phase 1: 화이트보드 안정화**
-- Fabric.js 5.3.1 로컬 번들링: `extension/media/fabric.min.js` 다운로드
-- `getFabricJs()` 헬퍼: 로컬 파일 우선, 실패 시 CDN fallback
-- `VisualVibePanels`에 `_context: vscode.ExtensionContext` 필드 추가
-- `handleFileChange()`: `lastMtime` mtime 비교 early return
+**Phase 1: Whiteboard Stabilization**
+- Fabric.js 5.3.1 local bundling: downloaded `extension/media/fabric.min.js`
+- `getFabricJs()` helper: local file first, CDN fallback on failure
+- Added `_context: vscode.ExtensionContext` field to `VisualVibePanels`
+- `handleFileChange()`: early return with `lastMtime` mtime comparison
 - `WATCH_INTERVAL_MS`: 500ms → 200ms
-- Welcome 메시지: `context.globalState`로 첫 실행만 표시
-- `vibezoo.selfCheck` 명령어 등록 (SelfChecker 사용)
+- Welcome message: shown only on first run via `context.globalState`
+- Registered `vibezoo.selfCheck` command (uses SelfChecker)
 
-**Phase 2: 4대 개선**
+**Phase 2: 4 Major Improvements**
 - `InstabilityMetrics` + `calculateInstability()` (α=0.35, β=0.45, γ=0.20)
 - `getGuardMode()`: <0.3=active, <0.7=warning, ≥0.7=safe
-- `YoctoManager.atomicCopyFile()`: crypto.randomUUID 임시파일 → rename
-- `FixLoopManager.hydrateContext()`: resume 시 파일 diff → Crow ingest
-- Crow `try_crow_ingest`/`try_crow_recall`: 150ms 시작, 2배 증가, 최대 3회, random jitter
+- `YoctoManager.atomicCopyFile()`: crypto.randomUUID temp file → rename
+- `FixLoopManager.hydrateContext()`: file diff on resume → Crow ingest
+- Crow `try_crow_ingest`/`try_crow_recall`: 150ms start, 2x increase, max 3, random jitter
 
 **Phase 3: Virtual Subagent**
-- `SubagentPool` 클래스: asyncio.Semaphore(5) 동시성 제어
-- `SubagentTask` dataclass + `ROLE_TOOLS` 매핑
-- 5개 MCP 도구: `create_subagent`, `check_subagent`, `get_subagent_result`, `list_subagents`, `cancel_subagent`
-- `ActiveSubagentsProvider.pollSubagentTasks()`: 30초 간격 MCP Bridge polling
+- `SubagentPool` class: asyncio.Semaphore(5) concurrency control
+- `SubagentTask` dataclass + `ROLE_TOOLS` mapping
+- 5 MCP tools: `create_subagent`, `check_subagent`, `get_subagent_result`, `list_subagents`, `cancel_subagent`
+- `ActiveSubagentsProvider.pollSubagentTasks()`: 30s interval MCP Bridge polling
 
 **Phase 4: Intent-to-Code Bridge**
 - `extract_intent_from_whiteboard()`: rect→class, line/arrow→dependency
-- `_find_nearby_text()`, `_extract_members_from_rect()`, `_find_nearest_class()` 헬퍼
-- `generate_code_from_whiteboard()`: TypeScript 스켈레톤 생성
-- `_generate_class_stub()`: import/extends/members 처리
-- Whiteboard UI "📐 Code" 버튼 + 미리보기 + Apply
+- `_find_nearby_text()`, `_extract_members_from_rect()`, `_find_nearest_class()` helpers
+- `generate_code_from_whiteboard()`: TypeScript skeleton generation
+- `_generate_class_stub()`: import/extends/members handling
+- Whiteboard UI "📐 Code" button + preview + Apply
 
-**Phase 5: 검증**
+**Phase 5: Verification**
 - `checkZooCodeCompatibility()`: vscode.extensions.getExtension('zoocodeorganization.zoo-code')
 - `checkNotificationHealth()`: AlarmMonitor recentAlarmCount/throttled
-- 모든 `showInformationMessage`/`showWarningMessage` → `NotificationThrottle.showInfo()`/`showWarning()`
-- 리소스 정리 확인: setTimeout/clearTimeout, fs.watchFile/unwatchFile, spawn/kill
+- All `showInformationMessage`/`showWarningMessage` → `NotificationThrottle.showInfo()`/`showWarning()`
+- Resource cleanup verification: setTimeout/clearTimeout, fs.watchFile/unwatchFile, spawn/kill
 
-**Phase 6: 문서 + GitHub + VSIX**
-- Architecture.md/PLAN.md/ROADMAP.md/JOURNAL.md 업데이트
+**Phase 6: Documentation + GitHub + VSIX**
+- Architecture.md/PLAN.md/ROADMAP.md/JOURNAL.md updated
 - git commit + push
-- VSIX 빌드 + 설치
+- VSIX build + installation

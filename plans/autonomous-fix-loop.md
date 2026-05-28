@@ -1,90 +1,90 @@
-# VibeZoo Autonomous Fix Loop — 설계 문서
+# VibeZoo Autonomous Fix Loop — Design Document
 
-> **작성일**: 2026-05-27
-> **버전**: v1.0
-> **상태**: 설계 단계
-> **관련 파일**: `AutoBuildFix.ts`, `BuildFeedback.ts`, `SubagentManager.ts`, `vibezoo_mcp_bridge.py`
+> **Written**: 2026-05-27
+> **Version**: v1.0
+> **Status**: Design Phase
+> **Related Files**: `AutoBuildFix.ts`, `BuildFeedback.ts`, `SubagentManager.ts`, `vibezoo_mcp_bridge.py`
 
 ---
 
-## 1. 문제 진단
+## 1. Problem Diagnosis
 
-### 1.1 현재 상태
+### 1.1 Current Status
 
-현재 VibeZoo의 `AutoBuildFix`는 다음과 같은 **빈 루프**다:
+VibeZoo's `AutoBuildFix` is currently the following **empty loop**:
 
 ```
-BuildFeedback → 빌드 실패 감지 → AutoBuildFix.run()
-                                      ├── exitCode 확인
-                                      ├── oscillation 체크
-                                      ├── rebuild() 재시도 (그냥 같은 빌드)
-                                      └── LLM 호출 없음! 코드 수정 없음!
+BuildFeedback → build failure detected → AutoBuildFix.run()
+                                      ├── check exitCode
+                                      ├── check oscillation
+                                      ├── rebuild() retry (just same build)
+                                      └── No LLM call! No code modification!
 ```
 
-[`AutoBuildFix.ts`](../extension/src/safety/AutoBuildFix.ts:29)의 `run()` 메서드는 `max_attempts=3`까지 rebuild만 반복할 뿐, **에러를 LLM에 전달해서 수정 코드를 받아오는 로직이 전무**하다. 따라서 빌드가 실패하면 영원히 실패한다.
+The `run()` method in [`AutoBuildFix.ts`](../extension/src/safety/AutoBuildFix.ts:29) only repeats rebuilding up to `max_attempts=3`, with **zero logic to pass errors to LLM and receive fix code**. Therefore, if the build fails, it fails forever.
 
-### 1.2 사용자 기대 vs 현실
+### 1.2 User Expectation vs Reality
 
-| 기대 | 현실 |
+| Expectation | Reality |
 |:---|:---|
-| "한 번 주문하면 계속 순환하면서 버그없이 완전하게" | 도구 상자 (파일 검색, 린트, 백업) |
-| 빌드 실패 → AI 분석 → 수정 → 재빌드 → 성공 | 빌드 실패 → 재빌드 → 실패 → 재빌드 → 실패 |
-| 자율적인 자기 치유 루프 | 수동으로 하나하나 버그 찾아서 고쳐야 함 |
+| "One order, continuous cycle, bug-free completion" | Toolbox (file search, lint, backup) |
+| Build failure → AI analysis → fix → rebuild → success | Build failure → rebuild → failure → rebuild → failure |
+| Autonomous self-healing loop | Must manually find and fix bugs one by one |
 
 ---
 
-## 2. 핵심 설계 원칙
+## 2. Core Design Principles
 
-### 2.1 아키텍처 제약
+### 2.1 Architecture Constraints
 
-VibeZoo는 Zoo Code 소스를 수정할 수 없는 **Companion Extension**이다. 따라서:
+VibeZoo is a **Companion Extension** that cannot modify Zoo Code source. Therefore:
 
-- Extension은 **LLM을 직접 호출할 수 없다** (API 키 없음)
-- 대신 **LLM이 VibeZoo의 도구를 호출**하는 방향으로 통신
-- Extension과 LLM 사이의 통신 채널: **파일 시스템** (Whiteboard에서 검증된 패턴)
+- Extension **cannot directly call LLM** (no API key)
+- Instead, communication flows in the direction of **LLM calling VibeZoo's tools**
+- Communication channel between Extension and LLM: **File System** (pattern verified in Whiteboard)
 
-### 2.2 핵심 인사이트: One Message = Many Fix Attempts
+### 2.2 Key Insight: One Message = Many Fix Attempts
 
-LLM(Zoo Code)은 한 번의 응답 안에서 여러 MCP 도구를 순차적으로 호출할 수 있다:
+LLM (Zoo Code) can sequentially call multiple MCP tools within a single response:
 
 ```
-사용자: "빌드 에러 고쳐줘" (1회 메시지)
+User: "Fix the build error" (1 message)
     │
     ▼
-LLM: auto_fix_status() 호출 → 에러 목록 수신
-LLM: search_codebase("에러 관련 파일") → 컨텍스트 수집
-LLM: review_code("실패한 파일") → 문제 분석
-LLM: 파일 수정 (edit tool)
-LLM: retry_build() 호출 → 새 빌드 결과 수신
+LLM: auto_fix_status() called → receive error list
+LLM: search_codebase("error-related files") → collect context
+LLM: review_code("failed file") → analyze problem
+LLM: File edit (edit tool)
+LLM: retry_build() called → receive new build result
     │
-    ├── 성공 → 완료 보고
-    └── 실패 → 다시 분석 → 수정 → retry_build() (같은 응답 내에서 반복)
+    ├── success → report completion
+    └── failure → analyze again → fix → retry_build() (repeat within same response)
 ```
 
-이 구조면 **사용자 개입 없이** 한 번의 메시지로 최대 `max_attempts`(기본 3회)까지 자동 순환 가능하다.
+With this structure, **without user intervention**, a single message can auto-cycle up to `max_attempts` (default 3).
 
 ---
 
-## 3. 전체 아키텍처
+## 3. Overall Architecture
 
-### 3.1 데이터 흐름도
+### 3.1 Data Flow Diagram
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        VS Code 창                                  │
+│                        VS Code Window                              │
 │                                                                   │
 │  ┌─────────────────────────┐    ┌─────────────────────────────┐  │
 │  │     Zoo Code (LLM)      │    │   VibeZoo Extension          │  │
 │  │                         │    │                              │  │
 │  │  ◄── MCP tool calls ────┼────┤  BuildFeedback              │  │
-│  │      auto_fix_status()  │    │  (빌드 실패 감지)            │  │
+│  │      auto_fix_status()  │    │  (build failure detection)   │  │
 │  │      retry_build()      │    │        │                     │  │
 │  │      search_codebase()  │    │        ▼                     │  │
-│  │      review_code()      │    │  FixLoopManager (신규)       │  │
+│  │      review_code()      │    │  FixLoopManager (new)        │  │
 │  │      map_dependencies() │    │  ┌───────────────────────┐   │  │
 │  │                         │    │  │ ~/.vibezoo-fix-       │   │  │
-│  │  파일 수정 (edit tool)  │    │  │   request.json        │   │  │
-│  │      │                  │    │  │   (에러 데이터)        │   │  │
+│  │  File edit (edit tool)  │    │  │   request.json        │   │  │
+│  │      │                  │    │  │   (error data)         │   │  │
 │  │      │                  │    │  ├───────────────────────┤   │  │
 │  │      │                  │    │  │ Attempt counter      │   │  │
 │  │      │                  │    │  │ Oscillation detector │   │  │
@@ -93,7 +93,7 @@ LLM: retry_build() 호출 → 새 빌드 결과 수신
 │  │      │                  │    │        │                     │  │
 │  │      │                  │    │        ▼                     │  │
 │  │      │                  │    │  StatusBar                   │  │
-│  │      │                  │    │  "Auto-Fix: 2/3 시도 중..." │  │
+│  │      │                  │    │  "Auto-Fix: Attempt 2/3..."  │  │
 │  └──────┼──────────────────┘    └─────────────────────────────┘  │
 │         │                                                        │
 └─────────┼────────────────────────────────────────────────────────┘
@@ -101,29 +101,29 @@ LLM: retry_build() 호출 → 새 빌드 결과 수신
           ▼
 ┌─────────────────────┐    ┌──────────────────────┐
 │  Crow Memory (9020) │    │  VibeZoo MCP Bridge  │
-│  • bug 레지스터     │    │  (9027/sse)          │
-│  • 과거 에러 패턴   │    │  • auto_fix_status   │
-│  • 수정 이력 학습   │    │  • retry_build       │
+│  • bug register     │    │  (9027/sse)          │
+│  • past error pats  │    │  • auto_fix_status   │
+│  • fix history learn│    │  • retry_build       │
 └─────────────────────┘    │  • search_codebase   │
                            │  • review_code       │
                            │  • map_dependencies  │
                            └──────────────────────┘
 ```
 
-### 3.2 구성 요소
+### 3.2 Components
 
-| 구성 요소 | 위치 | 역할 |
+| Component | Location | Role |
 |:---|:---|:---|
-| **FixLoopManager** | `extension/src/orchestra/FixLoopManager.ts` (신규) | 상태 관리, attempt 카운터, oscillation 감지, fix request 파일 읽기/쓰기 |
-| **BuildFeedback** | `extension/src/flow/BuildFeedback.ts` (수정) | 빌드 실패 감지 → FixLoopManager에 에러 전달 |
-| **AutoBuildFix** | `extension/src/safety/AutoBuildFix.ts` (대체) | 제거. FixLoopManager로 대체 |
-| **auto_fix_status** | `vibezoo_mcp_bridge.py` (MCP 도구 추가) | LLM이 현재 fix request 조회 |
-| **retry_build** | `vibezoo_mcp_bridge.py` (MCP 도구 추가) | LLM이 빌드 재실행 요청, 결과 반환 |
-| **crow_ingest (bug)** | Crow Memory | 과거 에러 패턴 저장 → 학습 |
+| **FixLoopManager** | `extension/src/orchestra/FixLoopManager.ts` (new) | State management, attempt counter, oscillation detection, fix request file read/write |
+| **BuildFeedback** | `extension/src/flow/BuildFeedback.ts` (modified) | Build failure detection → pass errors to FixLoopManager |
+| **AutoBuildFix** | `extension/src/safety/AutoBuildFix.ts` (replaced) | Removed. Replaced by FixLoopManager |
+| **auto_fix_status** | `vibezoo_mcp_bridge.py` (new MCP tool) | LLM queries current fix request |
+| **retry_build** | `vibezoo_mcp_bridge.py` (new MCP tool) | LLM requests build re-execution, returns result |
+| **crow_ingest (bug)** | Crow Memory | Store past error patterns → learning |
 
 ---
 
-## 4. Fix Request 파일 스펙
+## 4. Fix Request File Spec
 
 ### 4.1 `~/.vibezoo-fix-request.json`
 
@@ -158,58 +158,58 @@ LLM: retry_build() 호출 → 새 빌드 결과 수신
 }
 ```
 
-### 4.2 상태 머신
+### 4.2 State Machine
 
 ```
                     ┌──────────┐
-                    │  idle    │ (빌드 성공 상태)
+                    │  idle    │ (build success state)
                     └────┬─────┘
-                         │ 빌드 실패
+                         │ build failure
                          ▼
                     ┌──────────┐
-                    │ pending  │ (LLM 대기 중)
+                    │ pending  │ (waiting for LLM)
                     └────┬─────┘
-                         │ LLM이 auto_fix_status() 호출
+                         │ LLM calls auto_fix_status()
                          ▼
               ┌─────────────────────┐
-              │   in_progress       │ (LLM이 분석/수정 중)
+              │   in_progress       │ (LLM analyzing/fixing)
               └────────┬────────────┘
-                       │ LLM이 retry_build() 호출
+                       │ LLM calls retry_build()
                        ▼
               ┌─────────────────────┐
-              │   building          │ (빌드 실행 중)
+              │   building          │ (build executing)
               └────────┬────────────┘
                        │
           ┌────────────┼────────────┐
-          │ 빌드 성공  │            │ 빌드 실패
+          │ success    │            │ failure
           ▼            │            ▼
     ┌──────────┐       │    ┌──────────────┐
-    │ resolved │       │    │ attempt < max?│
+    │ resolved │       │    │ attempt < max│
     └──────────┘       │    └──┬───────┬───┘
                        │       │Yes    │No
                        │       ▼       ▼
                        │  pending  ┌──────────┐
-                       │  (재시도) │ give_up  │
+                       │  (retry)  │ give_up  │
                        │           └──────────┘
                        │
-                       │ oscillation 감지
+                       │ oscillation detected
                        ▼
                  ┌───────────┐
-                 │ abandoned │ (A→B→A 패턴)
+                 │ abandoned │ (A→B→A pattern)
                  └───────────┘
 ```
 
 ---
 
-## 5. 신규 MCP 도구
+## 5. New MCP Tools
 
 ### 5.1 `auto_fix_status()`
 
 ```python
 @mcp.tool
 def auto_fix_status() -> str:
-    """현재 진행 중인 Auto-Fix 세션의 상태와 에러 정보를 조회합니다.
-    LLM이 빌드 에러를 분석하고 수정을 시작할 때 호출합니다.
+    """Queries the status and error information of the current Auto-Fix session.
+    Called by LLM to analyze build errors and start fixing.
     
     Returns:
         JSON: { status, attempt, maxAttempts, diagnostics, history }
@@ -221,7 +221,7 @@ def auto_fix_status() -> str:
     with open(fix_request_file) as f:
         data = json.load(f)
     
-    # 상태를 in_progress로 변경
+    # Change status to in_progress
     data["status"] = "in_progress"
     with open(fix_request_file, "w") as f:
         json.dump(data, f, indent=2)
@@ -234,8 +234,8 @@ def auto_fix_status() -> str:
 ```python
 @mcp.tool
 def retry_build() -> str:
-    """빌드를 재실행하고 결과를 반환합니다.
-    LLM이 수정 코드를 적용한 후 빌드 성공 여부를 확인할 때 호출합니다.
+    """Re-executes the build and returns the result.
+    Called by LLM after applying fix code to verify build success.
     
     Returns:
         JSON: { exitCode, diagnostics, success }
@@ -244,7 +244,7 @@ def retry_build() -> str:
     
     root = os.getcwd()
     
-    # 프로젝트 타입 감지
+    # Detect project type
     pkg_json = Path(root) / "package.json"
     if pkg_json.exists():
         cmd = ["npx.cmd" if sys.platform == "win32" else "npx", "tsc", "--noEmit"]
@@ -253,7 +253,7 @@ def retry_build() -> str:
     
     result = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=60)
     
-    # 결과를 fix-request 파일에 기록
+    # Record result in fix-request file
     fix_request_file = os.path.join(os.path.expanduser("~"), ".vibezoo-fix-request.json")
     # ... update file with new attempt data
     
@@ -267,7 +267,7 @@ def retry_build() -> str:
 
 ---
 
-## 6. FixLoopManager 클래스 설계
+## 6. FixLoopManager Class Design
 
 ```typescript
 // extension/src/orchestra/FixLoopManager.ts
@@ -285,9 +285,9 @@ export class FixLoopManager {
       .get('build.autoFixMaxAttempts', 3);
   }
 
-  /** BuildFeedback이 빌드 실패 시 호출 */
+  /** Called by BuildFeedback on build failure */
   onBuildFailure(diagnostics: Diagnostic[], stderr: string): void {
-    // 새 fix 세션 시작 또는 기존 세션에 attempt 추가
+    // Start new fix session or add attempt to existing session
     if (!this.currentSession || this.currentSession.status === 'resolved') {
       this.currentSession = this.createSession(diagnostics);
     }
@@ -306,7 +306,7 @@ export class FixLoopManager {
     this.updateStatusBar();
   }
 
-  /** LLM이 retry_build로 빌드 성공 보고 시 호출 */
+  /** Called when LLM reports build success via retry_build */
   onBuildSuccess(): void {
     if (this.currentSession) {
       this.currentSession.status = 'resolved';
@@ -315,9 +315,9 @@ export class FixLoopManager {
     }
   }
 
-  /** Oscillation 감지 */
+  /** Oscillation detection */
   isOscillating(): boolean {
-    // A→B→A 패턴: 최근 4회 attempt에서 짝수/홀수 에러 시그니처 비교
+    // A→B→A pattern: compare even/odd error signatures in last 4 attempts
     const h = this.currentSession?.history ?? [];
     if (h.length < 4) return false;
     const recent = h.slice(-4);
@@ -325,7 +325,7 @@ export class FixLoopManager {
     return sigs[0] === sigs[2] && sigs[1] === sigs[3];
   }
 
-  /** Give up 조건 */
+  /** Give up conditions */
   shouldGiveUp(): boolean {
     if (!this.currentSession) return false;
     if (this.currentSession.history.length >= this.maxAttempts) return true;
@@ -340,33 +340,33 @@ export class FixLoopManager {
       .join('|');
   }
 
-  private writeFixRequest(): void { /* JSON 파일 쓰기 */ }
-  private updateStatusBar(success = false): void { /* StatusBar 업데이트 */ }
-  private createSession(diagnostics: Diagnostic[]): FixSession { /* 새 세션 생성 */ }
+  private writeFixRequest(): void { /* Write JSON file */ }
+  private updateStatusBar(success = false): void { /* Update StatusBar */ }
+  private createSession(diagnostics: Diagnostic[]): FixSession { /* Create new session */ }
 }
 ```
 
 ---
 
-## 7. 수정할 기존 파일
+## 7. Existing Files to Modify
 
 ### 7.1 `BuildFeedback.ts`
 
 ```diff
-// 기존: AutoBuildFix 호출
+// Before: calling AutoBuildFix
 - vscode.commands.executeCommand('vibezoo._autoBuildFix', result);
 
-// 변경: FixLoopManager에 에러 전달 + StatusBar에 Fix 액션 버튼
+// After: pass errors to FixLoopManager + show StatusBar Fix action button
 + fixLoopManager.onBuildFailure(result.diagnostics, result.stderr);
 + vscode.window.setStatusBarMessage(
-+   `$(warning) VibeZoo: 빌드 실패 — [자동 수정]`,
++   `$(warning) VibeZoo: Build Failed — [Auto Fix]`,
 +   10000
 + );
 ```
 
 ### 7.2 `AutoBuildFix.ts`
 
-**전면 폐기** → `FixLoopManager.ts`로 대체. `extension.ts`에서 `AutoBuildFix` import 제거, `FixLoopManager`로 교체.
+**Full disposal** → replaced by `FixLoopManager.ts`. Remove `AutoBuildFix` import from `extension.ts`, replace with `FixLoopManager`.
 
 ### 7.3 `extension.ts`
 
@@ -380,47 +380,47 @@ export class FixLoopManager {
 
 ### 7.4 `vibezoo_mcp_bridge.py`
 
-`auto_fix_status()`와 `retry_build()` MCP 도구 추가.
+Add `auto_fix_status()` and `retry_build()` MCP tools.
 
 ---
 
-## 8. 사용자 경험 (UX)
+## 8. User Experience (UX)
 
-### 8.1 수동 트리거 (기본)
-
-```
-1. 사용자가 코드 작성
-2. 빌드 실행 → 실패
-3. StatusBar: "$(warning) 빌드 실패 — [자동 수정]" (클릭 가능)
-4. 사용자가 [자동 수정] 클릭 또는 "고쳐줘" 메시지 전송
-5. LLM이:
-   - auto_fix_status()로 에러 확인
-   - search_codebase()로 관련 파일 검색
-   - review_code()로 문제 파일 분석
-   - 파일 수정
-   - retry_build()로 확인
-   - 실패 시 재시도 (같은 응답 내에서)
-6. StatusBar: "$(check) Auto-Fix: 2회 시도 후 성공"
-```
-
-### 8.2 자동 트리거 (옵션, `build.autoFix: true`)
+### 8.1 Manual Trigger (Default)
 
 ```
-1. 빌드 실패
-2. StatusBar에 즉시 "$(sync~spin) Auto-Fix 진행 중..."
-3. VS Code notification: "빌드 실패 — 자동 수정을 시작할까요? [예] [아니오]"
-4. 사용자가 [예] 클릭 → LLM 세션 시작
-5. 이후 동일한 수동 트리거 흐름
+1. User writes code
+2. Build executes → fails
+3. StatusBar: "$(warning) Build Failed — [Auto Fix]" (clickable)
+4. User clicks [Auto Fix] or sends "fix it" message
+5. LLM will:
+   - auto_fix_status() to check errors
+   - search_codebase() to find related files
+   - review_code() to analyze problem files
+   - Fix files
+   - retry_build() to verify
+   - On failure, retry (within same response)
+6. StatusBar: "$(check) Auto-Fix: Success after 2 attempts"
+```
+
+### 8.2 Automatic Trigger (Optional, `build.autoFix: true`)
+
+```
+1. Build fails
+2. StatusBar immediately shows "$(sync~spin) Auto-Fix in progress..."
+3. VS Code notification: "Build failed — Start auto fix? [Yes] [No]"
+4. User clicks [Yes] → LLM session starts
+5. Same flow as manual trigger from here
 ```
 
 ---
 
-## 9. Crow Memory 연동
+## 9. Crow Memory Integration
 
-### 9.1 에러 패턴 저장
+### 9.1 Error Pattern Storage
 
 ```python
-# retry_build() 내에서
+# Inside retry_build()
 if result.returncode != 0:
     try_crow_ingest(
         content=json.dumps({
@@ -432,10 +432,10 @@ if result.returncode != 0:
     )
 ```
 
-### 9.2 과거 에러 패턴 조회
+### 9.2 Past Error Pattern Query
 
 ```python
-# auto_fix_status() 내에서
+# Inside auto_fix_status()
 past_fixes = try_crow_recall(
     query=f"build error {error_code}",
     register="bug",
@@ -443,146 +443,146 @@ past_fixes = try_crow_recall(
 )
 ```
 
-LLM이 `auto_fix_status()` 결과에 포함된 과거 수정 이력을 참고하여 더 빠르게 fix 생성.
+LLM references past fix history included in `auto_fix_status()` results to generate fixes faster.
 
 ---
 
-## 10. Oscillation / Give-up 전략
+## 10. Oscillation / Give-up Strategy
 
-### 10.1 Oscillation 감지 (A→B→A 패턴)
+### 10.1 Oscillation Detection (A→B→A pattern)
 
 ```
 Attempt 1: TS2322 at VisualVibePanels.ts:388 → fix applied
 Attempt 2: TS2345 at VisualVibePanels.ts:442 → fix applied
 Attempt 3: TS2322 at VisualVibePanels.ts:388 → SAME AS ATTEMPT 1 (oscillation!)
-→ Stop. "A→B→A 패턴 감지. 수동 확인 필요."
+→ Stop. "A→B→A pattern detected. Manual inspection required."
 ```
 
-### 10.2 Repeated Error 감지
+### 10.2 Repeated Error Detection
 
-동일한 파일/라인/코드의 에러가 2회 연속 발생 → 수정이 효과 없음. Stop.
+Same file/line/code error occurs 2 consecutive times → fix ineffective. Stop.
 
 ### 10.3 Timeout
 
-전체 fix loop 120초 제한. 초과 시 give up.
+Entire fix loop limited to 120 seconds. Give up on timeout.
 
 ---
 
-## 11. 구현 우선순위
+## 11. Implementation Priority
 
-| 순위 | 항목 | 설명 |
+| Priority | Item | Description |
 |:---:|:---|:---|
-| 1 | `FixLoopManager` | 핵심 상태 머신, attempt 카운터, oscillation 감지 |
-| 2 | `auto_fix_status` MCP 도구 | LLM이 에러 정보를 읽는 진입점 |
-| 3 | `retry_build` MCP 도구 | LLM이 빌드를 재실행하고 결과를 받는 도구 |
-| 4 | `BuildFeedback` 연동 | 빌드 실패 → FixLoopManager 연결 |
-| 5 | StatusBar 액션 버튼 | "[자동 수정]" 클릭 가능한 UX |
-| 6 | Crow Memory 연동 | 과거 에러 패턴 학습/조회 |
-| 7 | 기존 `AutoBuildFix` 제거 | dead code cleanup |
+| 1 | `FixLoopManager` | Core state machine, attempt counter, oscillation detection |
+| 2 | `auto_fix_status` MCP tool | Entry point for LLM to read error info |
+| 3 | `retry_build` MCP tool | Tool for LLM to re-execute build and receive results |
+| 4 | `BuildFeedback` integration | Build failure → FixLoopManager connection |
+| 5 | StatusBar action button | Clickable "[Auto Fix]" UX |
+| 6 | Crow Memory integration | Past error pattern learning/query |
+| 7 | Remove existing `AutoBuildFix` | Dead code cleanup |
 
 ---
 
-## 12. 검증 시나리오
+## 12. Verification Scenarios
 
-### 시나리오 1: 단순 타입 에러 (1회 수정)
+### Scenario 1: Simple Type Error (1 fix)
 
 ```
-1. TS2322 타입 에러 발생
-2. 사용자 "고쳐줘"
-3. LLM: auto_fix_status() → 에러 확인
-4. LLM: 파일 수정 (타입 교정)
+1. TS2322 type error occurs
+2. User says "fix it"
+3. LLM: auto_fix_status() → check error
+4. LLM: Fix file (type correction)
 5. LLM: retry_build() → exitCode 0
-6. 완료: "1회 시도 후 빌드 성공"
+6. Complete: "Build succeeded after 1 attempt"
 ```
 
-### 시나리오 2: 연쇄 에러 (2회 수정)
+### Scenario 2: Chain Errors (2 fixes)
 
 ```
-1. TS2322 + TS2345 2개 에러 발생
-2. LLM: 첫 번째 에러만 수정 → retry_build()
-3. 빌드 실패 (TS2345만 남음)
-4. LLM: auto_fix_status() → 남은 에러 확인
-5. LLM: 두 번째 에러 수정 → retry_build()
-6. 빌드 성공
-7. 완료: "2회 시도 후 빌드 성공"
+1. 2 errors TS2322 + TS2345 occur
+2. LLM: Fix only first error → retry_build()
+3. Build fails (only TS2345 remains)
+4. LLM: auto_fix_status() → check remaining error
+5. LLM: Fix second error → retry_build()
+6. Build succeeds
+7. Complete: "Build succeeded after 2 attempts"
 ```
 
-### 시나리오 3: Oscillation (조기 중단)
+### Scenario 3: Oscillation (Early Abort)
 
 ```
 1. TS2322 at A.ts:100
 2. LLM fixes → new error TS2322 at B.ts:200
 3. LLM fixes → TS2322 at A.ts:100 AGAIN
-4. FixLoopManager: oscillation 감지 → abandoned
-5. 사용자에게: "A→B→A 패턴 감지. 수동 확인이 필요합니다."
+4. FixLoopManager: oscillation detected → abandoned
+5. To user: "A→B→A pattern detected. Manual inspection required."
 ```
 
-### 시나리오 4: 사용자 개입 — Whiteboard 유도
+### Scenario 4: User Intervention — Whiteboard Guidance
 
 ```
-1. TS2322 + TS2345 복합 에러 발생, Auto-Fix 진행 중 (attempt 1 실패)
-2. 사용자가 Whiteboard에 "여기 API 시그니처 바꾸지 마" 라고 텍스트 작성
-3. LLM: check_intervention() → Whiteboard에서 사용자 메모 발견
-4. LLM: "API 시그니처를 유지하면서 내부 로직만 수정하는 방식으로 전환"
-5. LLM: retry_build() → 성공
-6. 완료: "2회 시도 (사용자 Whiteboard 가이드 반영)"
+1. Complex TS2322 + TS2345 errors, Auto-Fix in progress (attempt 1 failed)
+2. User writes on Whiteboard: "Don't change API signature here"
+3. LLM: check_intervention() → finds user note on Whiteboard
+4. LLM: "Switch to fixing only internal logic while preserving API signature"
+5. LLM: retry_build() → success
+6. Complete: "2 attempts (user Whiteboard guidance applied)"
 ```
 
-### 시나리오 5: 사용자 개입 — 채팅 중단
+### Scenario 5: User Intervention — Chat Interruption
 
 ```
-1. Auto-Fix 진행 중, attempt 2까지 실패
-2. 사용자가 채팅: "그 파일은 건드리지 말고 다른 방식으로 해결해줘"
-3. LLM: check_intervention() → 채팅 메시지 감지
-4. LLM: "알겠습니다. 해당 파일을 제외한 다른 접근법을 시도합니다"
-5. LLM: 다른 파일 수정 → retry_build() → 성공
-6. 완료: "3회 시도 (사용자 채팅 피드백 반영)"
+1. Auto-Fix in progress, attempt 2 failed
+2. User chats: "Don't touch that file, solve it differently"
+3. LLM: check_intervention() → detects chat message
+4. LLM: "Understood. Will try a different approach excluding that file"
+5. LLM: Fix other files → retry_build() → success
+6. Complete: "3 attempts (user chat feedback applied)"
 ```
 
 ---
 
-## 13. Human-in-the-Loop: Whiteboard + Chat 개입
+## 13. Human-in-the-Loop: Whiteboard + Chat Intervention
 
-### 13.1 설계 원칙
+### 13.1 Design Principles
 
-자율 수정 루프는 **완전 자동이 아니라 인간이 개입할 수 있는 반자동**이어야 한다. VibeZoo의 핵심 철학인 "사용자가 통제 가능한 자동화"를 구현하기 위해, 수정 루프의 **매 attempt 전에 사용자 개입 창구**를 연다.
+The autonomous fix loop should be **semi-automatic with human intervention, not fully automatic**. To implement VibeZoo's core philosophy of "user-controllable automation", the fix loop opens a **user intervention channel before each attempt**.
 
-### 13.2 개입 채널 2종
+### 13.2 2 Intervention Channels
 
 ```
-Auto-Fix Loop 내부:
+Inside Auto-Fix Loop:
 
-  attempt N 시작
+  attempt N starts
       │
       ▼
-  check_intervention() 호출
+  check_intervention() called
       │
-      ├── Whiteboard 확인 (get_whiteboard_state)
-      │   → 사용자 그림/메모/주석 추출
+      ├── Check Whiteboard (get_whiteboard_state)
+      │   → Extract user drawings/memos/annotations
       │
-      ├── Pending Message 확인
+      ├── Check Pending Message
       │   → ~/.vibezoo-chat-pending.json
-      │   → StatusBar 인터랙션 결과
+      │   → StatusBar interaction results
       │
-      └── 결과에 따라:
-          ├── 개입 없음 → 계속 진행
-          └── 개입 있음 → 사용자 의도 반영 후 진행
+      └── Based on result:
+          ├── No intervention → continue
+          └── Intervention → incorporate user intent and proceed
 ```
 
-### 13.3 Whiteboard 개입
+### 13.3 Whiteboard Intervention
 
-**사용 시나리오**:
-- AI가 코드를 수정하는 동안, 사용자는 Whiteboard에 영향 범위 표시 (원, 화살표)
-- "여기까지만 수정해" 라고 텍스트 박스로 영역 지정
-- 아키텍처 다이어그램을 그려서 AI에게 의도 전달
-- 이전에 발생했던 유사 버그 패턴을 그림으로 설명
+**User Scenarios**:
+- While AI is modifying code, user marks scope on Whiteboard (circles, arrows)
+- "Modify only up to here" area specification with text box
+- Draw architecture diagram to convey intent to AI
+- Visually explain similar bug patterns that occurred before
 
-**구현**:
+**Implementation**:
 ```python
 @mcp.tool
 def check_intervention() -> str:
-    """Auto-Fix Loop 진행 전 사용자 개입 여부를 확인합니다.
-    Whiteboard 상태와 대기 중인 채팅 메시지를 조회합니다.
+    """Checks for user intervention before Auto-Fix Loop proceeds.
+    Queries Whiteboard status and pending chat messages.
     
     Returns:
         JSON: { whiteboard_annotations, pending_messages, user_guidance, should_pause }
@@ -594,12 +594,12 @@ def check_intervention() -> str:
         "should_pause": False
     }
     
-    # 1. Whiteboard 확인
+    # 1. Check Whiteboard
     wb_file = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard.json")
     if os.path.exists(wb_file):
         with open(wb_file) as f:
             wb_data = json.load(f)
-        # 텍스트 객체만 추출 (사용자 메모)
+        # Extract only text objects (user memos)
         for cmd in wb_data.get("commands", []):
             if cmd.get("type") == "text":
                 result["whiteboard_annotations"].append({
@@ -607,94 +607,94 @@ def check_intervention() -> str:
                     "position": {"left": cmd.get("props", {}).get("left", 0)}
                 })
     
-    # 2. Pending chat messages 확인
+    # 2. Check pending chat messages
     pending_file = os.path.join(os.path.expanduser("~"), ".vibezoo-chat-pending.json")
     if os.path.exists(pending_file):
         with open(pending_file) as f:
             pending = json.load(f)
         result["pending_messages"] = pending.get("messages", [])
-        os.remove(pending_file)  # 중복 처리 방지
+        os.remove(pending_file)  # Prevent duplicate processing
     
-    # 3. 사용자 가이드라인 종합
+    # 3. Synthesize user guidance
     if result["whiteboard_annotations"] or result["pending_messages"]:
         result["user_guidance"] = _synthesize_guidance(result)
     
     return json.dumps(result, indent=2, ensure_ascii=False)
 ```
 
-**Whiteboard → 코드 매핑 규칙**:
-- 사용자가 파일명/라인번호 적으면 → LLM이 해당 범위만 수정
-- "DO NOT TOUCH" + 화살표 → LLM이 해당 파일/함수 제외
-- 아키텍처 그림 → LLM이 구조적 제약으로 해석
+**Whiteboard → Code Mapping Rules**:
+- User writes filename/line number → LLM only modifies that scope
+- "DO NOT TOUCH" + arrow → LLM excludes that file/function
+- Architecture drawing → LLM interprets as structural constraint
 
-### 13.4 Chat 개입
+### 13.4 Chat Intervention
 
-**사용 시나리오**:
-- Auto-Fix 진행 중 사용자가 채팅창에 "잠깐 멈춰" → 루프 일시정지
-- "저 파일은 API라서 건드리면 안 돼" → 제외 목록에 추가
-- "대신 이렇게 해봐: ..." → 새로운 접근법 제시
-- "지금 수정 괜찮아, 계속 진행해" → 루프 재개
+**User Scenarios**:
+- During Auto-Fix, user types "pause" in chat → loop pauses
+- "That file is an API, don't touch it" → added to exclusion list
+- "Try this instead: ..." → suggests new approach
+- "Current fix is fine, continue" → resume loop
 
-**StatusBar 액션 버튼**:
+**StatusBar Action Buttons**:
 
-| 버튼 | 동작 |
+| Button | Action |
 |:---|:---|
-| `[일시정지]` | pause_fix_loop() → 현재 attempt 완료 후 대기 |
-| `[계속 진행]` | resume_fix_loop() → 중단된 루프 재개 |
-| `[중단]` | abort_fix_loop() → 즉시 종료, 변경사항 유지 |
-| `[되돌리기]` | rewind_fix_loop() → yocto로 수정 전 상태 복구 |
-| `[가이드 작성]` | Whiteboard 열기 → 사용자 의도 시각화 |
+| `[Pause]` | pause_fix_loop() → wait after current attempt completes |
+| `[Resume]` | resume_fix_loop() → resume paused loop |
+| `[Abort]` | abort_fix_loop() → immediate stop, keep changes |
+| `[Rewind]` | rewind_fix_loop() → restore pre-fix state with yocto |
+| `[Write Guide]` | Open Whiteboard → visualize user intent |
 
-### 13.5 Fix Loop 상태 머신 (개입 상태 추가)
+### 13.5 Fix Loop State Machine (With Intervention States)
 
 ```
 idle → pending → in_progress → building → resolved
                     │                │
-                    │                ├── 실패 → pending (재시도)
+                    │                ├── fail → pending (retry)
                     │                └── oscillation/max → abandoned
                     │
-                    └── check_intervention() 에서 should_pause
+                    └── check_intervention() detects should_pause
                               │
                               ▼
-                       awaiting_user  ← 사용자 개입 대기
+                       awaiting_user  ← waiting for user intervention
                               │
-                              │ 사용자 메시지 / Whiteboard 업데이트
+                              │ user message / Whiteboard update
                               ▼
-                       user_override  ← 사용자 가이드 반영
+                        user_override  ← user guidance applied
                               │
                               ▼
-                        in_progress (재개)
+                         in_progress (resumed)
 ```
 
-### 13.6 MCP 도구 추가 (개입용)
+### 13.6 MCP Tools Added (For Intervention)
 
-| 도구 | 용도 |
+| Tool | Purpose |
 |:---|:---|
-| `check_intervention()` | Whiteboard + 채팅 메시지 확인. 매 attempt 전에 LLM이 호출 |
-| `request_user_guidance(question)` | LLM이 사용자에게 질문. StatusBar에 표시 + pending 파일 기록 |
-| `pause_fix_loop(reason)` | 현재 attempt 완료 후 루프 일시정지 |
-| `resume_fix_loop()` | 사용자가 재개 승인 |
+| `check_intervention()` | Check Whiteboard + chat messages. Called by LLM before each attempt |
+| `request_user_guidance(question)` | LLM asks user a question. Displayed on StatusBar + pending file written |
+| `pause_fix_loop(reason)` | Pause loop after current attempt completes |
+| `resume_fix_loop()` | User approves resume |
 
-### 13.7 개입 우선순위
+### 13.7 Intervention Priority
 
-사용자 개입이 감지되면 다음 규칙을 따른다:
+When user intervention is detected, follow these rules:
 
-1. **"중단" 명령** → 즉시 루프 종료 (최우선)
-2. **"파일 제외" 지시** → 해당 파일 수정 건너뛰기
-3. **"접근법 변경" 지시** → 다음 attempt에 새 전략 적용
-4. **Whiteboard 주석** → 텍스트는 명령으로, 그림은 컨텍스트로 해석
-5. **일반 피드백** → 다음 수정에 참고
+1. **"Abort" command** → immediate loop termination (highest priority)
+2. **"Exclude file" directive** → skip that file modification
+3. **"Change approach" directive** → apply new strategy in next attempt
+4. **Whiteboard annotations** → text as commands, drawings as context
+5. **General feedback** → reference for next fix
 
 ---
 
-## 14. 파일 변경 요약
+## 14. File Change Summary
 
-| 파일 | 액션 | 설명 |
+| File | Action | Description |
 |:---|:---|:---|
-| `extension/src/orchestra/FixLoopManager.ts` | **신규** | 핵심 상태 머신, attempt 관리, oscillation 감지, 사용자 개입 처리 |
-| `extension/src/flow/BuildFeedback.ts` | **수정** | AutoBuildFix 호출 → FixLoopManager 연동 |
-| `extension/src/safety/AutoBuildFix.ts` | **삭제** | FixLoopManager로 대체 |
-| `extension/src/extension.ts` | **수정** | AutoBuildFix → FixLoopManager 교체, 개입용 커맨드 4종 등록 (pause/resume/abort/rewind) |
-| `mcp-servers/vibezoo_mcp_bridge.py` | **수정** | `auto_fix_status()`, `retry_build()`, `check_intervention()`, `request_user_guidance()`, `pause_fix_loop()`, `resume_fix_loop()` 추가 |
-| `extension/src/types/index.ts` | **수정** | `FixSession`, `FixLoopState`(awaiting_user, user_override 추가), `UserGuidance` 타입 추가 |
-| `extension/src/visual/VisualVibePanels.ts` | **수정** | Whiteboard 텍스트 객체 → `check_intervention()` 연동 (ready 신호로 fix loop에 컨텍스트 제공) |
+| `extension/src/orchestra/FixLoopManager.ts` | **New** | Core state machine, attempt management, oscillation detection, user intervention handling |
+| `extension/src/flow/BuildFeedback.ts` | **Modify** | AutoBuildFix call → FixLoopManager integration |
+| `extension/src/safety/AutoBuildFix.ts` | **Delete** | Replaced by FixLoopManager |
+| `extension/src/extension.ts` | **Modify** | AutoBuildFix → FixLoopManager replacement, 4 intervention commands registered (pause/resume/abort/rewind) |
+| `mcp-servers/vibezoo_mcp_bridge.py` | **Modify** | Add `auto_fix_status()`, `retry_build()`, `check_intervention()`, `request_user_guidance()`, `pause_fix_loop()`, `resume_fix_loop()` |
+| `extension/src/types/index.ts` | **Modify** | Add `FixSession`, `FixLoopState`(awaiting_user, user_override added), `UserGuidance` types |
+| `extension/src/visual/VisualVibePanels.ts` | **Modify** | Whiteboard text objects → `check_intervention()` integration (provides context to fix loop via ready signal) |
