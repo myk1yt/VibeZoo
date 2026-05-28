@@ -77,8 +77,9 @@ def _validate_file_path(file_path: str) -> Optional[str]:
         return "File path must not be empty."
     p = Path(file_path)
     if not p.exists():
-        # 상대 경로로 시도
-        p = Path(os.getcwd()) / file_path
+        # 절대 경로가 아니면 cwd 기준으로 시도
+        if not p.is_absolute():
+            p = Path(os.getcwd()) / file_path
         if not p.exists():
             return f"File not found: {file_path}"
     if not p.is_file():
@@ -171,9 +172,14 @@ _ts_ts_language_js = None
 
 def _init_tree_sitter():
     """Tree-sitter 초기화 — 실패 시 False 반환 (regex fallback)"""
-    global _ts_available, _ts_parser
-    if _ts_available:
+    global _ts_available, _ts_parser, _ts_ts_language, _ts_ts_language_js
+    if _ts_available and _ts_ts_language is not None:
         return True
+    # Reset state
+    _ts_available = False
+    _ts_parser = None
+    _ts_ts_language = None
+    _ts_ts_language_js = None
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "tree-sitter", "--quiet"],
@@ -238,16 +244,22 @@ def _parse_with_tree_sitter(content: str, file_ext: str) -> dict:
             elif node_type in ("class_declaration",):
                 name_node = node.child_by_field_name("name")
                 if name_node:
+                    start = node.start_point
+                    end = node.end_point
                     classes.append({
                         "name": content[name_node.start_byte:name_node.end_byte],
-                        "line": node.start_point[0] + 1,
+                        "line": start[0] + 1,
+                        "end_line": end[0] + 1,
                     })
             elif node_type in ("interface_declaration", "type_alias_declaration"):
                 name_node = node.child_by_field_name("name")
                 if name_node:
+                    start = node.start_point
+                    end = node.end_point
                     interfaces.append({
                         "name": content[name_node.start_byte:name_node.end_byte],
-                        "line": node.start_point[0] + 1,
+                        "line": start[0] + 1,
+                        "end_line": end[0] + 1,
                         "type": node_type,
                     })
             for child in node.children:
@@ -422,16 +434,23 @@ def _extract_regex_imports(file_path: str) -> list:
     imports = []
     for line in content.split("\n"):
         line = line.strip()
-        # TypeScript/JavaScript
-        m = re.search(r'from [\'"]([^\'"]+)[\'"]', line)
+        # TypeScript/JavaScript (import { x } from 'y'; or const x = require('y'))
+        m = re.search(r'(?:from|require)\s*[\'"]([^\'"]+)[\'"]', line)
         if m:
             imports.append(m.group(1))
-        # Python
-        m = re.match(r'(?:import|from)\s+(\S+)', line)
+            continue
+        # Python: import X or from X import Y
+        m = re.match(r'(?:import|from)\s+([\w.]+)', line)
         if m:
             imports.append(m.group(1))
-        # Go
-        m = re.match(r'import\s+"([^"]+)"', line)
+            continue
+        # Go: import "path" or import ("path")
+        m = re.search(r'import\s+"([^"]+)"', line)
+        if m:
+            imports.append(m.group(1))
+            continue
+        # Go grouped import: "path" inside import(...)
+        m = re.search(r'^\s*"([^"]+)"', line)
         if m:
             imports.append(m.group(1))
     return imports
@@ -514,7 +533,7 @@ def search_codebase(query: str, file_patterns: Optional[str] = None, max_results
 
     max_results = max(1, min(max_results, 200))  # 1~200 제한
 
-    patterns = file_patterns.split(",") if file_patterns else ["*.ts", "*.tsx", "*.js", "*.jsx", "*.py", "*.go", "*.rs"]
+    patterns = [p.strip() for p in file_patterns.split(",") if p.strip()] if file_patterns else ["*.ts", "*.tsx", "*.js", "*.jsx", "*.py", "*.go", "*.rs"]
     root = Path(os.getcwd())
     results = []
     ast_results = []
@@ -637,6 +656,7 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
 
     # 디렉토리 구조 (깊이 제한 3, rglob("*") 대신 iterdir 사용)
     output += "## Directory Structure\n\n"
+    tree_lines = []
     def _print_tree(dir_path: Path, prefix: str = "", depth: int = 0):
         if depth > 3:
             return
@@ -650,13 +670,13 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
             is_last = (i == len(entries) - 1)
             connector = "└── " if is_last else "├── "
             if entry.is_dir():
-                output_part = f"{prefix}{connector}📁 {entry.name}/\n"
-                output += output_part
+                tree_lines.append(f"{prefix}{connector}📁 {entry.name}/\n")
                 extension = "    " if is_last else "│   "
                 _print_tree(entry, prefix + extension, depth + 1)
             else:
-                output += f"{prefix}{connector}📄 {entry.name}\n"
+                tree_lines.append(f"{prefix}{connector}📄 {entry.name}\n")
     _print_tree(root)
+    output += "".join(tree_lines)
     output += "\n"
 
     # 기술 스택 감지
@@ -858,18 +878,21 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
 
     if (root / "go.mod").exists():
         try:
+            # go callgraph is not standard; use go vet as a lightweight alternative
             result = subprocess.run(
-                ["go", "callgraph", "./..."],
+                ["go", "vet", "./..."],
                 cwd=str(root), capture_output=True, text=True, timeout=30
             )
-            if result.stdout:
-                output += f"## Go Call Graph\n\n```\n{_truncate(result.stdout, 2000)}\n```\n"
+            if result.stderr:
+                output += f"## Go Vet\n\n```\n{_truncate(result.stderr, 2000)}\n```\n"
+            else:
+                output += "## Go Vet\n\n✅ No issues found.\n"
         except FileNotFoundError:
-            output += "## Go Call Graph\n\n⚠️ Go not available.\n"
+            output += "## Go Vet\n\n⚠️ Go not available.\n"
         except subprocess.TimeoutExpired:
-            output += "## Go Call Graph\n\n⚠️ go callgraph timed out.\n"
+            output += "## Go Vet\n\n⚠️ go vet timed out.\n"
         except Exception as e:
-            output += f"## Go Call Graph\n\n❌ Error: {e}\n"
+            output += f"## Go Vet\n\n❌ Error: {e}\n"
 
     # TypeScript/JavaScript: AST 기반 함수 호출 분석
     output += "\n## Function Call Graph (AST)\n\n"
@@ -1040,7 +1063,7 @@ def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3
 
         for key in patterns:
             if key == "async/await usage":
-                patterns[key] += content.count("async ") + content.count("await ")
+                patterns[key] += content.count("async") + content.count("await")
             elif key == "try-catch usage":
                 patterns[key] += content.count("try {") + content.count("catch (") + content.count("except")
             elif key == "console.log usage":
@@ -1081,22 +1104,22 @@ def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3
 
 
 @mcp.tool
-def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown") -> str:
+def reverse_engineer(target_path: Optional[str] = None, output_format: str = "markdown") -> str:
     """코드베이스로부터 아키텍처 문서, API 명세, ERD를 자동 생성합니다.
     tree-sitter AST로 데이터 모델의 실제 필드까지 추출합니다.
     
     Args:
         target_path: 분석 대상 경로
-        format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
+        output_format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
     """
-    err = _validate_string(format, "format")
+    err = _validate_string(output_format, "format")
     if err:
         return _markdown_header("Reverse Engineering Error", "❌") + f"**{err}**\n" + _markdown_footer()
 
     allowed_formats = {"markdown", "openapi", "mermaid"}
-    if format not in allowed_formats:
+    if output_format not in allowed_formats:
         return (_markdown_header("Reverse Engineering Error", "❌")
-                + f"**Invalid format: `{format}`. Allowed: {', '.join(allowed_formats)}**\n"
+                + f"**Invalid format: `{output_format}`. Allowed: {', '.join(allowed_formats)}**\n"
                 + _markdown_footer())
 
     root = Path(get_project_root(target_path))
@@ -1173,7 +1196,7 @@ def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown"
         output += "- No data models detected.\n"
 
     # 형식별 출력
-    if format == "mermaid":
+    if output_format == "mermaid":
         output += "\n## ER Diagram (Mermaid)\n\n```mermaid\nerDiagram\n"
         if all_fields:
             for model_name, fields in all_fields.items():
@@ -1185,7 +1208,7 @@ def reverse_engineer(target_path: Optional[str] = None, format: str = "markdown"
         else:
             output += "  User ||--o{ Order : places\n  Order ||--|{ OrderItem : contains\n"
         output += "```\n"
-    elif format == "openapi":
+    elif output_format == "openapi":
         output += "\n## OpenAPI 3.0 Spec\n\n```yaml\nopenapi: 3.0.0\ninfo:\n  title: Auto-detected API\n  version: 0.1.0\npaths: {}\n```\n"
 
     output += _markdown_footer()
@@ -1305,12 +1328,16 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
             if result.stdout:
                 lines = result.stdout.strip().split("\n")
                 output += "## pytest Coverage\n\n```\n" + "\n".join(lines[-20:]) + "\n```\n"
+            elif result.stderr:
+                output += "## pytest Coverage\n\n❌ " + result.stderr.strip()[-500:] + "\n"
+            else:
+                output += "## pytest Coverage\n\n❌ No output from pytest.\n"
         except FileNotFoundError:
-            pass
+            output += "## pytest Coverage\n\n⚠️ pytest not installed.\n"
         except subprocess.TimeoutExpired:
-            pass
-        except Exception:
-            pass
+            output += "## pytest Coverage\n\n⚠️ pytest timed out (60s).\n"
+        except Exception as e:
+            output += f"## pytest Coverage\n\n❌ Error: {e}\n"
 
     try_crow_ingest(f"Coverage analysis on {root.name}", register="context")
     output += _markdown_footer()
@@ -1420,7 +1447,8 @@ def open_whiteboard(message: str = "") -> str:
     """VibeZoo 화이트보드를 엽니다. AI가 시각적 설명이 필요할 때 호출합니다."""
     try:
         data = {"action": "open", "message": message, "timestamp": time.time()}
-        with open(WHITEBOARD_FILE.replace(".json", "-action.json"), "w") as f:
+        action_file = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard-action.json")
+        with open(action_file, "w") as f:
             json.dump(data, f)
         try_crow_ingest(f"Whiteboard opened: {message[:100]}" if message else "Whiteboard opened", register="context")
         return (_markdown_header("Whiteboard")
@@ -1667,6 +1695,16 @@ def _run_tool(name: str, **kwargs):
         "reverse_engineer": reverse_engineer,
         "summarize_architecture": summarize_architecture,
         "draw_on_whiteboard": draw_on_whiteboard,
+        "generate_tests": generate_tests,
+        "analyze_coverage": analyze_coverage,
+        "explain_code": explain_code,
+        "analyze_changes": analyze_changes,
+        "review_pr": review_pr,
+        "refactor_across_files": refactor_across_files,
+        "learn_project": learn_project,
+        "recall_project": recall_project,
+        "learn_preference": learn_preference,
+        "get_preferences": get_preferences,
     }
     fn = tools.get(name)
     if not fn:
@@ -1696,10 +1734,13 @@ def review_project(target_path: str) -> str:
     sections.append(_markdown_header("Project Review Report"))
     sections.append(f"> Target: `{target_path}`\n")
 
-    # 1. search_codebase — 주요 패턴 검색
+    # 1. search_codebase — 주요 패턴 검색 (각 패턴을 개별 검색)
     sections.append("## 🔍 Code Search\n")
-    search_result = _run_tool("search_codebase", query="TODO|FIXME|HACK|BUG", max_results=20)
-    sections.append(search_result)
+    search_terms = ["TODO", "FIXME", "HACK", "BUG"]
+    for term in search_terms:
+        term_result = _run_tool("search_codebase", query=term, max_results=10)
+        if "No results found" not in term_result and "Found 0" not in term_result:
+            sections.append(term_result)
 
     # 2. review_code — 주요 파일 리뷰
     sections.append("## 📝 Code Review\n")
@@ -1867,28 +1908,28 @@ def suggest_refactor(target_path: str) -> str:
 
 
 @mcp.tool
-def generate_docs(target_path: str, format: str = "markdown") -> str:
+def generate_docs(target_path: str, output_format: str = "markdown") -> str:
     """reverse_engineer + summarize_architecture + draw_on_whiteboard(architecture diagram) 통합.
     프로젝트 문서를 자동 생성하고 아키텍처 다이어그램을 화이트보드에 그립니다.
     format='mermaid' 시 ERD 다이어그램을 함께 생성합니다.
 
     Args:
         target_path: 분석 대상 디렉토리 경로
-        format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
+        output_format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
     """
     err = _validate_string(target_path, "target_path")
     if err:
         return _markdown_header("Document Generation Error", "❌") + f"**{err}**\n" + _markdown_footer()
 
     allowed_formats = {"markdown", "openapi", "mermaid"}
-    if format not in allowed_formats:
+    if output_format not in allowed_formats:
         return (_markdown_header("Document Generation Error", "❌")
-                + f"**Invalid format: `{format}`. Allowed: {', '.join(allowed_formats)}**\n"
+                + f"**Invalid format: `{output_format}`. Allowed: {', '.join(allowed_formats)}**\n"
                 + _markdown_footer())
 
     sections = []
     sections.append(_markdown_header("Auto-Generated Documentation"))
-    sections.append(f"> Target: `{target_path}`  \n> Format: `{format}`\n")
+    sections.append(f"> Target: `{target_path}`  \n> Format: `{output_format}`\n")
 
     # 1. summarize_architecture
     sections.append("## 🏗️ Architecture Summary\n")
@@ -1897,7 +1938,7 @@ def generate_docs(target_path: str, format: str = "markdown") -> str:
 
     # 2. reverse_engineer (AST 기반 데이터 모델 필드 포함)
     sections.append("## 🔄 Reverse Engineering\n")
-    rev = _run_tool("reverse_engineer", target_path=target_path, format=format)
+    rev = _run_tool("reverse_engineer", target_path=target_path, output_format=output_format)
     sections.append(rev)
 
     # 3. draw_on_whiteboard — 개선된 아키텍처 다이어그램
@@ -1950,8 +1991,8 @@ def generate_docs(target_path: str, format: str = "markdown") -> str:
         else:
             sections.append("- No directory structure to visualize.\n")
 
-        # 4. Mermaid ERD 다이어그램 (format=mermaid)
-        if format == "mermaid":
+        # 4. Mermaid ERD 다이어그램 (output_format=mermaid)
+        if output_format == "mermaid":
             sections.append("\n## 📊 Mermaid ER Diagram\n\n")
             try:
                 models_found = []
@@ -1986,7 +2027,7 @@ def generate_docs(target_path: str, format: str = "markdown") -> str:
     except Exception as e:
         sections.append(f"- Could not draw diagram: `{e}`\n")
 
-    try_crow_ingest(f"generate_docs completed for {target_path} (format={format})", register="arch")
+    try_crow_ingest(f"generate_docs completed for {target_path} (format={output_format})", register="arch")
 
     result = "\n\n---\n\n".join(sections)
     result += _markdown_footer()
@@ -2051,15 +2092,15 @@ def explain_code(file_path: str, line_number: int) -> str:
         enclosing_iface = None
 
         for fn in ast.get("functions", []):
-            if fn["line"] <= line_number <= fn["end_line"]:
+            if fn["line"] <= line_number <= fn.get("end_line", fn["line"]):
                 enclosing_func = fn
 
         for cls in ast.get("classes", []):
-            if cls["line"] <= line_number:
+            if cls["line"] <= line_number <= cls.get("end_line", cls["line"]):
                 enclosing_class = cls
 
         for iface in ast.get("interfaces", []):
-            if iface["line"] <= line_number:
+            if iface["line"] <= line_number <= iface.get("end_line", iface["line"]):
                 enclosing_iface = iface
 
         # Context summary
@@ -2631,7 +2672,7 @@ def learn_preference(rule: str, category: str = "coding_style") -> str:
                 + f"**{err}**\n"
                 + _markdown_footer())
 
-    allowed_categories = {"coding_style", "naming", "formatting", "architecture", "workflow"}
+    allowed_categories = {"coding_style", "coding", "naming", "formatting", "architecture", "workflow"}
     if category not in allowed_categories:
         return (_markdown_header("Learn Preference Error", "❌")
                 + f"**Invalid category: `{category}`. Allowed: {', '.join(allowed_categories)}**\n"
