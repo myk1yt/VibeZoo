@@ -14,7 +14,7 @@
     "command": "auto",
     "problemMatcher": "auto",
     "autoFix": {
-      "enabled": false,
+      "enabled": true,
       "maxAttempts": 3
     }
   },
