@@ -1,7 +1,7 @@
-# VibeZoo 아키텍처 — v0.12.0
+# VibeZoo 아키텍처 — v0.13.0
 
-> **작성일**: 2026-05-27 (v0.10.0 초안) → 2026-05-27 (v0.12.0 전면 개정)
-> **기준 버전**: v0.12.0
+> **작성일**: 2026-05-27 (v0.10.0 초안) → 2026-05-28 (v0.13.0 전면 개정)
+> **기준 버전**: v0.13.0
 > **프로젝트명**: VibeZoo — Zoo Code를 위한 독립형 동반자 확장
 > **핵심 제약**: Zoo Code 소스 코드를 수정하지 않는다. 모든 기능은 VibeZoo Extension + MCP Bridge + 설정 파일 변경으로 구현한다.
 
@@ -25,6 +25,14 @@
 | 10 | **화이트보드 동기화** | `setInterval` 1초 폴링 | `fs.watchFile` 이벤트 기반 ([`extension/src/visual/VisualVibePanels.ts`](../extension/src/visual/VisualVibePanels.ts)) |
 | 11 | **TreeView** | YOLO History 1개 | 3개 (Active Subagents, YOLO History, Session Resume) |
 | 12 | **VS Code 명령어** | 2개 | 26개 (통합 시나리오, Fix Loop 제어, CIM, 학습/회상 등) |
+| 13 | **SelfCheck** (v0.13.0) | 미존재 | [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) — AlarmMonitor(60초 윈도우 throttle) + 7개 진단 항목 |
+| 14 | **NotificationThrottle** (v0.13.0) | 미존재 | [`extension/src/ui/StatusBarManager.ts`](../extension/src/ui/StatusBarManager.ts) — 분당 10회 제한 + 3초 중복 방지 |
+| 15 | **I_instability 가드레일** (v0.13.0) | boolean oscillation | [`extension/src/orchestra/FixLoopManager.ts`](../extension/src/orchestra/FixLoopManager.ts) — 연속값 I=α·nedits+β·autocorr+γ·buildFails |
+| 16 | **Virtual Subagent** (v0.13.0) | 미존재 | [`mcp-servers/vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — `SubagentPool` + asyncio.Semaphore(5) + MCP 도구 5종 |
+| 17 | **Intent-to-Code Bridge** (v0.13.0) | 미존재 | [`mcp-servers/vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — 화이트보드 rect→클래스, line→의존성 추출, TypeScript stub 생성 |
+| 18 | **Fabric.js 로컬 번들링** (v0.13.0) | CDN 전용 | [`extension/media/fabric.min.js`](../extension/media/fabric.min.js) — 로컬 파일 + CDN fallback |
+| 19 | **Atomic 백업** (v0.13.0) | fs.copyFileSync | [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) — `atomicCopyFile()` 임시파일+crypto.randomUUID+rename |
+| 20 | **Crow Exponential Backoff** (v0.13.0) | 단순 try/except | [`mcp-servers/vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — 150ms 시작, 2배 증가, 최대 3회, random jitter |
 
 ---
 

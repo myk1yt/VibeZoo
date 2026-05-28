@@ -1,6 +1,8 @@
 // VibeZoo Wave 2: File Guard
 // FileSystemWatcher로 .yoloignore 매칭 파일의 변경을 감지하여
 // yocto 백업으로 즉시 복구한다.
+//
+// ★ v0.13.0: alarmMonitor + NotificationThrottle 통합으로 무한루프 방지
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -8,11 +10,16 @@ import * as path from 'path';
 import * as os from 'os';
 import { Minimatch } from 'minimatch';
 import { YoctoManager } from './YoctoManager';
+import { alarmMonitor } from './SelfCheck';
+import { NotificationThrottle } from '../ui/StatusBarManager';
 
 export class FileGuard {
   private patterns: Minimatch[] = [];
   private watcher: vscode.FileSystemWatcher | null = null;
   private yocto: YoctoManager;
+  /** 최근 복구 시각 Map (파일경로 → timestamp) — 무한루프 방지용 쿨다운 */
+  private _recentlyRestored: Map<string, number> = new Map();
+  private readonly RESTORE_COOLDOWN_MS = 5000; // 5초 이내 동일 파일 복구 → 무시
 
   constructor(yocto: YoctoManager) {
     this.yocto = yocto;
@@ -39,13 +46,23 @@ export class FileGuard {
 
     this.watcher.onDidChange(async (uri) => {
       if (this.isProtected(uri.fsPath)) {
-        // 보호된 파일이 변경됨 → yocto에서 최신 백업 찾아 복구
+        // ★ 쿨다운 체크: 5초 내 동일 파일 복구 방지 (무한루프 방지)
+        const lastRestore = this._recentlyRestored.get(uri.fsPath);
+        if (lastRestore && Date.now() - lastRestore < this.RESTORE_COOLDOWN_MS) {
+          return; // 쿨다운 중 → skip
+        }
+
         const backupPath = this.findLatestBackup(uri.fsPath);
         if (backupPath && fs.existsSync(backupPath)) {
+          // ★ cooldown을 copyFileSync 전에 등록 → 복구 자체가 트리거하는 onDidChange를 즉시 차단
+          this._recentlyRestored.set(uri.fsPath, Date.now());
           fs.copyFileSync(backupPath, uri.fsPath);
-          vscode.window.showWarningMessage(
-            `VibeZoo: 보호된 파일 '${path.basename(uri.fsPath)}'의 변경이 자동 복구되었습니다.`
-          );
+
+          const basename = path.basename(uri.fsPath);
+          const msg = `VibeZoo: 보호된 파일 '${basename}'의 변경이 자동 복구되었습니다.`;
+
+          // showWarningMessage 대신 console.warn만 — 알람 스팸 방지
+          console.warn(`[VibeZoo:FileGuard] ${msg}`);
         }
       }
     });
@@ -60,6 +77,14 @@ export class FileGuard {
 
   /** Crow life_avoid 동기화 — 새로운 패턴을 .yoloignore에 추가 */
   syncFromCrow(avoidPatterns: string[]): void {
+    // ★ 과도하게 넓은 패턴 필터링 — 무한루프 방지
+    const dangerousPatterns = ['**/*.ts', '**/*.js', '**/*.json', '**/*.md', '**/*'];
+    const safe = avoidPatterns.filter(p => !dangerousPatterns.includes(p.trim()));
+    if (safe.length === 0) {
+      console.warn('[VibeZoo:FileGuard] 모든 Crow 패턴이 위험 패턴으로 필터링됨 — 무시');
+      return;
+    }
+
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
 
@@ -72,7 +97,7 @@ export class FileGuard {
     }
 
     let updated = false;
-    for (const pattern of avoidPatterns) {
+    for (const pattern of safe) {
       if (!content.includes(pattern)) {
         content += `\n${pattern}`;
         updated = true;
@@ -159,5 +184,6 @@ export class FileGuard {
 
   dispose(): void {
     this.watcher?.dispose();
+    this._recentlyRestored.clear(); // ★ 쿨다운 Map 정리
   }
 }

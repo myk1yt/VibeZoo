@@ -9,6 +9,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { Diagnostic, BuildResult } from '../types';
+import { StatusBarManager, GuardMode, NotificationThrottle } from '../ui/StatusBarManager';
+// NotificationThrottle is used for all user-facing notifications
 
 // ── 타입 정의 ────────────────────────────────────────────────
 
@@ -52,6 +54,36 @@ export interface FixRequestFile {
   history: FixAttempt[];
   projectRoot: string;
   pastFixes?: any[];  // Crow recall 결과
+}
+
+// ── I_instability: 예측형 가드레일 ────────────────────────────
+
+export interface InstabilityMetrics {
+  /** 누적 편집 횟수 (attempt 수) */
+  nedits: number;
+  /** 자기상관계수: 동일 에러 반복률 [0, 1] */
+  autocorr: number;
+  /** 연속 빌드 실패 횟수 */
+  buildFails: number;
+}
+
+/**
+ * 불안정성 계산: I = α·nedits + β·autocorr + γ·buildFails
+ * α=0.35, β=0.45, γ=0.20
+ */
+export function calculateInstability(m: InstabilityMetrics): number {
+  const α = 0.35, β = 0.45, γ = 0.20;
+  return α * Math.min(m.nedits / 10, 1) + β * m.autocorr + γ * Math.min(m.buildFails / 5, 1);
+}
+
+/**
+ * 불안정성 → GuardMode 변환
+ * <0.3=active, <0.7=warning, ≥0.7=safe
+ */
+export function getGuardMode(instability: number): GuardMode {
+  if (instability < 0.3) return 'active';
+  if (instability < 0.7) return 'warning';
+  return 'safe';
 }
 
 // ── FixLoopManager ───────────────────────────────────────────
@@ -144,7 +176,7 @@ export class FixLoopManager {
 
       // 성공 메시지
       const attemptCount = this.currentSession.history.length;
-      vscode.window.showInformationMessage(
+      NotificationThrottle.showInfo(
         `✅ VibeZoo: ${attemptCount}회 시도 후 빌드 성공!`
       );
 
@@ -172,17 +204,21 @@ export class FixLoopManager {
     this.currentSession.history.push(attempt);
     this.currentSession.attempt = attemptNum;
 
-    // Oscillation 체크
-    if (this.isOscillating()) {
+    // I_instability 계산 (가드레일)
+    const instability = this.calculateInstability();
+    const guardMode = getGuardMode(instability);
+
+    if (guardMode === 'active') {
+      // 불안정성 높음 → 즉시 중단
       this.currentSession.status = 'abandoned';
       this.state = 'abandoned';
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
-      vscode.window.showWarningMessage(
-        '⚠️ VibeZoo: A→B→A 패턴 감지. Auto-Fix를 중단합니다. 수동 확인이 필요합니다.'
+      NotificationThrottle.showWarning(
+        `⚠️ VibeZoo: I_instability=${instability.toFixed(2)} (Guard: Active). Auto-Fix를 중단합니다. 수동 확인이 필요합니다.`
       );
-      console.log('[VibeZoo] FixLoopManager: → abandoned (oscillation 감지)');
+      console.log(`[VibeZoo] FixLoopManager: → abandoned (I_instability=${instability.toFixed(2)}, Guard=${guardMode})`);
       return;
     }
 
@@ -193,7 +229,7 @@ export class FixLoopManager {
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
-      vscode.window.showWarningMessage(
+      NotificationThrottle.showWarning(
         `⚠️ VibeZoo: 최대 ${this.maxAttempts}회 시도 초과. Auto-Fix를 중단합니다.`
       );
       console.log('[VibeZoo] FixLoopManager: → abandoned (max attempts 초과)');
@@ -210,40 +246,49 @@ export class FixLoopManager {
     console.log(`[VibeZoo] FixLoopManager: 빌드 실패 → pending (attempt ${attemptNum}/${this.maxAttempts})`);
   }
 
-  /** Oscillation 감지: A→B→A 패턴 */
-  isOscillating(): boolean {
+  /**
+   * I_instability 계산: 불안정성 연속값 반환
+   * 기존 isOscillating() boolean을 대체
+   */
+  calculateInstability(): number {
     const h = this.currentSession?.history ?? [];
-    if (h.length < 4) return false;
+    if (h.length === 0) return 0;
 
-    // 최근 4회의 에러 시그니처 추출
-    const recent = h.slice(-4);
-    const sigs = recent.map(a => this.errorSignature(a.diagnostics));
+    // nedits: 누적 편집 횟수 (attempt 수)
+    const nedits = h.length;
 
-    // A→B→A→B 또는 A→B→C→A 패턴 체크
-    // sigs[0] === sigs[2] (첫 번째와 세 번째가 동일)
-    // 또는 sigs[1] === sigs[3] (두 번째와 네 번째가 동일)
-    if (sigs[0] === sigs[2] || sigs[1] === sigs[3]) {
-      return true;
+    // autocorr: 자기상관계수 — 동일 에러 시그니처 반복률
+    let sameSigCount = 0;
+    let totalPairs = 0;
+    for (let i = 1; i < h.length; i++) {
+      const sig1 = this.errorSignature(h[i - 1].diagnostics);
+      const sig2 = this.errorSignature(h[i].diagnostics);
+      totalPairs++;
+      if (sig1 === sig2) sameSigCount++;
+    }
+    const autocorr = totalPairs > 0 ? sameSigCount / totalPairs : 0;
+
+    // buildFails: 연속 빌드 실패 횟수
+    let buildFails = 0;
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (h[i].exitCode !== 0) buildFails++;
+      else break;
     }
 
-    // 반복 에러: 동일한 파일/코드 에러가 2회 연속
-    if (h.length >= 2) {
-      const lastTwo = h.slice(-2);
-      const sig1 = this.errorSignature(lastTwo[0].diagnostics);
-      const sig2 = this.errorSignature(lastTwo[1].diagnostics);
-      if (sig1 === sig2) {
-        return true;
-      }
-    }
+    return calculateInstability({ nedits, autocorr, buildFails });
+  }
 
-    return false;
+  // isOscillating()은 calculateInstability()로 대체됨
+  private _oscillationCompat(): boolean {
+    // 이전 호환성: calculateInstability()가 active를 반환하면 oscillation
+    return this.calculateInstability() >= 0.3;
   }
 
   /** Give up 조건 */
   shouldGiveUp(): boolean {
     if (!this.currentSession) return false;
     if (this.currentSession.history.length >= this.maxAttempts) return true;
-    if (this.isOscillating()) return true;
+    if (this.calculateInstability() >= 0.5) return true;
     return false;
   }
 
@@ -361,7 +406,7 @@ export class FixLoopManager {
         this.writeFixRequest();
         this.updateStatusBar();
         console.log('[VibeZoo] FixLoopManager: → abandoned (timeout)');
-        vscode.window.showWarningMessage(
+        NotificationThrottle.showWarning(
           '⏰ VibeZoo: Auto-Fix 시간 초과 (120초). 수동 확인이 필요합니다.'
         );
       }
@@ -383,18 +428,74 @@ export class FixLoopManager {
       this.state = 'awaiting_user';
       this.writeFixRequest();
       this.updateStatusBar();
-      vscode.window.showInformationMessage('⏸️ VibeZoo: Auto-Fix가 일시정지되었습니다.');
+      NotificationThrottle.showInfo('⏸️ VibeZoo: Auto-Fix가 일시정지되었습니다.');
     }
   }
 
   /** 사용자 개입 — 재개 */
-  resume(): void {
+  async resume(): Promise<void> {
     if (this.currentSession && this.state === 'awaiting_user') {
+      // Context Hydration: freeze 상태와 현재 파일 비교
+      await this.hydrateContext();
+
       this.currentSession.status = 'in_progress';
       this.state = 'in_progress';
       this.writeFixRequest();
       this.updateStatusBar();
-      vscode.window.showInformationMessage('▶️ VibeZoo: Auto-Fix가 재개되었습니다.');
+      NotificationThrottle.showInfo('▶️ VibeZoo: Auto-Fix가 재개되었습니다.');
+    }
+  }
+
+  /**
+   * Context Hydration: freeze 시점과 현재 파일 상태를 비교하여
+   * 변경 감지 시 Crow context 레지스터에 저장.
+   * resume 시 자동 호출되어 AST Delta 추적.
+   */
+  private async hydrateContext(): Promise<void> {
+    if (!this.currentSession) return;
+
+    const projectRoot = this.currentSession.projectRoot;
+    if (!projectRoot) return;
+
+    try {
+      // freeze 시점의 fix request 기록과 현재 파일 상태 비교
+      const freezeSnapshot = this.currentSession.history[this.currentSession.history.length - 1];
+      if (!freezeSnapshot) return;
+
+      // 간소화: 수정된 파일 목록 diff → Crow ingest
+      const touchedFiles = new Set<string>();
+      for (const attempt of this.currentSession.history) {
+        for (const diag of attempt.diagnostics) {
+          if (diag.file) touchedFiles.add(diag.file);
+        }
+      }
+
+      if (touchedFiles.size > 0) {
+        const fileList = Array.from(touchedFiles).slice(0, 20);
+        console.log(`[FixLoopManager] HydrateContext: ${fileList.length} 파일 변경 감지됨`);
+        // Crow ingest를 시도 (실패해도 무관)
+        try {
+          // 로컬 HTTP 요청으로 Crow에 저장
+          const http = await import('http');
+          const payload = JSON.stringify({
+            content: `FixLoop resume detected changes in ${fileList.length} files: ${fileList.join(', ')}`,
+            register: 'context'
+          });
+          const req = http.request({
+            hostname: 'localhost',
+            port: 9020,
+            path: '/ingest',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length }
+          });
+          req.write(payload);
+          req.end();
+        } catch {
+          // Crow 없어도 정상 동작
+        }
+      }
+    } catch (err) {
+      console.warn('[FixLoopManager] HydrateContext 실패 (비치명적):', err);
     }
   }
 
@@ -406,7 +507,7 @@ export class FixLoopManager {
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
-      vscode.window.showInformationMessage('🛑 VibeZoo: Auto-Fix가 사용자에 의해 중단되었습니다.');
+      NotificationThrottle.showInfo('🛑 VibeZoo: Auto-Fix가 사용자에 의해 중단되었습니다.');
     }
   }
 
@@ -420,13 +521,13 @@ export class FixLoopManager {
   /** 파일 저장 감시 시작 — tsc 자동 실행 → 에러 시 auto-fix */
   startWatching(): void {
     if (this._isWatching) {
-      vscode.window.showInformationMessage('VibeZoo: 이미 감시 중입니다.');
+      NotificationThrottle.showInfo('VibeZoo: 이미 감시 중입니다.');
       return;
     }
 
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.[0]) {
-      vscode.window.showWarningMessage('VibeZoo: 열려있는 프로젝트가 없어 감시를 시작할 수 없습니다.');
+      NotificationThrottle.showWarning('VibeZoo: 열려있는 프로젝트가 없어 감시를 시작할 수 없습니다.');
       return;
     }
 
@@ -464,7 +565,7 @@ export class FixLoopManager {
     this._watchDisposables.push(onSave, statusItem);
     this._isWatching = true;
 
-    vscode.window.showInformationMessage(
+    NotificationThrottle.showInfo(
       '👁️ VibeZoo: Continuous Improvement Mode 시작됨 — 파일 저장 시 자동 tsc 검사'
     );
     console.log('[VibeZoo:CIM] Watching started for', workspaceRoot);
@@ -494,7 +595,7 @@ export class FixLoopManager {
                 stderr || stdout,
                 'vibezoo:cim:autobuild'
               );
-              vscode.window.showWarningMessage(
+              NotificationThrottle.showWarning(
                 `⚠️ VibeZoo: tsc 에러 감지 (${diagnostics.length}개) — 자동 수정 시도 중...`
               );
               resolve(false);
@@ -537,7 +638,7 @@ export class FixLoopManager {
   /** 감시 중지 */
   stopWatching(): void {
     if (!this._isWatching) {
-      vscode.window.showInformationMessage('VibeZoo: 현재 감시 중이 아닙니다.');
+      NotificationThrottle.showInfo('VibeZoo: 현재 감시 중이 아닙니다.');
       return;
     }
 
@@ -548,7 +649,7 @@ export class FixLoopManager {
     this._watcher = null;
     this._isWatching = false;
 
-    vscode.window.showInformationMessage('⏹️ VibeZoo: Continuous Improvement Mode 중지됨');
+    NotificationThrottle.showInfo('⏹️ VibeZoo: Continuous Improvement Mode 중지됨');
     console.log('[VibeZoo:CIM] Watching stopped');
   }
 

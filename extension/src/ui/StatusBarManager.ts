@@ -4,8 +4,98 @@
 // ★ 중요: setActive()와 setCrowStatus()가 서로의 tooltip을 덮어쓰지 않도록
 //   _baseTooltip(기본 메시지)과 _crowSuffix(Crow 상태)를 분리해서 관리한다.
 // ★ M3-F: CIM 모드 on/off 표시 추가
+//
+// ★ v0.13.0: NotificationThrottle 통합 — 모든 showInformationMessage /
+//   showWarningMessage 호출부에 throttle 적용
 
 import * as vscode from 'vscode';
+
+// ── NotificationThrottle ──────────────────────────────────────
+
+export class NotificationThrottle {
+  private static _history: Map<string, { lastShown: number; count: number }> = new Map();
+  private static _minuteCount: number[] = [];
+  private static readonly SAME_MSG_WINDOW_MS = 3000;   // 동일 메시지 3초 내 중복 → 무시
+  private static readonly MAX_PER_MINUTE = 10;           // 분당 최대 10회
+
+  /**
+   * 메시지가 throttle 조건을 통과하면 true 반환.
+   * @param message 표시할 메시지
+   * @param useStatusBarFallapthrottle 초과 시 StatusBar로 대체 표시
+   */
+  static shouldAllow(message: string): boolean {
+    const now = Date.now();
+    const key = message.substring(0, 50); // 앞 50자 기준
+
+    // 1. 동일 메시지 3초 내 중복 체크
+    const existing = this._history.get(key);
+    if (existing && (now - existing.lastShown) < this.SAME_MSG_WINDOW_MS) {
+      existing.count++;
+      return false;
+    }
+
+    // 2. 분당 최대 10회 제한
+    this._minuteCount = this._minuteCount.filter(t => now - t < 60000);
+    if (this._minuteCount.length >= this.MAX_PER_MINUTE) {
+      console.warn(`[NotificationThrottle] 분당 ${this.MAX_PER_MINUTE}회 초과 — 메시지 무시: "${message.substring(0, 50)}..."`);
+      return false;
+    }
+
+    // 통과 — 기록
+    this._history.set(key, { lastShown: now, count: 1 });
+    this._minuteCount.push(now);
+
+    // 오래된 기록 정리 (5분)
+    if (this._history.size > 100) {
+      const cutoff = now - 300000;
+      for (const [k, v] of this._history) {
+        if (v.lastShown < cutoff) this._history.delete(k);
+      }
+    }
+
+    return true;
+  }
+
+  /** 정보 메시지 표시 (throttle 적용) */
+  static showInfo(message: string, ...items: string[]): Thenable<string | undefined> {
+    if (!this.shouldAllow(message)) {
+      // 초과 시 StatusBar 텍스트로 대체
+      vscode.window.setStatusBarMessage(`$(warning) ${message.substring(0, 60)}`, 5000);
+      return Promise.resolve(undefined);
+    }
+    return vscode.window.showInformationMessage(message, ...items);
+  }
+
+  /** 경고 메시지 표시 (throttle 적용) */
+  static showWarning(message: string, ...items: string[]): Thenable<string | undefined> {
+    if (!this.shouldAllow(message)) {
+      vscode.window.setStatusBarMessage(`$(error) ${message.substring(0, 60)}`, 5000);
+      return Promise.resolve(undefined);
+    }
+    return vscode.window.showWarningMessage(message, ...items);
+  }
+
+  /** 에러 메시지 표시 (throttle 적용) */
+  static showError(message: string, ...items: string[]): Thenable<string | undefined> {
+    if (!this.shouldAllow(message)) {
+      vscode.window.setStatusBarMessage(`$(error) ${message.substring(0, 60)}`, 5000);
+      return Promise.resolve(undefined);
+    }
+    return vscode.window.showErrorMessage(message, ...items);
+  }
+
+  /** throttle 상태 리셋 (테스트 및 재시작용) */
+  static reset(): void {
+    this._history.clear();
+    this._minuteCount = [];
+  }
+}
+
+// ── Guard Mode (I_instability) ───────────────────────────────
+
+export type GuardMode = 'active' | 'warning' | 'safe';
+
+// ── StatusBarManager ─────────────────────────────────────────
 
 export class StatusBarManager {
   private item: vscode.StatusBarItem;
@@ -16,6 +106,7 @@ export class StatusBarManager {
   private _crowConnected: boolean = false;
   private _cimActive: boolean = false;
   private _yoloActive: boolean = false;
+  private _guardMode: GuardMode = 'safe';
 
   /** setActive()로 설정된 base tooltip (Crow 접미사 제외) */
   private _baseTooltip: string = 'VibeZoo: 활성화됨';
@@ -42,11 +133,16 @@ export class StatusBarManager {
     if (this._yoloActive) {
       tooltip += ' | YOLO: ON';
     }
+    const guardLabel = this._guardMode === 'active' ? '🛡️ Guard: Active' :
+      this._guardMode === 'warning' ? '⚠️ Guard: Warning' : '';
+    if (guardLabel) tooltip += ` | ${guardLabel}`;
     return tooltip;
   }
 
-  /** 내부: CIM/YOLO 상태를 텍스트에 반영 */
+  /** 내부: CIM/YOLO/GUARD 상태를 텍스트에 반영 */
   private _composeText(): string {
+    if (this._guardMode === 'active') return '$(zap) VibeZoo Guard';
+    if (this._guardMode === 'warning') return '$(warning) VibeZoo';
     let text = '$(zap) VibeZoo';
     if (this._cimActive) {
       text = '$(eye) VibeZoo';
@@ -104,6 +200,27 @@ export class StatusBarManager {
       this.item.text = '$(eye) VibeZoo CIM';
     }
     this.item.show();
+  }
+
+  /** Guard Mode 설정 (I_instability) */
+  setGuardMode(mode: GuardMode): void {
+    this._guardMode = mode;
+    this.item.text = this._composeText();
+    this.item.tooltip = this._composeTooltip();
+    // Guard active 시 배경색 변경
+    if (mode === 'active') {
+      this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else if (mode === 'warning') {
+      this.item.backgroundColor = undefined;
+    } else {
+      this.item.backgroundColor = undefined;
+    }
+    this.item.show();
+  }
+
+  /** 현재 Guard Mode 반환 */
+  get guardMode(): GuardMode {
+    return this._guardMode;
   }
 
   /** 권장 모드 제안 (5초 후 자동 복구) */

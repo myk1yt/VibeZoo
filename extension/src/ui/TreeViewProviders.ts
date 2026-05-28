@@ -71,6 +71,8 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
           node.currentTask = 'Bridge disconnected';
         }
       }
+      // Subagent 작업 목록 polling
+      await this.pollSubagentTasks();
       this._onDidChangeTreeData.fire(undefined);
     }, 30000);
     // Immediate first check
@@ -79,6 +81,45 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
       this._crowOk = health.crow;
       this._onDidChangeTreeData.fire(undefined);
     });
+    // Immediate subagent poll
+    this.pollSubagentTasks();
+  }
+
+  /** SubagentPool의 작업 목록을 30초 간격 polling하여 TreeView에 표시 */
+  private async pollSubagentTasks(): Promise<void> {
+    try {
+      const resp = await fetch('http://localhost:9027/tools/list_subagents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!resp.ok) return;
+      const data: any = await resp.json();
+      const tasks: any[] = data?.tasks || [];
+      // 기존 subagent_* 노드 제거 (리스폰스 기반으로 갱신)
+      for (const [id] of this.nodes) {
+        if (id.startsWith('subagent_')) {
+          this.nodes.delete(id);
+        }
+      }
+      // 새 작업 노드 추가
+      for (const task of tasks) {
+        const age = task.created_at ? Math.floor((Date.now() / 1000 - task.created_at) / 60) : 0;
+        this.nodes.set(`subagent_${task.id}`, {
+          id: `subagent_${task.id}`,
+          name: `[${task.role}] ${task.description.substring(0, 30)}`,
+          status: task.status === 'completed' ? 'completed' :
+                  task.status === 'failed' ? 'error' :
+                  task.status === 'running' ? 'running' : 'idle',
+          currentTask: `${task.status} (${age}m)`,
+          port: 0,
+          startTime: task.created_at ? task.created_at * 1000 : undefined,
+        });
+      }
+    } catch {
+      // Bridge가 아직 준비되지 않음 — 무시
+    }
   }
 
   stopHealthCheck(): void {

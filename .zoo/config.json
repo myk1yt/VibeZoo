@@ -1,5 +1,4 @@
 {
-  "$schema": "../.zoo/config.schema.json",
   "version": 1,
   "defaultMode": "orchestrator-crow",
   "project": {

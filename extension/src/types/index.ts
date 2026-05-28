@@ -20,6 +20,31 @@ export interface YoctoSnapshot {
   crowBackupId?: string;
 }
 
+// ── SelfCheck (Phase 0) ───────────────────────────────────
+
+export interface SelfCheckReport {
+  overall: 'healthy' | 'degraded' | 'critical';
+  checks: SelfCheckItem[];
+  timestamp: number;
+  version: string;
+}
+
+export interface SelfCheckItem {
+  name: string;
+  status: 'passed' | 'warning' | 'failed';
+  message: string;
+  detail?: string;
+  autoRecoverable?: boolean;
+}
+
+// ── NotificationThrottle (Phase 0) ────────────────────────
+
+export interface ThrottleEntry {
+  key: string;
+  lastShown: number;
+  count: number;
+}
+
 export interface YoctoFileEntry {
   originalPath: string;
   backupPath: string;

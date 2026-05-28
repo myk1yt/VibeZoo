@@ -2,6 +2,7 @@
 // YOLO 진입/퇴장 시 Git stash를 자동으로 생성/복원한다.
 
 import * as vscode from 'vscode';
+import { NotificationThrottle } from '../ui/StatusBarManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -33,7 +34,7 @@ export class GitStashManager {
         { cwd: this.cwd }
       );
 
-      vscode.window.showInformationMessage(
+      NotificationThrottle.showInfo(
         `VibeZoo: YOLO 모드 시작 — 현재 상태가 stash에 저장되었습니다.`
       );
       return true;
@@ -55,7 +56,7 @@ export class GitStashManager {
           `git commit -m "vibezoo-yolo-complete-${timestamp}" --no-verify`,
           { cwd: this.cwd }
         );
-        vscode.window.showInformationMessage(
+        NotificationThrottle.showInfo(
           'VibeZoo: YOLO 완료 — 변경사항이 커밋되었습니다.'
         );
       } catch (err: any) {
@@ -63,7 +64,7 @@ export class GitStashManager {
       }
     } else {
       // YOLO 실패: 사용자에게 되돌릴지 묻기
-      const choice = await vscode.window.showWarningMessage(
+      const choice = await NotificationThrottle.showWarning(
         'YOLO가 실패했습니다. 이전 상태로 되돌리시겠습니까?',
         'Instant Rewind',
         '수동으로 처리'

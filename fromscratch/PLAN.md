@@ -16,7 +16,8 @@
 | **v0.10.0** | 2026-05-27 오후 | MCP 자동 설정 수정. Crow 중복 추가 제거. | 설정 안정화 |
 | **v0.10.0** | 2026-05-27 최종 | Go 파일 정리(1,074줄 제거). SSE 경로 `/sse` 수정. VSIX 빌드 완료. | 클린업 |
 | **v0.11.1** | 2026-05-27 | 30+ 버그 수정. 기능 골격 구현 완료. | 안정화 |
-| **v0.12.0** | 2026-05-27 (현재) | Quick Wins 5종 + M1(Autonomous Fix Loop, Scout AST, Reviewer ESLint, Crow error patterns) + M3(explain_code, analyze_changes, review_pr, refactor_across_files, learn/recall_project, learn/get_preferences, CIM). TreeView 3종, StatusBar 통합, `fs.watchFile` 전환, Lazy Init. **31개 MCP 도구**. | 현재 |
+| **v0.12.0** | 2026-05-27 | Quick Wins 5종 + M1(Autonomous Fix Loop, Scout AST, Reviewer ESLint, Crow error patterns) + M3(explain_code, analyze_changes, review_pr, refactor_across_files, learn/recall_project, learn/get_preferences, CIM). TreeView 3종, StatusBar 통합, `fs.watchFile` 전환, Lazy Init. **31개 MCP 도구**. | |
+| **v0.13.0** | 2026-05-28 (현재) | Phase 0~(SelfCheck, NotificationThrottle, FileGuard fix) + Phase 1~6. 화이트보드 안정화 + 4대 개선(I_instability, atomicCopy, hydrateContext, Crow backoff) + Virtual Subagent(SubagentPool+5 MCP 도구) + Intent-to-Code Bridge(화이트보드→TypeScript) + 전면 NotificationThrottle 적용 + 문서/GitHub/VSIX. **36개 MCP 도구**. | 현재 |
 
 ---
 

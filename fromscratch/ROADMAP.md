@@ -1,7 +1,7 @@
 # VibeZoo 성능/활용도 극대화 전략 로드맵
 
 > **작성일**: 2026-05-27
-> **기준 버전**: v0.11.1 (30개 버그 수정 완료, 기능 골격 구현 완료)
+> **기준 버전**: v0.13.0 (Phase 0~6 완료, SelfCheck + NotificationThrottle + Virtual Subagent + Intent-to-Code Bridge)
 > **핵심 질문**: "도구 상자는 있는데, 왜 아무도 안 쓸까?"
 
 ---

@@ -23,6 +23,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "vibezoo.selfCheck",
+        "title": "VibeZoo: Self Check (시스템 자가진단)"
+      },
+      {
         "command": "vibezoo.verifyFoundation",
         "title": "VibeZoo: Verify Foundation"
       },

@@ -1,6 +1,6 @@
 // VibeZoo Wave 2: yocto — Lightweight Snapshot System
 // FileSystemWatcher로 파일 변경을 감지하여 fs.copyFileSync로 즉시 백업.
-// 200ms debounce로 이벤트 폭주 방지.
+// 200ms 글로벌 debounce로 다중 파일 변경 시 레이스 컨디션을 방지하여 한 타임스탬프(Atomic Directory)에 모아 백업.
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -8,11 +8,13 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { YoctoSnapshot, YoctoFileEntry } from '../types';
+import { NotificationThrottle } from '../ui/StatusBarManager';
 
 export class YoctoManager {
   private snapshotsDir: string;
   private watcher: vscode.FileSystemWatcher | null = null;
-  private pendingBackup: Map<string, NodeJS.Timeout> = new Map();
+  private pendingFiles: Set<string> = new Set();
+  private globalDebounceTimer: NodeJS.Timeout | null = null;
   private readonly DEBOUNCE_MS = 200;
   private currentSessionId: string;
   private activeSnapshots: YoctoSnapshot[] = [];
@@ -179,53 +181,71 @@ export class YoctoManager {
 
     const durationMs = Date.now() - startTime;
 
-    vscode.window.showInformationMessage(
+    NotificationThrottle.showInfo(
       `YOLO Rewind 완료: ${restored}/${reversedFiles.length} 파일 복구 (${durationMs}ms)`
     );
 
     return { restoredFiles: restored, totalFiles: reversedFiles.length, durationMs };
   }
 
-  /** 파일 단위 백업 스케줄링 (debounce) */
+  /** 다중 파일 글로벌 백업 스케줄링 (debounce) */
   private scheduleBackup(uri: vscode.Uri): void {
-    const existing = this.pendingBackup.get(uri.fsPath);
-    if (existing) clearTimeout(existing);
+    this.pendingFiles.add(uri.fsPath);
 
-    const timeout = setTimeout(() => {
-      this.pendingBackup.delete(uri.fsPath);
-      this.backupFile(uri);
+    if (this.globalDebounceTimer) {
+      clearTimeout(this.globalDebounceTimer);
+    }
+
+    this.globalDebounceTimer = setTimeout(() => {
+      this.executeGlobalBackup();
     }, this.DEBOUNCE_MS);
-
-    this.pendingBackup.set(uri.fsPath, timeout);
   }
 
-  /** 단일 파일 백업 */
-  private async backupFile(uri: vscode.Uri): Promise<void> {
-    try {
-      const relativePath = vscode.workspace.asRelativePath(uri);
-      const backupDir = path.join(this.snapshotsDir, this.currentSessionId, String(Date.now()));
-      const backupPath = path.join(backupDir, relativePath);
+  /** 원자적 파일 복사: 임시 파일 → rename */
+  private async atomicCopyFile(src: string, dest: string): Promise<void> {
+    const tmpDir = path.dirname(dest);
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const tmpFile = path.join(tmpDir, `.tmp-${crypto.randomUUID()}`);
+    await fs.promises.copyFile(src, tmpFile);
+    await fs.promises.rename(tmpFile, dest);
+  }
 
-      fs.mkdirSync(path.dirname(backupPath), { recursive: true });
-      fs.copyFileSync(uri.fsPath, backupPath);
+  /** 보류 중인 모든 파일을 단일 타임스탬프 디렉토리에 원자적으로 백업 */
+  private async executeGlobalBackup(): Promise<void> {
+    if (this.pendingFiles.size === 0) return;
+    
+    const filesToBackup = Array.from(this.pendingFiles);
+    this.pendingFiles.clear();
+    this.globalDebounceTimer = null;
 
-      const stat = fs.statSync(uri.fsPath);
-      const entry: YoctoFileEntry = {
-        originalPath: uri.fsPath,
-        backupPath,
-        hash: crypto.createHash('sha256').update(relativePath).digest('hex').substring(0, 16),
-        size: stat.size,
-        mtime: stat.mtimeMs,
-      };
+    const timestampStr = String(Date.now());
+    const backupDir = path.join(this.snapshotsDir, this.currentSessionId, timestampStr);
 
-      // 가장 최근 스냅샷에 추가 (없으면 자동 생성)
-      let latest = this.activeSnapshots[this.activeSnapshots.length - 1];
-      if (!latest) {
-        latest = await this.createSnapshot('auto');
+    let latest = this.activeSnapshots[this.activeSnapshots.length - 1];
+    if (!latest) {
+      latest = await this.createSnapshot('auto');
+    }
+
+    for (const fsPath of filesToBackup) {
+      try {
+        const uri = vscode.Uri.file(fsPath);
+        const relativePath = vscode.workspace.asRelativePath(uri);
+        const backupPath = path.join(backupDir, relativePath);
+
+        await this.atomicCopyFile(fsPath, backupPath);
+
+        const stat = fs.statSync(fsPath);
+        const entry: YoctoFileEntry = {
+          originalPath: fsPath,
+          backupPath,
+          hash: crypto.createHash('sha256').update(relativePath).digest('hex').substring(0, 16),
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        };
+        latest.files.push(entry);
+      } catch (err) {
+        console.error(`[Yocto] 백업 실패: ${fsPath}`, err);
       }
-      latest.files.push(entry);
-    } catch (err) {
-      console.error(`[Yocto] 백업 실패: ${uri.fsPath}`, err);
     }
   }
 
@@ -248,9 +268,9 @@ export class YoctoManager {
 
   dispose(): void {
     this.watcher?.dispose();
-    for (const timer of this.pendingBackup.values()) {
-      clearTimeout(timer);
+    if (this.globalDebounceTimer) {
+      clearTimeout(this.globalDebounceTimer);
     }
-    this.pendingBackup.clear();
+    this.pendingFiles.clear();
   }
 }

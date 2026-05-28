@@ -20,16 +20,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
+import { NotificationThrottle } from '../ui/StatusBarManager';
 
 // ── 상수 ──────────────────────────────────────────────────
 const WB_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard.json');
 const WB_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard-action.json');
 const UI_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-ui-action.json');
 
+const MEDIA_DIR = () => path.join(__dirname, '..', '..', 'media');
 const FABRIC_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js';
 const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 
-const WATCH_INTERVAL_MS = 500;
+const WATCH_INTERVAL_MS = 200;
 const STATE_DEBOUNCE_MS = 300;
 const RESIZE_DEBOUNCE_MS = 100;
 const CAPTURE_READ_DELAY_MS = 500;
@@ -84,9 +86,12 @@ export class VisualVibePanels {
   private _lastCommandsHash = '';
   /** Whiteboard가 아직 열리지 않았을 때 대기 중인 드로잉 명령 */
   private _pendingDrawCommands: DrawCommand[] | null = null;
+  /** Extension context (Phase 1.1: 로컬 파일 접근용) */
+  private _context: vscode.ExtensionContext | null = null;
 
-  constructor() {
+  constructor(context?: vscode.ExtensionContext) {
     this.homedir = os.homedir();
+    if (context) this._context = context;
     // startWatching()은 openWhiteboard()에서 최초 1회 호출
   }
 
@@ -107,6 +112,20 @@ export class VisualVibePanels {
 
   // ── 파일 감시 ─────────────────────────────────────────────
 
+  /** 로컬 fabric.min.js 내용 반환 (실패 시 CDN URL fallback) */
+  private getFabricJs(): string {
+    try {
+      const fabricPath = path.join(MEDIA_DIR(), 'fabric.min.js');
+      if (fs.existsSync(fabricPath)) {
+        return fs.readFileSync(fabricPath, 'utf-8');
+      }
+    } catch {
+      // fallback to CDN
+    }
+    // CDN fallback: 스크립트 태그 반환
+    return `<script src="${FABRIC_CDN}" onerror="document.getElementById('error-overlay').classList.add('show');"></script>`;
+  }
+
   /**
    * action 파일의 변경을 감지하여 콜백 실행.
    * @param filePath 감시할 파일 경로
@@ -119,6 +138,11 @@ export class VisualVibePanels {
     onChange: (content: WatchFileContent) => void,
   ): Promise<void> {
     try {
+      // mtime 비교: 변경이 없으면 early return
+      const stat = await fs.promises.stat(filePath);
+      if (stat.mtimeMs <= lastMtime.current) return;
+      lastMtime.current = stat.mtimeMs;
+
       const contentStr = await fs.promises.readFile(filePath, 'utf-8');
       const content: WatchFileContent = JSON.parse(contentStr);
       onChange(content);
@@ -258,6 +282,9 @@ export class VisualVibePanels {
             this._pendingDrawCommands = null;
           }
           break;
+        case 'generateCode':
+          this.handleGenerateCodeFromWhiteboard();
+          break;
       }
     });
 
@@ -321,6 +348,101 @@ export class VisualVibePanels {
 
   private cleanupTempFile(filePath: string): void {
     try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
+  }
+
+  /** Whiteboard "📐 Code" 버튼 → Bridge에 extract_intent 요청 후 미리보기 */
+  private async handleGenerateCodeFromWhiteboard(): Promise<void> {
+    try {
+      // 1. Bridge에 extract_intent 요청
+      const resp = await fetch('http://localhost:9027/tools/extract_intent_from_whiteboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!resp.ok) {
+        NotificationThrottle.showWarning('화이트보드 의도 추출 실패: Bridge 응답 오류');
+        return;
+      }
+
+      const intent: any = await resp.json();
+
+      // 2. 미리보기 텍스트 생성
+      const lines: string[] = [];
+      lines.push('# 📐 Whiteboard → Code Preview');
+      lines.push('');
+      lines.push(`**감지된 클래스/컴포넌트**: ${intent.classes?.length || 0}개`);
+      lines.push(`**감지된 관계**: ${intent.relations?.length || 0}개`);
+      lines.push('');
+
+      if (intent.classes && intent.classes.length > 0) {
+        lines.push('## 클래스 목록');
+        for (const cls of intent.classes) {
+          lines.push(`- **${cls.name}** (${cls.members?.length || 0} members)`);
+          for (const m of (cls.members || []).slice(0, 5)) {
+            lines.push(`  - \`${m}\``);
+          }
+        }
+        lines.push('');
+        lines.push('> "Apply"를 클릭하면 TypeScript 스켈레톤 파일이 생성됩니다.');
+      } else {
+        lines.push('화이트보드에 사각형과 텍스트를 추가한 후 다시 시도하세요.');
+      }
+
+      // 3. 미리보기 Webview 열기
+      const doc = await vscode.workspace.openTextDocument({
+        content: lines.join('\n'),
+        language: 'markdown',
+      });
+      await vscode.window.showTextDocument(doc, { preview: true });
+
+      // 4. "Apply" 버튼 제안
+      const choice = await NotificationThrottle.showInfo(
+        '화이트보드 코드 생성을 적용하시겠습니까?',
+        'Apply', 'Cancel'
+      );
+
+      if (choice === 'Apply') {
+        await this.applyGeneratedCode();
+      }
+    } catch (err: any) {
+      NotificationThrottle.showWarning(`코드 생성 실패: ${err.message}`);
+    }
+  }
+
+  /** Bridge generate_code_from_whiteboard 호출 → 파일 생성 */
+  private async applyGeneratedCode(): Promise<void> {
+    try {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        NotificationThrottle.showWarning('열린 워크스페이스가 없습니다.');
+        return;
+      }
+
+      const outputDir = folders[0].uri.fsPath;
+      const resp = await fetch('http://localhost:9027/tools/generate_code_from_whiteboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ output_dir: outputDir }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!resp.ok) {
+        NotificationThrottle.showWarning('코드 생성 실패: Bridge 응답 오류');
+        return;
+      }
+
+      const result = await resp.text();
+      const doc = await vscode.workspace.openTextDocument({
+        content: result,
+        language: 'markdown',
+      });
+      await vscode.window.showTextDocument(doc, { preview: false });
+      NotificationThrottle.showInfo('✅ 화이트보드 코드 생성 완료!');
+    } catch (err: any) {
+      NotificationThrottle.showWarning(`코드 생성 실패: ${err.message}`);
+    }
   }
 
   // ── UI Preview ───────────────────────────────────────────
@@ -390,6 +512,7 @@ export class VisualVibePanels {
   // ── HTML 템플릿 ──────────────────────────────────────────
 
   private whiteboardHtml(): string {
+    const fabricSource = this.getFabricJs();
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -403,9 +526,8 @@ export class VisualVibePanels {
   #error-overlay.show { display: flex; }
   canvas { display: block; }
 </style>
-<script src="${FABRIC_CDN}"
-  onerror="document.getElementById('error-overlay').classList.add('show');">
-</script>
+<script>${fabricSource.startsWith('<script') ? '' : '\n' + fabricSource + '\n'}</script>
+${fabricSource.startsWith('<script') ? fabricSource : '<script>window.fabric = fabric;</script>'}
 </head><body>
 <div id="error-overlay">
   <h2>⚠️ Fabric.js를 불러올 수 없습니다</h2>
@@ -418,6 +540,7 @@ export class VisualVibePanels {
   <button onclick="setMode('select')">🖱️ 선택</button>
   <button onclick="captureScreenshot()">📸 캡처</button>
   <button onclick="document.getElementById('imgInput').click()">📷 이미지</button>
+  <button onclick="generateCode()">📐 Code</button>
   <button onclick="deleteSelected()">🗑️ 선택 삭제</button>
   <button onclick="clearAll()">🧹 전체 삭제</button>
   <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="addImage(this)">
@@ -689,6 +812,12 @@ export class VisualVibePanels {
     canvas.clear();
     canvas.backgroundColor = '#1e1e1e';
     sendStateDebounced();
+  }
+
+  // ── Code Generation: 화이트보드 → TypeScript ──
+  function generateCode() {
+    if (!vscode) return;
+    vscode.postMessage({ type: 'generateCode' });
   }
 
   // Delete / Backspace 키

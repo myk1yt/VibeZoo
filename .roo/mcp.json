@@ -1,13 +1,8 @@
 {
-	"mcpServers": {
-		"vibezoo": {
-			"url": "http://localhost:9027/sse",
-			"transport": "sse",
-			"alwaysAllow": [
-				"search_codebase",
-				"review_code",
-				"check_quality"
-			]
-		}
-	}
+  "mcpServers": {
+    "vibezoo": {
+      "url": "http://localhost:9027/sse",
+      "transport": "sse"
+    }
+  }
 }

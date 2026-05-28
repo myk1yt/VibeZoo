@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-05-28 - v0.13.0: Phase 1~6 전면 구현](#2026-05-28-v0130-phase-16-전면-구현)
 - [2026-05-27 - v0.10.0 최종: Go 파일 정리, SSE 경로 수정](#2026-05-27-v0100-최종-go-파일-정리-sse-경로-수정)
 - [2026-05-27 - v0.10.0: MCP 자동 설정 수정, Whiteboard 자동 연동](#2026-05-27-v0100-mcp-자동-설정-수정-whiteboard-자동-연동)
 - [2026-05-27 - v0.10.0: AI 자동 Whiteboard + UI Preview 연동](#2026-05-27-v0100-ai-자동-whiteboard--ui-preview-연동)
@@ -108,3 +109,54 @@ After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1개 + Crow(외부)
 - Companion-First 아키텍처 (Zoo Code에 붙는 확장팩)
 - API 기반 LLM (로컬 모델 불필요)
 - Crow Memory는 외부 독립 시스템
+
+---
+
+## 2026-05-28 - v0.13.0: Phase 1~6 전면 구현
+
+**Phase 0 완료** (기존):
+- SelfCheck.ts (AlarmMonitor + SelfChecker) ✅
+- StatusBarManager.ts (NotificationThrottle + GuardMode) ✅
+- types/index.ts (SelfCheckReport, ThrottleEntry) ✅
+- FileGuard.ts (쿨다운 + syncFromCrow 필터) ✅
+- .roo/mcp.json (vibezoo SSE 등록) ✅
+
+**Phase 1: 화이트보드 안정화**
+- Fabric.js 5.3.1 로컬 번들링: `extension/media/fabric.min.js` 다운로드
+- `getFabricJs()` 헬퍼: 로컬 파일 우선, 실패 시 CDN fallback
+- `VisualVibePanels`에 `_context: vscode.ExtensionContext` 필드 추가
+- `handleFileChange()`: `lastMtime` mtime 비교 early return
+- `WATCH_INTERVAL_MS`: 500ms → 200ms
+- Welcome 메시지: `context.globalState`로 첫 실행만 표시
+- `vibezoo.selfCheck` 명령어 등록 (SelfChecker 사용)
+
+**Phase 2: 4대 개선**
+- `InstabilityMetrics` + `calculateInstability()` (α=0.35, β=0.45, γ=0.20)
+- `getGuardMode()`: <0.3=active, <0.7=warning, ≥0.7=safe
+- `YoctoManager.atomicCopyFile()`: crypto.randomUUID 임시파일 → rename
+- `FixLoopManager.hydrateContext()`: resume 시 파일 diff → Crow ingest
+- Crow `try_crow_ingest`/`try_crow_recall`: 150ms 시작, 2배 증가, 최대 3회, random jitter
+
+**Phase 3: Virtual Subagent**
+- `SubagentPool` 클래스: asyncio.Semaphore(5) 동시성 제어
+- `SubagentTask` dataclass + `ROLE_TOOLS` 매핑
+- 5개 MCP 도구: `create_subagent`, `check_subagent`, `get_subagent_result`, `list_subagents`, `cancel_subagent`
+- `ActiveSubagentsProvider.pollSubagentTasks()`: 30초 간격 MCP Bridge polling
+
+**Phase 4: Intent-to-Code Bridge**
+- `extract_intent_from_whiteboard()`: rect→class, line/arrow→dependency
+- `_find_nearby_text()`, `_extract_members_from_rect()`, `_find_nearest_class()` 헬퍼
+- `generate_code_from_whiteboard()`: TypeScript 스켈레톤 생성
+- `_generate_class_stub()`: import/extends/members 처리
+- Whiteboard UI "📐 Code" 버튼 + 미리보기 + Apply
+
+**Phase 5: 검증**
+- `checkZooCodeCompatibility()`: vscode.extensions.getExtension('zoocodeorganization.zoo-code')
+- `checkNotificationHealth()`: AlarmMonitor recentAlarmCount/throttled
+- 모든 `showInformationMessage`/`showWarningMessage` → `NotificationThrottle.showInfo()`/`showWarning()`
+- 리소스 정리 확인: setTimeout/clearTimeout, fs.watchFile/unwatchFile, spawn/kill
+
+**Phase 6: 문서 + GitHub + VSIX**
+- Architecture.md/PLAN.md/ROADMAP.md/JOURNAL.md 업데이트
+- git commit + push
+- VSIX 빌드 + 설치
