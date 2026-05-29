@@ -159,7 +159,7 @@ export class StatusBarManager {
       this._crowConnected = crowConnected;
     }
     if (bridgeConnected) {
-      this._baseTooltip = `VibeZoo Bridge: 연결됨 (:${bridgePort || 9020})`;
+      this._baseTooltip = `VibeZoo Bridge: 연결됨 (:${bridgePort || 9027})`;
       this.item.backgroundColor = undefined;
     } else {
       this._baseTooltip = 'VibeZoo: 활성화됨';

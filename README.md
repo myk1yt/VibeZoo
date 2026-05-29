@@ -52,12 +52,12 @@ VibeZoo는 Crow Memory를 실행하지 않습니다 — Zoo Code의 내장 Crow�
 │  │   Crow Memory     │  │   • YoctoManager (백업/복구)  │ │
 │  │   (내장, 호환)    │  │   • FileGuard + GitStash      │ │
 │  └────────┬─────────┘  └────────────┬─────────────────┘ │
-│           │ MCP/SSE (:9020)         │ 감지/spawn (싱글톤) │
+│           │ MCP/SSE (:9027)         │ 감지/spawn (싱글톤) │
 └───────────┼─────────────────────────┼───────────────────┘
             │                         │
             ▼                         ▼
 ┌──────────────────────────────────────────────────────┐
-│  VibeZoo 통합 MCP Bridge (:9020) — 싱글톤 프로세스   │
+│  VibeZoo 통합 MCP Bridge (:9027) — 싱글톤 프로세스   │
 │  vibezoo_mcp_bridge.py                               │
 │  ┌────────────────────────────────────────────────┐  │
 │  │  Crow Memory 10종 도구  │  VibeZoo 31종 도구   │  │
@@ -73,11 +73,11 @@ VibeZoo는 Crow Memory를 실행하지 않습니다 — Zoo Code의 내장 Crow�
 ### 포트 할당
 | 포트 | 서비스 | 관리 주체 |
 |:---|:---|:---|
-| 9020 | VibeZoo 통합 MCP Bridge (Crow Memory + VibeZoo) | VibeZoo Extension (Python spawn, 싱글톤) |
+| 9027 | VibeZoo 통합 MCP Bridge (Crow Memory + VibeZoo) | VibeZoo Extension (Python spawn, 싱글톤) |
 
 ### 데이터 흐름
 ```
-사용자 채팅 → Zoo Code LLM → MCP tool call → VibeZoo 통합 Bridge (:9020)
+사용자 채팅 → Zoo Code LLM → MCP tool call → VibeZoo 통합 Bridge (:9027)
                                                     │
                           ┌─────────────────────────┤
                           ▼                         ▼
@@ -177,7 +177,7 @@ pip install fastmcp uvicorn requests tree-sitter
 `Ctrl+Shift+P` → `Developer: Reload Window`
 
 VibeZoo가 자동으로:
-1. Python MCP Bridge를 spawn (port 9020, 싱글톤 — 첫 번째 창만 실행, 이후 창은 공유)
+1. Python MCP Bridge를 spawn (port 9027, 싱글톤 — 첫 번째 창만 실행, 이후 창은 공유)
 2. Bridge가 Crow Memory 10종 도구 + VibeZoo 31종 도구를 함께 제공
 3. `.roo/mcp.json`에 VibeZoo 통합 MCP 서버 자동 등록
 

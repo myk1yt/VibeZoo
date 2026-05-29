@@ -14,7 +14,7 @@
 | # | Item | Original Design (v0.10.0) | Current Reality (v0.12.0) |
 |:---|:---|:---|:---|
 | 1 | **Crow Memory** | External system spawned/managed by VibeZoo | Built-in system of Zoo Code. VibeZoo only performs `/health` detection and Crow tool integration |
-| 2 | **MCP Server** | 4 Go binaries (Scout:9022, Reviewer:9023, Tester:9024, Deep:9026) | Single Python bridge [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) (port 9020) |
+| 2 | **MCP Server** | 4 Go binaries (Scout:9022, Reviewer:9023, Tester:9024, Deep:9026) | Single Python bridge [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) (port 9027) |
 | 3 | **AutoBuildFix** | [`extension/src/safety/AutoBuildFix.ts`](../extension/src/safety/AutoBuildFix.ts) — empty loop (rebuild only) | [`extension/src/orchestra/FixLoopManager.ts`](../extension/src/orchestra/FixLoopManager.ts) — autonomous fix state machine + CIM + HITL |
 | 4 | **Session Resume** | Webview panel | Integrated into TreeView ([`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) `SessionResumeProvider`) |
 | 5 | **MCP Tool Count** | 15 | 31 (tree-sitter AST-based semantic analysis) |
@@ -98,7 +98,7 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 ┌──────────────────────────┐    ┌──────────────────────────────────┐
 │ Zoo Code Crow Memory     │    │ VibeZoo MCP Bridge               │
 │ (Zoo Code built-in)      │    │ vibezoo_mcp_bridge.py            │
-│ localhost:9020           │    │ localhost:9020/sse               │
+│ localhost:9020           │    │ localhost:9027/sse               │
 │                          │    │                                  │
 │ • crow_recall            │    │ • 31 MCP tools                  │
 │ • crow_ingest            │    │ • tree-sitter AST parsing        │
@@ -160,7 +160,7 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard (fs.watchFile) + UI Preview + Diagram panels
 │
 ├── mcp-servers/
-│   └── vibezoo_mcp_bridge.py         # Single file, 31 MCP tools, FastMCP + SSE, port 9020
+│   └── vibezoo_mcp_bridge.py         # Single file, 31 MCP tools, FastMCP + SSE, port 9027
 │
 ├── fromscratch/                      # Design documents
 │   ├── Architecture.md               # ← This document
@@ -330,7 +330,7 @@ Zoo Code (Crow Memory built-in, :9020)
     │
     ├── Zoo Code LLM → crow_recall / crow_ingest direct calls
     │
-    └── VibeZoo MCP Bridge (:9020)
+    └── VibeZoo MCP Bridge (:9027)
         ├── try_crow_ingest() → Crow /ingest
         ├── try_crow_recall() → Crow /recall
         └── Crow connection failure → ignored (tool works normally)
@@ -366,7 +366,7 @@ LLM (Zoo Code):
 
 ```
 AI (Zoo Code):
-    draw_on_whiteboard(commands) → Bridge(:9020) → ~/.vibezoo-whiteboard.json
+    draw_on_whiteboard(commands) → Bridge(:9027) → ~/.vibezoo-whiteboard.json
                                                           │
 VibeZoo Extension:                                       │
     VisualVibePanels._startWatching()                    │
@@ -389,7 +389,7 @@ User:                                                   │
    → child_process.spawn("python", ["vibezoo_mcp_bridge.py", "--port", "9027"])
 3. Bridge health check → OK
 4. autoConfigureMCP()
-   → Add {"vibezoo": {"url": "http://localhost:9020/sse"}} to .roo/mcp.json
+   → Add {"vibezoo": {"url": "http://localhost:9027/sse"}} to .roo/mcp.json
 5. Zoo Code restart loads MCP config → VibeZoo Bridge connects
 6. LLM → MCP tool call → Bridge → Python tool execution → return result
 ```
@@ -439,7 +439,7 @@ User:                                                   │
 | Component | Technology | Description |
 |:---|:---|:---|
 | **Extension** | TypeScript 5.x | VS Code Extension API |
-| **MCP Bridge** | Python 3.x + FastMCP | SSE transport, port 9020 |
+| **MCP Bridge** | Python 3.x + FastMCP | SSE transport, port 9027 |
 | **AST Parsing** | tree-sitter + tree-sitter-typescript | TS/JS structure analysis (regex fallback when not installed) |
 | **Communication** | MCP/SSE (JSON-RPC 2.0) | Zoo Code ↔ Bridge |
 | **Whiteboard** | Fabric.js | HTML5 Canvas drawing |

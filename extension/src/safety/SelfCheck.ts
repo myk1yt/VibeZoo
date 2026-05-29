@@ -138,7 +138,7 @@ export class SelfChecker {
     return report;
   }
 
-  /** Bridge :9020/health 확인 */
+  /** Bridge :9027/health 확인 */
   async checkBridgeConnectivity(): Promise<SelfCheckItem> {
     const base: SelfCheckItem = {
       name: 'Bridge Connectivity',
@@ -150,7 +150,7 @@ export class SelfChecker {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
 
-      const resp = await fetch('http://localhost:9020/health', {
+      const resp = await fetch('http://localhost:9027/health', {
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -247,7 +247,7 @@ export class SelfChecker {
       }
 
       const vibezooConfig = config.mcpServers.vibezoo;
-      const expectedUrl = 'http://localhost:9020/sse';
+      const expectedUrl = 'http://localhost:9027/sse';
       if (vibezooConfig.url !== expectedUrl) {
         base.status = 'warning';
         base.message = `vibezoo 서버 URL이 예상과 다름: ${vibezooConfig.url} (expected: ${expectedUrl})`;

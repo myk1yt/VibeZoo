@@ -26,7 +26,7 @@
 | Component | Language/Technology | Description |
 |:---|:---|:---|
 | **VibeZoo Extension** | TypeScript 5.x | VS Code Extension API. `onStartupFinished` activation. |
-| **MCP Bridge** | Python 3.x + FastMCP | Single file [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py). SSE transport, port 9020. |
+| **MCP Bridge** | Python 3.x + FastMCP | Single file [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py). SSE transport, port 9027. |
 | **AST Parsing** | tree-sitter (Python bindings) | TypeScript/JavaScript structure analysis. Regex fallback when not installed. |
 | **Crow Memory** | Zoo Code built-in | Python FastMCP, port 9020. VibeZoo only detects and integrates. |
 | **Communication Protocol** | MCP/SSE (JSON-RPC 2.0) | Zoo Code ↔ VibeZoo MCP Bridge |

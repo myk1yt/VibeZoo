@@ -2801,7 +2801,7 @@ def get_preferences(category: Optional[str] = None) -> str:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VibeZoo MCP Bridge Server")
-    parser.add_argument("--port", type=int, default=9020, help="SSE server port")
+    parser.add_argument("--port", type=int, default=9027, help="SSE server port")
     args = parser.parse_args()
 
     print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")

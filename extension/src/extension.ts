@@ -404,7 +404,7 @@ export function deactivate(): void {
 
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 
-function autoConfigureMCP(port: number = 9020): void {
+function autoConfigureMCP(port: number = 9027): void {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders?.[0]) return;
 

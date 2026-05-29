@@ -34,7 +34,7 @@ export class SubagentManager {
   }
 
   private getBridgePort(): number {
-    return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9020);
+    return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9027);
   }
 
   /** 개별 에이전트 포트 목록 */
