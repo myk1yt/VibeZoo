@@ -162,20 +162,16 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
     this.startHealthCheck();
   }
 
-  /** FileGuard 토글 상태 업데이트 */
+  /** FileGuard 토글 상태 업데이트 — 노드는 항상 존재, 상태만 변경 */
   setFileGuardStatus(enabled: boolean): void {
-    if (enabled) {
-      this.nodes.set('_fileguard', {
-        id: '_fileguard',
-        name: 'FileGuard',
-        status: 'running',
-        currentTask: 'Protecting files',
-        port: 0,
-        startTime: Date.now(),
-      });
-    } else {
-      this.nodes.delete('_fileguard');
-    }
+    this.nodes.set('_fileguard', {
+      id: '_fileguard',
+      name: 'FileGuard',
+      status: enabled ? 'running' : 'idle',
+      currentTask: enabled ? 'Protecting files' : 'Disabled (click to enable)',
+      port: 0,
+      startTime: Date.now(),
+    });
     this._onDidChangeTreeData.fire(undefined);
   }
 
@@ -270,13 +266,13 @@ class SubagentTreeItem extends vscode.TreeItem {
       return;
     }
 
-    // FileGuard toggle special node (always shown)
+    // FileGuard toggle special node (always shown, never deleted)
     if (node.id === '_fileguard') {
       const enabled = node.status === 'running';
       this.label = enabled ? '$(shield) FileGuard' : '$(unlock) FileGuard';
-      this.description = enabled ? 'ON (click to OFF)' : 'OFF (click to ON)';
-      this.contextValue = enabled ? 'fileguard-on' : 'fileguard-off';
-      this.tooltip = 'Click to toggle FileGuard ON/OFF';
+      this.description = enabled ? 'ON' : 'OFF';
+      this.contextValue = 'fileguard';
+      this.tooltip = enabled ? 'FileGuard: 보호 중 - 클릭하여 OFF' : 'FileGuard: 꺼짐 - 클릭하여 ON';
       this.command = {
         command: 'vibezoo.toggleFileGuard',
         title: 'Toggle FileGuard',
