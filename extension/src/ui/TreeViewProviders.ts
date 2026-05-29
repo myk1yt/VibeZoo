@@ -270,12 +270,13 @@ class SubagentTreeItem extends vscode.TreeItem {
       return;
     }
 
-    // FileGuard toggle special node
+    // FileGuard toggle special node (always shown)
     if (node.id === '_fileguard') {
       const enabled = node.status === 'running';
       this.label = enabled ? '$(shield) FileGuard' : '$(unlock) FileGuard';
-      this.description = enabled ? 'ON' : 'OFF';
+      this.description = enabled ? 'ON (click to OFF)' : 'OFF (click to ON)';
       this.contextValue = enabled ? 'fileguard-on' : 'fileguard-off';
+      this.tooltip = 'Click to toggle FileGuard ON/OFF';
       this.command = {
         command: 'vibezoo.toggleFileGuard',
         title: 'Toggle FileGuard',
