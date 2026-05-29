@@ -107,9 +107,10 @@ def _validate_int(value: int, name: str, min_val: int = 0, max_val: int = 1000) 
 
 def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = None,
                         max_depth: int = -1) -> list:
-    """성능 최적화된 프로젝트 파일 순회.
-    - 확장자 필터링으로 `root.rglob("*")` 남용 방지
-    - 제외 디렉토리 필터링
+    """성능 최적화된 프로젝트 파일 순회 (os.walk, 단일 패스).
+    - os.walk를 사용하여 디렉토리 트리를 한 번만 탐색
+    - 제외 디렉토리는 os.walk 단계에서 바로 제외 (하위 트리 탐색 안 함)
+    - 확장자 필터링을 in-memory에서 처리 (확장자별 rglob *n회 호출 제거)
     - 최대 깊이 제한 가능
     """
     if extensions is None:
@@ -118,22 +119,62 @@ def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = 
         exclude_dirs = DEFAULT_EXCLUDE_DIRS
 
     results = []
-    # 확장자별 glob 패턴 사용 (rglob("*") 대비 효율적)
-    for ext in extensions:
-        try:
-            for p in root.rglob(f"*{ext}"):
-                if not p.is_file():
+    root_str = str(root)
+    try:
+        for dirpath, dirnames, filenames in os.walk(root_str):
+            # 상위 경로 중 제외 디렉토리가 있으면 이 subtree 건너뜀
+            rel_dir = os.path.relpath(dirpath, root_str)
+            if rel_dir != ".":
+                parts = rel_dir.replace("\\", "/").split("/")
+                if any(part in exclude_dirs for part in parts):
+                    dirnames.clear()
                     continue
-                # 제외 디렉토리 확인
-                rel = p.relative_to(root)
-                if any(part in str(rel) for part in exclude_dirs):
-                    continue
-                # 최대 깊이 제한
-                if max_depth > 0 and len(rel.parts) > max_depth:
-                    continue
-                results.append(p)
-        except (PermissionError, OSError):
-            continue
+
+            # 현재 레벨 디렉토리 필터링 (하위 탐색 제외)
+            dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
+
+            # 최대 깊이 제한
+            if rel_dir == ".":
+                depth = 0
+            else:
+                depth = len(rel_dir.replace("\\", "/").split("/"))
+            if max_depth > 0 and depth > max_depth:
+                dirnames.clear()
+                continue
+
+            for fname in filenames:
+                ext = os.path.splitext(fname)[1]
+                if ext in extensions:
+                    results.append(Path(dirpath) / fname)
+    except (PermissionError, OSError):
+        pass
+    return results
+
+
+# ── 파일 스캔 캐시 (중복 스캔 방지, TTL 5초) ─────────
+
+_file_scan_cache: dict = {}
+_file_scan_cache_ttl: int = 5
+
+
+def _iter_project_files_cached(root: Path, extensions: set = None, exclude_dirs: set = None,
+                                max_depth: int = -1) -> list:
+    """_iter_project_files 결과를 캐싱하는 래퍼.
+    같은 인자로 5초 내 재호출 시 캐시 반환하여 중복 스캔을 방지합니다.
+    suggest_refactor 등 여러 도구를 연속 호출할 때 성능 향상.
+    """
+    cache_key = (
+        str(root),
+        tuple(sorted(extensions)) if extensions else tuple(sorted(SOURCE_EXTS)),
+        tuple(sorted(exclude_dirs)) if exclude_dirs else tuple(sorted(DEFAULT_EXCLUDE_DIRS)),
+        max_depth,
+    )
+    cached = _file_scan_cache.get(cache_key)
+    if cached and (time.time() - cached["time"]) < _file_scan_cache_ttl:
+        return cached["results"]
+
+    results = _iter_project_files(root, extensions, exclude_dirs, max_depth)
+    _file_scan_cache[cache_key] = {"results": results, "time": time.time()}
     return results
 
 
@@ -725,7 +766,7 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
     # 파일 통계 (확장자 기반)
     output += "\n## File Statistics\n\n"
     stats = {}
-    for p in _iter_project_files(root, extensions={".*"}, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+    for p in _iter_project_files_cached(root, extensions={".*"}, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         ext = p.suffix or "(no ext)"
         stats[ext] = stats.get(ext, 0) + 1
     if stats:
@@ -920,7 +961,7 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     output += "\n## Function Call Graph (AST)\n\n"
     total_calls = 0
     processed_files = 0
-    for p in _iter_project_files(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+    for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
             continue
@@ -947,7 +988,7 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     # 파일 간 의존성 (AST 기반 import)
     output += "\n## File-Level Dependencies (AST)\n\n"
     dep_count = 0
-    for p in _iter_project_files(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+    for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
             continue
@@ -983,7 +1024,7 @@ def map_dependencies(target_path: Optional[str] = None) -> str:
 
     # 모든 파일에서 import 수집 (AST 우선, regex fallback)
     deps = {}
-    for p in _iter_project_files(root, extensions={".ts", ".tsx", ".js", ".jsx", ".py", ".go"},
+    for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".jsx", ".py", ".go"},
                                   exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         rel = _normalize_path(str(p.relative_to(root)))
         ext = p.suffix
@@ -1077,7 +1118,7 @@ def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3
     }
 
     file_count = 0
-    for p in _iter_project_files(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+    for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
             continue
@@ -1164,7 +1205,7 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
     # API 엔드포인트 추출 (Express / Next.js / FastAPI)
     output += "## API Endpoints\n\n"
     endpoints = []
-    for p in _iter_project_files(root, extensions={".ts", ".tsx", ".js", ".py"},
+    for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".py"},
                                   exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
@@ -1182,7 +1223,7 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
     output += "\n## Data Models\n\n"
     models = []
     all_fields = {}
-    for p in _iter_project_files(root, extensions={".ts", ".tsx", ".js", ".jsx", ".go"},
+    for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".jsx", ".go"},
                                   exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
@@ -1764,9 +1805,9 @@ def review_project(target_path: str) -> str:
     root = Path(get_project_root(target_path))
     reviewed = 0
     total_files = 0
-    for p in _iter_project_files(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+    for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         total_files += 1
-    for p in _iter_project_files(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+    for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         if reviewed >= 5:
             sections.append(f"\n> ... and more files (reviewed top 5 of {total_files} total)\n")
             break
