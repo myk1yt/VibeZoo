@@ -158,10 +158,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider('vibezoo.sessionResume', sessionResumeProvider)
   );
 
-  // FileGuard 초기 상태를 Sidebar에 반영
-  if (fileGuard) {
-    subagentsProvider.setFileGuardStatus(fileGuard.isEnabled());
-  }
+  // FileGuard 초기 상태를 Sidebar에 반영 (fileGuard 유/무 관계없이 노드 표시)
+  subagentsProvider.setFileGuardStatus(fileGuard ? fileGuard.isEnabled() : false);
 
   // SubagentManager onChange → ActiveSubagentsProvider
   subagentManager.onChange((node) => subagentsProvider.updateNode(node));
@@ -379,7 +377,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.toggleFileGuard', async () => {
       if (!fileGuard) {
-        vscode.window.showWarningMessage('VibeZoo: FileGuard가 비활성화되어 있습니다.');
+        vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있어 FileGuard를 사용할 수 없습니다.');
         return;
       }
       const newState = fileGuard.toggle();
