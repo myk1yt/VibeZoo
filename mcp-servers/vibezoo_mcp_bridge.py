@@ -3286,9 +3286,14 @@ def get_preferences(category: Optional[str] = None) -> str:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VibeZoo MCP Bridge Server")
     parser.add_argument("--port", type=int, default=9027, help="SSE server port")
+    parser.add_argument("--stdio", action="store_true", help="Run in stdio transport mode (for command-based MCP)")
     args = parser.parse_args()
 
-    print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
-    print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
-
-    mcp.run(transport="sse", host="127.0.0.1", port=args.port)
+    if args.stdio:
+        print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting in stdio mode...", file=sys.stderr)
+        print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)", file=sys.stderr)
+        mcp.run(transport="stdio")
+    else:
+        print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
+        print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
+        mcp.run(transport="sse", host="127.0.0.1", port=args.port)
