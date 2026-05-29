@@ -59,6 +59,10 @@
         "title": "VibeZoo: Open Orchestra Dashboard"
       },
       {
+        "command": "vibezoo.toggleFileGuard",
+        "title": "VibeZoo: Toggle FileGuard (파일 보호 켜기/끄기)"
+      },
+      {
         "command": "vibezoo.showSessionResume",
         "title": "VibeZoo: Show Session Resume"
       },
