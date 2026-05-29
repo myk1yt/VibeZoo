@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { spawn } from 'child_process';
 import { CrowServerManager } from './crow/CrowServerManager';
 import { StatusBarManager } from './ui/StatusBarManager';
 import { ActiveSubagentsProvider, YoloHistoryProvider, SessionResumeProvider } from './ui/TreeViewProviders';
@@ -22,6 +23,40 @@ import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetecto
 import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
+
+// ── 조기 브릿지 Spawn (모듈 로드 시점) ─────────────────────
+// activate()보다 먼저 실행되어 Python 브릿지를 미리 띄운다.
+// 이렇게 하면 Zoo Code MCP 클라이언트가 SSE 연결을 시도할 때
+// 브릿지가 준비되어 있을 시간을 확보한다.
+(function trySpawnEarlyBridge(): void {
+  try {
+    const candidates = [
+      // 설치된 확장: local.vibezoo-0.13.0/out/../mcp-servers/
+      path.join(__dirname, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
+      // 워크스페이스 개발: extension/out/../../mcp-servers/
+      path.join(__dirname, '..', '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
+    ];
+    let scriptPath: string | null = null;
+    for (const c of candidates) {
+      if (fs.existsSync(c)) { scriptPath = c; break; }
+    }
+    if (!scriptPath) {
+      console.log('[VibeZoo] 조기 브릿지: 스크립트를 찾을 수 없음 (activate()에서 재시도)');
+      return;
+    }
+    console.log(`[VibeZoo] 조기 브릿지 spawn: ${path.basename(scriptPath)}`);
+    const child = spawn('python', [scriptPath, '--port', '9027'], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, CROW_SERVER_URL: 'http://127.0.0.1:9020' },
+    });
+    child.unref();
+    console.log('[VibeZoo] ✅ 조기 브릿지 백그라운드 실행 완료');
+  } catch (e: any) {
+    console.warn('[VibeZoo] 조기 브릿지 spawn 실패:', e.message);
+    // activate()의 SubagentManager.spawnBridge()에서 재시도
+  }
+})();
 
 // ── 중복 활성화 방지 ───────────────────────────────────────
 const _activeExtensions = new Set<string>();
