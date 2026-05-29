@@ -105,7 +105,7 @@ export class SubagentManager {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        CROW_SERVER_URL: `http://127.0.0.1:${port}`,  // 로컬 Crow를 스스로 참조
+        CROW_SERVER_URL: `http://127.0.0.1:9020`,  // Crow Memory 기본 포트 (port 변수는 bridge 포트, Crow는 9020 고정)
       },
     });
 
