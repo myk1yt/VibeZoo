@@ -10,7 +10,7 @@ export declare class SubagentManager {
     private getBridgePort;
     /** 개별 에이전트 포트 목록 */
     private getAgentPorts;
-    /** Bridge 서버 시작 (Python — FastMCP SSE) — 기존 healthy 브릿지 재사용 or 구버전 종료 후 재시작 */
+    /** Bridge 서버 시작 (Python — FastMCP SSE) — 구버전 종료 후 재시작 */
     spawnBridge(): Promise<number>;
     /** 포트를 사용 중인 구버전 브릿지 프로세스 종료 */
     private killBridgeOnPort;
