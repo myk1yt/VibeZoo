@@ -162,6 +162,23 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
     this.startHealthCheck();
   }
 
+  /** FileGuard 토글 상태 업데이트 */
+  setFileGuardStatus(enabled: boolean): void {
+    if (enabled) {
+      this.nodes.set('_fileguard', {
+        id: '_fileguard',
+        name: 'FileGuard',
+        status: 'running',
+        currentTask: 'Protecting files',
+        port: 0,
+        startTime: Date.now(),
+      });
+    } else {
+      this.nodes.delete('_fileguard');
+    }
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
   /** CIM 감시 상태 업데이트 */
   setCimStatus(watching: boolean): void {
     const existing = this.nodes.get('_cim');
@@ -195,10 +212,12 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
       return Promise.resolve([placeholder as any]);
     }
     const items = nodes.map((node) => new SubagentTreeItem(node, this._bridgeOk, this._crowOk));
-    // Bridge 노드가 최상단에 오도록 정렬
+    // Bridge -> FileGuard -> 이름순 정렬
     items.sort((a, b) => {
       if (a.node.id === '_bridge') return -1;
       if (b.node.id === '_bridge') return 1;
+      if (a.node.id === '_fileguard') return -1;
+      if (b.node.id === '_fileguard') return 1;
       return a.node.name.localeCompare(b.node.name);
     });
     return Promise.resolve(items);
@@ -247,6 +266,19 @@ class SubagentTreeItem extends vscode.TreeItem {
       this.command = {
         command: 'vibezoo.stopWatching',
         title: 'Stop CIM',
+      };
+      return;
+    }
+
+    // FileGuard toggle special node
+    if (node.id === '_fileguard') {
+      const enabled = node.status === 'running';
+      this.label = enabled ? '$(shield) FileGuard' : '$(unlock) FileGuard';
+      this.description = enabled ? 'ON' : 'OFF';
+      this.contextValue = enabled ? 'fileguard-on' : 'fileguard-off';
+      this.command = {
+        command: 'vibezoo.toggleFileGuard',
+        title: 'Toggle FileGuard',
       };
       return;
     }

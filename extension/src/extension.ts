@@ -158,6 +158,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider('vibezoo.sessionResume', sessionResumeProvider)
   );
 
+  // FileGuard 초기 상태를 Sidebar에 반영
+  if (fileGuard) {
+    subagentsProvider.setFileGuardStatus(fileGuard.isEnabled());
+  }
+
   // SubagentManager onChange → ActiveSubagentsProvider
   subagentManager.onChange((node) => subagentsProvider.updateNode(node));
 
@@ -369,6 +374,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
     }, 2000);
   }
+
+  // FileGuard 토글 커맨드
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.toggleFileGuard', async () => {
+      if (!fileGuard) {
+        vscode.window.showWarningMessage('VibeZoo: FileGuard가 비활성화되어 있습니다.');
+        return;
+      }
+      const newState = fileGuard.toggle();
+      subagentsProvider.setFileGuardStatus(newState);
+      if (newState) {
+        vscode.window.showInformationMessage('VibeZoo: FileGuard 켜짐');
+      } else {
+        vscode.window.showWarningMessage('VibeZoo: FileGuard 꺼짐');
+      }
+    })
+  );
 
   // AutoBuildFix 내부 커맨드
   context.subscriptions.push(
