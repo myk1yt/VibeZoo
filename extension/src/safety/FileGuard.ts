@@ -20,6 +20,8 @@ export class FileGuard {
   /** 최근 복구 시각 Map (파일경로 → timestamp) — 무한루프 방지용 쿨다운 */
   private _recentlyRestored: Map<string, number> = new Map();
   private readonly RESTORE_COOLDOWN_MS = 5000; // 5초 이내 동일 파일 복구 → 무시
+  /** FileGuard ON/OFF 상태 */
+  private _enabled: boolean = true;
 
   constructor(yocto: YoctoManager) {
     this.yocto = yocto;
@@ -45,6 +47,7 @@ export class FileGuard {
     );
 
     this.watcher.onDidChange(async (uri) => {
+      if (!this._enabled) return;
       if (this.isProtected(uri.fsPath)) {
         // ★ 쿨다운 체크: 5초 내 동일 파일 복구 방지 (무한루프 방지)
         const lastRestore = this._recentlyRestored.get(uri.fsPath);
@@ -73,6 +76,18 @@ export class FileGuard {
   /** 파일이 .yoloignore에 의해 보호되는지 확인 */
   isProtected(filePath: string): boolean {
     return this.patterns.some((pattern) => pattern.match(filePath));
+  }
+
+  /** FileGuard ON/OFF 토글 */
+  toggle(): boolean {
+    this._enabled = !this._enabled;
+    console.log(`[VibeZoo:FileGuard] 상태 변경: ${this._enabled ? 'ON' : 'OFF'}`);
+    return this._enabled;
+  }
+
+  /** 현재 FileGuard 활성화 상태 반환 */
+  isEnabled(): boolean {
+    return this._enabled;
   }
 
   /** Crow life_avoid 동기화 — 새로운 패턴을 .yoloignore에 추가 */
