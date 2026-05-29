@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-05-29 - v0.13.0: Bridge stability audit — critical issues found](#2026-05-29---v0130-bridge-stability-audit--critical-issues-found)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
 - [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
@@ -110,6 +111,69 @@ After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1 file + Crow(external)
 - Companion-First architecture (extension pack for Zoo Code)
 - API-based LLM (no local model needed)
 - Crow Memory as external independent system
+
+---
+
+## 2026-05-29 - v0.13.0: Bridge stability audit — critical issues found
+
+**Context**: Real-world testing session with AI agent (Orchestrator + Crow mode). 7 VibeZoo MCP tools tested. Crow Memory (9020) as comparison baseline — 0 failures across all operations.
+
+### Results Summary
+
+| Tool | Call Count | Success | Failure | Error Type |
+|:---|:---:|:---:|:---:|:---|
+| `summarize_architecture` | 1 | ✅ 1 | — | — |
+| `learn_preference` | 2 | ✅ 2 | — | — |
+| `get_preferences` | 1 | — | ❌ 1 | `-32602` Invalid params |
+| `find_bugs` | 1 | — | ❌ 1 | 60s timeout |
+| `review_code` | 1 | — | ❌ 1 | 60s timeout |
+| `search_codebase` | 1 | — | ❌ 1 | `-32602` Invalid params |
+| `check_quality` | 1 | — | ❌ 1 | `-32602` Invalid params |
+| **Total** | **8** | **3** | **5** | **62.5% failure rate** |
+
+### Root Cause Analysis
+
+**Issue #1: Progressive state corruption (`-32602` epidemic)**
+- [`vibezoo_mcp_bridge.py:54`](../mcp-servers/vibezoo_mcp_bridge.py:54): `mcp = FastMCP(name="vibezoo")` — global singleton, no request isolation
+- [`vibezoo_mcp_bridge.py:156-177`](../mcp-servers/vibezoo_mcp_bridge.py:156): `_file_scan_cache` — module-level dict, state accumulates across requests
+- [`vibezoo_mcp_bridge.py:230-234`](../mcp-servers/vibezoo_mcp_bridge.py:230): `_ts_available`, `_ts_parser`, `_ts_ts_language` — global tree-sitter state
+- [`vibezoo_mcp_bridge.py:40-45`](../mcp-servers/vibezoo_mcp_bridge.py:40): `CROW_URL`, `WHITEBOARD_FILE` — all module-level globals
+- **Likely mechanism**: `_init_tree_sitter()` at line 236 uses `pip install tree-sitter --quiet` with retries. Multiple concurrent tool calls may corrupt the global `_ts_parser` state, cascading `-32602` to all subsequent requests regardless of whether they use AST.
+
+**Issue #2: Timeout cascade in integrated tools**
+- [`vibezoo_mcp_bridge.py:1743-1766`](../mcp-servers/vibezoo_mcp_bridge.py:1743): `_run_tool()` — calls internal functions synchronously
+- [`vibezoo_mcp_bridge.py:1780-1845`](../mcp-servers/vibezoo_mcp_bridge.py:1780): `review_project()` — chains 4+ internal tool calls sequentially
+- [`vibezoo_mcp_bridge.py:1849-1909`](../mcp-servers/vibezoo_mcp_bridge.py:1849): `find_bugs()` — chains 10+ `search_codebase` calls + Crow recall
+- **No partial result handling**: If step 3 of 10 fails, all 9 prior results are lost
+- **No streaming**: 60-second silent wait → single failure message
+
+**Issue #3: `summarize_architecture` lacks real architecture analysis**
+- [`vibezoo_mcp_bridge.py:711-780`](../mcp-servers/vibezoo_mcp_bridge.py:711): Output is directory tree + file extension counts + `requirements.txt` detection
+- Does NOT leverage: `map_dependencies` (AST imports), `analyze_call_graph` (AST call graph), `extract_patterns` (pattern mining)
+- Missing: module dependency graph, data flow analysis, layer identification, design pattern detection
+
+**Issue #4: Error message poverty**
+- [`vibezoo_mcp_bridge.py:74-87`](../mcp-servers/vibezoo_mcp_bridge.py:74): `_validate_file_path()` returns "File not found: {file_path}" — no attempted path, no cwd context
+- `-32602` errors: No parameter-level detail about which argument failed validation
+- Timeouts: No intermediate progress, no partial results
+
+**Issue #5: Crow Memory comparison — what Crow does right**
+- Single-responsibility tools (one operation per tool)
+- Lightweight responses (hundreds of bytes, not megabytes)
+- Predictable failure: clear validation errors on bad parameters
+- Zero state accumulation between requests
+
+### Action Plan
+
+| Priority | Item | Effort | Target |
+|:---:|:---|:---:|:---|
+| **P0** | Add global exception handler middleware to bridge — log tool name + parameters on all failures | S | Today |
+| **P0** | Verify `_init_tree_sitter()` thread safety — add mutex/lock for global parser state | S | Today |
+| **P1** | Add graceful degradation to `_run_tool()` — partial results on child tool failure | M | 2 days |
+| **P1** | Add `--debug` flag for detailed parameter-level error reporting | S | 1 day |
+| **P2** | Enhance `summarize_architecture` to call `map_dependencies` + `analyze_call_graph` internally | M | 3 days |
+| **P2** | Add streaming/progress support to integrated tools (>5s operations) | L | 1 week |
+| **P3** | Refactor integrated tools into composable primitives + separate orchestration layer | XL | 2 weeks |
 
 ---
 
