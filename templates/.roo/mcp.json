@@ -1,14 +1,4 @@
 {
   "$schema": "../.roo/mcp.schema.json",
-  "mcpServers": {
-    "vibezoo": {
-      "type": "sse",
-      "url": "http://localhost:9020/sse",
-      "alwaysAllow": [
-        "search_codebase",
-        "review_code",
-        "check_quality"
-      ]
-    }
-  }
+  "mcpServers": {}
 }
