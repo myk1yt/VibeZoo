@@ -48,41 +48,17 @@ export class SubagentManager {
     ];
   }
 
-  /** Bridge 서버 시작 (Python — FastMCP SSE) — 싱글톤 감지 포함 */
+  /** Bridge 서버 시작 (Python — FastMCP SSE) — 구버전 종료 후 재시작 */
   async spawnBridge(): Promise<number> {
     const port = this.getBridgePort();
     if (this.child) {
       return port;
     }
 
-    // ★ 싱글톤 감지: 이미 실행 중인 브릿지가 있으면 spawn 생략
-    const alive = await this.checkHealth(port);
-    if (alive) {
-      console.log(`[VibeZoo] 기존 MCP Bridge 감지됨 (port ${port}) — spawn 생략, 공유 사용`);
-      this.node = {
-        id: BRIDGE_NAME,
-        name: 'VibeZoo Bridge',
-        status: 'running',
-        currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer (shared)',
-        port: port,
-        startTime: Date.now(),
-      };
-      this._onChange.fire(this.node);
-
-      // 개별 에이전트 노드 발행
-      const agentPorts = this.getAgentPorts();
-      for (const agent of agentPorts) {
-        this._onChange.fire({
-          id: agent.id,
-          name: agent.name,
-          status: 'running',
-          currentTask: `${agent.name} ready via Bridge (:${port})`,
-          port: agent.port,
-          startTime: Date.now(),
-        });
-      }
-      return port;
-    }
+    // ★ 구버전 브릿지 강제 종료: detached + unref로 인해 Reload 후에도 프로세스가 살아있을 수 있음
+    await this.killBridgeOnPort(port);
+    // 포트가 해제될 때까지 대기 (최대 5초)
+    await this.waitForPortFree(port, 5000);
 
     if (!this.bridgeScript) {
       throw new Error(
@@ -148,6 +124,54 @@ export class SubagentManager {
 
     console.log(`[VibeZoo] MCP Bridge started on port ${port} (Crow+VibeZoo 통합)`);
     return port;
+  }
+
+  /** 포트를 사용 중인 구버전 브릿지 프로세스 종료 */
+  private async killBridgeOnPort(port: number): Promise<void> {
+    try {
+      const alive = await this.checkHealth(port);
+      if (!alive) return;
+
+      console.log(`[VibeZoo] 구버전 Bridge 감지됨 (port ${port}) — 강제 종료 시도`);
+      try {
+        // Windows: netstat으로 PID 찾기
+        const isWin = process.platform === 'win32';
+        const cmd = isWin
+          ? `netstat -ano | findstr :${port} | findstr LISTENING`
+          : `lsof -ti:${port}`;
+        const pidOutput = execSync(cmd, { encoding: 'utf-8', timeout: 5000 });
+        const pidMatch = pidOutput.match(/(\d+)\s*$/m);
+        if (pidMatch) {
+          const pid = pidMatch[1].trim();
+          const killCmd = isWin ? `taskkill /F /PID ${pid}` : `kill -9 ${pid}`;
+          execSync(killCmd, { timeout: 3000 });
+          console.log(`[VibeZoo] 구버전 Bridge(PID ${pid}) 종료 완료`);
+        }
+      } catch (e: any) {
+        // netstat/findstr 실패 시 휴리스틱 fallback
+        console.warn(`[VibeZoo] PID 탐색 실패, fallback kill: ${e.message}`);
+        try {
+          if (process.platform === 'win32') {
+            execSync(`taskkill /F /FI "IMAGENAME eq python.exe"`, { timeout: 3000 });
+          }
+        } catch {
+          // 이미 종료되었거나 접근 권한 없음 — 무시
+        }
+      }
+    } catch {
+      // 조용히 실패 — spawn 단계에서 새 프로세스가 시작됨
+    }
+  }
+
+  /** 포트가 해제될 때까지 대기 */
+  private async waitForPortFree(port: number, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const alive = await this.checkHealth(port);
+      if (!alive) return;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    console.warn(`[VibeZoo] Port ${port} 해제 대기 시간 초과 — 새 브릿지 spawn 시도`);
   }
 
   /** 싱글톤 감지: 이미 실행 중인 브릿지 헬스체크 */
