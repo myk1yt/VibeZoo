@@ -21,8 +21,13 @@ export class SubagentManager {
 
   constructor(context: vscode.ExtensionContext) {
     const candidates = [
+      // 1순위: 확장 디렉토리 내부 mcp-servers/ (local.vibezoo-0.13.0/mcp-servers/)
+      path.join(context.extensionPath, 'mcp-servers', 'vibezoo_mcp_bridge.py'),
+      // 2순위: .vscode/extensions/mcp-servers/ (범용 경로)
       path.join(context.extensionPath, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
+      // 3순위: .vscode/mcp-servers/
       path.join(context.extensionPath, '..', '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
+      // 4순위: CWD fallback
       'vibezoo_mcp_bridge.py',
     ];
     for (const c of candidates) {

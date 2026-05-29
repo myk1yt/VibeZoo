@@ -1,0 +1,1 @@
+{"version":3,"file":"AutoBuildFix.d.ts","sourceRoot":"","sources":["../../src/safety/AutoBuildFix.ts"],"names":[],"mappings":"AAGA,MAAM,WAAW,kBAAkB;IACjC,MAAM,EAAE,SAAS,GAAG,QAAQ,CAAC;IAC7B,OAAO,EAAE,MAAM,CAAC;CACjB;AAED,qBAAa,YAAY;IACjB,GAAG,CAAC,OAAO,EAAE,GAAG,GAAG,OAAO,CAAC,kBAAkB,CAAC;CAIrD"}
