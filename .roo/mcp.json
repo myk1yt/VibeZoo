@@ -1,4 +1,3 @@
 {
-  "$schema": "../.roo/mcp.schema.json",
-  "mcpServers": {}
+	"mcpServers": {}
 }
