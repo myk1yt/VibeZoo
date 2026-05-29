@@ -1,6 +1,6 @@
 # VibeZoo v0.13.0
 
-> **Zoo Code를 위한 AI 동반자 확장.** 소스 코드 0% 수정. 100% Companion-First.
+> **AI Companion Extension for Zoo Code.** 0% Source Modification. 100% Companion-First.
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.13.0-blue" alt="version">
@@ -13,153 +13,153 @@
 
 ---
 
-## 🎯 철학 (Philosophy)
+## 🎯 Philosophy
 
 **"Vibe = f(Usefulness, Predictability, Control_perceived)"**
 
-VibeZoo는 Zoo Code를 **포크하지 않고**, 곁에서 돕는 **동반자(Companion) 확장**입니다. Zoo Code 소스 코드를 단 한 줄도 수정하지 않고, VS Code Extension API + MCP 프로토콜 + Crow Memory만으로 바이브코딩 경험을 극대화합니다.
+VibeZoo does not fork Zoo Code — it assists from the side as a **Companion Extension**. Without modifying a single line of Zoo Code's source code, it maximizes the vibecoding experience using only the VS Code Extension API + MCP Protocol + Crow Memory.
 
-### 핵심 원칙
-| 원칙 | 설명 |
+### Core Principles
+| Principle | Description |
 |:---|:---|
-| **Companion-First** | Zoo Code 옆에서 동작. 포크/패치 없음 |
-| **사용자 통제 가능한 자동화** | 완전 자동이 아닌, 인간이 개입할 수 있는 반자동 (HITL) |
-| **VS Code Lock-In** | VS Code를 벗어나지 않음. 모든 UI는 VS Code 내장 |
-| **도구는 알고리즘, 지능은 LLM** | MCP 도구는 순수 Python 함수. 추론/판단은 Zoo Code LLM이 |
+| **Companion-First** | Operates alongside Zoo Code. No fork/patch. |
+| **Controllable Automation** | Semi-autonomous with human intervention (HITL) |
+| **VS Code Lock-In** | Never leaves VS Code. All UI is built into VS Code. |
+| **Tools are Algorithms, Intelligence is the LLM** | MCP tools are pure Python functions. Reasoning/judgment is handled by Zoo Code's LLM. |
 
-### Crow Memory와의 관계
-VibeZoo는 **Crow Memory와 함께 사용할 때 진정한 힘**을 발휘합니다:
+### Relationship with Crow Memory
+VibeZoo unlocks its **true power when used with Crow Memory**:
 
-- **Crow 없이**: 31개 MCP 도구가 정적 분석/검색 수행
-- **Crow 있으면**: 에러 패턴 학습, 프로젝트 지식 축적, 코딩 스타일 기억, 크로스 세션 컨텍스트 — **스스로 진화하는 도구**
+- **Without Crow**: 31 MCP tools perform static analysis/searches
+- **With Crow**: Learns error patterns, accumulates project knowledge, remembers coding style, cross-session context — **a self-evolving toolset**
 
-VibeZoo는 Crow Memory를 실행하지 않습니다 — Zoo Code의 내장 Crow를 **자동 감지**하여 활용합니다.
+VibeZoo does not run Crow Memory — it **auto-detects** and leverages Zoo Code's built-in Crow.
 
 ---
 
-## 🏗️ 아키텍처 (Architecture)
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      VS Code 창 (싱글톤 브릿지 공유)      │
+│                      VS Code Window (Singleton Bridge)   │
 │  ┌──────────────────┐  ┌──────────────────────────────┐ │
 │  │    Zoo Code       │  │   VibeZoo Extension (local)  │ │
 │  │    (LLM + Crow)   │  │   ────────────────────────   │ │
-│  │                   │  │   • StatusBar (통합 1개)      │ │
-│  │   deepseek-v4     │  │   • TreeView (3개 패널)       │ │
-│  │   or other LLM    │  │   • FixLoopManager (자율 수정) │ │
-│  │                   │  │   • VisualVibePanels (화이트)  │ │
-│  │   Crow Memory     │  │   • YoctoManager (백업/복구)  │ │
-│  │   (내장, 호환)    │  │   • FileGuard + GitStash      │ │
+│  │                   │  │   • StatusBar (1 unified)    │ │
+│  │   deepseek-v4     │  │   • TreeView (3 panels)      │ │
+│  │   or other LLM    │  │   • FixLoopManager (auto fix)│ │
+│  │                   │  │   • VisualVibePanels (canvas)│ │
+│  │   Crow Memory     │  │   • YoctoManager (backup/restore)│ │
+│  │   (built-in, compatible)│   • FileGuard + GitStash  │ │
 │  └────────┬─────────┘  └────────────┬─────────────────┘ │
-│           │ MCP/SSE (:9027)         │ 감지/spawn (싱글톤) │
+│           │ MCP/SSE (:9027)         │ detect/spawn (single)│
 └───────────┼─────────────────────────┼───────────────────┘
             │                         │
             ▼                         ▼
 ┌──────────────────────────────────────────────────────┐
-│  VibeZoo 통합 MCP Bridge (:9027) — 싱글톤 프로세스   │
+│  VibeZoo Unified MCP Bridge (:9027) — Singleton      │
 │  vibezoo_mcp_bridge.py                               │
 │  ┌────────────────────────────────────────────────┐  │
-│  │  Crow Memory 10종 도구  │  VibeZoo 31종 도구   │  │
+│  │  10 Crow Memory Tools  │  31 VibeZoo Tools    │  │
 │  │  • crow_recall          │  • search_codebase   │  │
 │  │  • crow_ingest          │  • review_code       │  │
 │  │  • crow_diagnostics     │  • map_dependencies  │  │
 │  │  • ... (7 more)         │  • ... (28 more)     │  │
 │  └────────────────────────────────────────────────┘  │
-│  저장소: ~/.vibezoo-crow-memory/ (JSON 파일)         │
+│  Storage: ~/.vibezoo-crow-memory/ (JSON files)       │
 └──────────────────────────────────────────────────────┘
 ```
 
-### 포트 할당
-| 포트 | 서비스 | 관리 주체 |
+### Port Allocation
+| Port | Service | Owner |
 |:---|:---|:---|
-| 9027 | VibeZoo 통합 MCP Bridge (Crow Memory + VibeZoo) | VibeZoo Extension (Python spawn, 싱글톤) |
+| 9027 | VibeZoo Unified MCP Bridge (Crow Memory + VibeZoo) | VibeZoo Extension (Python spawn, singleton) |
 
-### 데이터 흐름
+### Data Flow
 ```
-사용자 채팅 → Zoo Code LLM → MCP tool call → VibeZoo 통합 Bridge (:9027)
-                                                    │
-                          ┌─────────────────────────┤
-                          ▼                         ▼
-                    정적 분석 도구              파일 시스템
-                    (tree-sitter AST,          (~/.vibezoo-*.json,
-                     regex, subprocess)        ~/.vibezoo-crow-memory/)
-                          │                         │
-                          ▼                         ▼
-                    Crow Memory 저장소          VibeZoo Extension
-                    (~/.vibezoo-crow-memory/    (파일 감시 → Webview 렌더링)
-                     JSON 기반 파일 저장소)
+User chat → Zoo Code LLM → MCP tool call → VibeZoo Unified Bridge (:9027)
+                                                     │
+                           ┌─────────────────────────┤
+                           ▼                         ▼
+                     Static analysis tools       File system
+                     (tree-sitter AST,          (~/.vibezoo-*.json,
+                      regex, subprocess)        ~/.vibezoo-crow-memory/)
+                           │                         │
+                           ▼                         ▼
+                     Crow Memory Store          VibeZoo Extension
+                     (~/.vibezoo-crow-memory/   (file watch → Webview rendering)
+                      JSON-based file storage)
 ```
 
 ---
 
-## 🚀 주요 기능 (Features)
+## 🚀 Features
 
-### 🧠 31개 MCP 도구 — AI의 손과 눈
+### 🧠 31 MCP Tools — AI's Hands and Eyes
 
-모든 도구는 **순수 Python 알고리즘**입니다. LLM API 호출이 아닌, 파일 I/O + tree-sitter AST + 정규표현식 + 서브프로세스로 작동합니다.
+All tools are **pure Python algorithms**. They operate via file I/O + tree-sitter AST + regex + subprocess, not LLM API calls.
 
-| 카테고리 | 도구 | 작동 원리 |
+| Category | Tool | Operation Principle |
 |:---|:---|:---|
-| **Scout** | `search_codebase`, `find_references`, `summarize_architecture` | AST 기반 함수/클래스/인터페이스 검색 + glob 파일 스캔 |
-| **Reviewer** | `review_code`, `check_quality` | AST 구조 분석 + ESLint 연동 + 12종 안티패턴 감지 |
-| **Tester** | `generate_tests`, `analyze_coverage` | AST로 함수명 추출 → 테스트 템플릿 생성 |
-| **Deep Analyzer** | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | AST 호출 그래프 + import DFS 순환 참조 탐지 + 데이터 모델 필드 추출 |
-| **Whiteboard** | `draw_on_whiteboard`, `get_whiteboard_state`, `open_whiteboard`, `capture_screen` | Fabric.js JSON 생성 → 파일 감시 → Webview 렌더링 |
-| **UI Preview** | `open_ui_preview` | iframe srcdoc에 HTML/CSS/JS 실시간 렌더링 |
-| **Fix Loop** | `auto_fix_status`, `retry_build`, `check_intervention` | 파일 기반 LLM 통신 + tsc 실행 + Whiteboard/채팅 HITL 개입 |
-| **통합 시나리오** | `review_project`, `find_bugs`, `suggest_refactor`, `generate_docs` | 기존 도구 체인 호출 + 결과 통합 |
-| **설명** | `explain_code` | AST로 해당 라인의 enclosing 함수/클래스/인터페이스 컨텍스트 분석 |
-| **Git 분석** | `analyze_changes`, `review_pr` | `git diff` 실행 + 변경 파일별 Crow 컨텍스트 조회 |
-| **리팩토링** | `refactor_across_files` | `search_codebase`로 패턴 검색 → 파일별 diff-style 제안 |
-| **지식** | `learn_project`, `recall_project` | 프로젝트 구조/패턴/의존성 → Crow arch·style 레지스터 저장/조회 |
-| **선호도** | `learn_preference`, `get_preferences` | 로컬 JSON + Crow life_context 이중 저장 |
+| **Scout** | `search_codebase`, `find_references`, `summarize_architecture` | AST-based function/class/interface search + glob file scan |
+| **Reviewer** | `review_code`, `check_quality` | AST structure analysis + ESLint integration + 12 anti-pattern detection |
+| **Tester** | `generate_tests`, `analyze_coverage` | AST function name extraction → test template generation |
+| **Deep Analyzer** | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | AST call graph + import DFS circular ref detection + data model field extraction |
+| **Whiteboard** | `draw_on_whiteboard`, `get_whiteboard_state`, `open_whiteboard`, `capture_screen` | Fabric.js JSON generation → file watch → Webview rendering |
+| **UI Preview** | `open_ui_preview` | Real-time HTML/CSS/JS rendering via iframe srcdoc |
+| **Fix Loop** | `auto_fix_status`, `retry_build`, `check_intervention` | File-based LLM communication + tsc execution + Whiteboard/Chat HITL intervention |
+| **Integrated Scenarios** | `review_project`, `find_bugs`, `suggest_refactor`, `generate_docs` | Existing tool chain calls + result integration |
+| **Explain** | `explain_code` | AST-based enclosing function/class/interface context analysis |
+| **Git Analysis** | `analyze_changes`, `review_pr` | `git diff` execution + Crow context lookup per changed file |
+| **Refactoring** | `refactor_across_files` | `search_codebase` pattern search → per-file diff-style proposal |
+| **Knowledge** | `learn_project`, `recall_project` | Project structure/patterns/dependencies → Crow arch·style register store/recall |
+| **Preferences** | `learn_preference`, `get_preferences` | Dual storage: local JSON + Crow life_context |
 
-### 🔄 Autonomous Fix Loop (자율 수정)
-- 빌드 실패 자동 감지 → 에러 분석 → Crow 과거 패턴 조회 → LLM에 수정 요청 → 재빌드
-- 8단계 상태 머신 (idle → pending → in_progress → building → resolved/abandoned)
-- Oscillation 감지 (A→B→A 패턴), 최대 3회 시도, 120초 타임아웃
-- **HITL (Human-in-the-Loop)**: Whiteboard + 채팅 개입 가능 (pause/resume/abort)
+### 🔄 Autonomous Fix Loop
+- Auto-detect build failure → error analysis → Crow past pattern lookup → LLM fix request → rebuild
+- 8-state state machine (idle → pending → in_progress → building → resolved/abandoned)
+- Oscillation detection (A→B→A pattern), max 3 attempts, 120s timeout
+- **HITL (Human-in-the-Loop)**: Whiteboard + Chat intervention (pause/resume/abort)
 
-### 🖌️ Visual Vibe (시각 협업)
-- **Whiteboard**: Fabric.js 캔버스. AI가 도형/텍스트/이미지 생성, 사용자가 주석 추가
-- **UI Preview**: React/Vue/HTML 실시간 렌더링
-- **Diagram**: Mermaid.js + D3.js 아키텍처/ERD 다이어그램
+### 🖌️ Visual Vibe
+- **Whiteboard**: Fabric.js canvas. AI generates shapes/text/images, users add annotations
+- **UI Preview**: React/Vue/HTML real-time rendering
+- **Diagram**: Mermaid.js + D3.js architecture/ERD diagrams
 
-### 🛡️ Fearless YOLO (안전망)
-- **Yocto**: 실시간 파일 백업 (200ms debounce)
-- **Instant Rewind**: `Ctrl+Shift+Z` → 0.3초 내 전체 복구 (확인 대화상자 추가)
-- **File Guard**: `.yoloignore` 보호 파일 자동 복구 (사이드바 ON/OFF 토글 가능)
-- **Git Stash**: YOLO 모드 진입/퇴장 자동화
+### 🛡️ Fearless YOLO (Safety Net)
+- **Yocto**: Real-time file backup (200ms debounce)
+- **Instant Rewind**: `Ctrl+Shift+Z` → full restore within 0.3s (with confirmation dialog)
+- **File Guard**: Auto-restore `.yoloignore` protected files (sidebar ON/OFF toggle)
+- **Git Stash**: Automated YOLO mode entry/exit
 
 ### 📊 StatusBar + TreeView
-- 통합 StatusBar 1개 (VibeZoo + Crow 상태 + CIM/YOLO 모드)
-- TreeView 3종: Active Subagents, YOLO History, Session Resume
+- 1 unified StatusBar (VibeZoo + Crow status + CIM/YOLO mode)
+- 3 TreeViews: Active Subagents, YOLO History, Session Resume
 
 ---
 
-## 🔧 기술 스택 (Tech Stack)
+## 🔧 Tech Stack
 
-| 계층 | 기술 | 설명 |
+| Layer | Technology | Description |
 |:---|:---|:---|
 | **Extension** | TypeScript, VS Code Extension API | StatusBar, TreeView, Webview, FileSystemWatcher, Task Provider |
-| **MCP Bridge** | Python, FastMCP, SSE | 31개 도구, 단일 파일(`vibezoo_mcp_bridge.py`), 포트 9027 |
-| **AST** | tree-sitter | TypeScript/JavaScript AST 파싱 (함수, 클래스, 인터페이스, 호출 관계) |
-| **화이트보드** | Fabric.js 5.3 | Canvas 기반 드로잉, 파일 감시(`fs.watchFile`) |
-| **다이어그램** | Mermaid.js 10, D3.js | 아키텍처/ERD/호출 그래프 시각화 |
-| **기억** | Crow Memory (Zoo Code 내장) | 에러 패턴, 스타일 규칙, 프로젝트 지식, 사용자 선호도 |
+| **MCP Bridge** | Python, FastMCP, SSE | 31 tools, single file (`vibezoo_mcp_bridge.py`), port 9027 |
+| **AST** | tree-sitter | TypeScript/JavaScript AST parsing (functions, classes, interfaces, call relations) |
+| **Whiteboard** | Fabric.js 5.3 | Canvas-based drawing, file watch (`fs.watchFile`) |
+| **Diagram** | Mermaid.js 10, D3.js | Architecture/ERD/call graph visualization |
+| **Memory** | Crow Memory (Zoo Code built-in) | Error patterns, style rules, project knowledge, user preferences |
 
 ---
 
-## 📦 설치 (Installation)
+## 📦 Installation
 
-### 사전 요구사항
+### Prerequisites
 - VS Code 1.85+
 - Zoo Code Extension
-- Python 3.10+ (MCP Bridge용)
-- Node.js 18+ (Extension 컴파일용)
+- Python 3.10+ (for MCP Bridge)
+- Node.js 18+ (for Extension compilation)
 
-### 1. Extension 설치
+### 1. Install Extension
 ```bash
 cd extension
 npm install
@@ -168,67 +168,67 @@ npx vsce package
 code --install-extension vibezoo-0.13.0.vsix --force
 ```
 
-### 2. Python 의존성
+### 2. Python Dependencies
 ```bash
 pip install fastmcp uvicorn requests tree-sitter
 ```
 
-### 3. VS Code 재시작
+### 3. Restart VS Code
 `Ctrl+Shift+P` → `Developer: Reload Window`
 
-VibeZoo가 자동으로:
-1. Python MCP Bridge를 spawn (port 9027, 싱글톤 — 첫 번째 창만 실행, 이후 창은 공유)
-2. Bridge가 Crow Memory 10종 도구 + VibeZoo 31종 도구를 함께 제공
-3. `.roo/mcp.json`에 VibeZoo 통합 MCP 서버 자동 등록
+VibeZoo will automatically:
+1. Spawn the Python MCP Bridge (port 9027, singleton — first window only, subsequent windows share)
+2. The Bridge provides 10 Crow Memory tools + 31 VibeZoo tools together
+3. Auto-register the VibeZoo unified MCP server in `.roo/mcp.json`
 
-### 4. 확인
+### 4. Verify
 `Ctrl+Shift+P` → `VibeZoo: Verify Foundation`
 
 ---
 
-## 📁 프로젝트 구조
+## 📁 Project Structure
 
 ```
 VibeZoo/
 ├── extension/                    # VS Code Extension (TypeScript)
 │   └── src/
-│       ├── extension.ts          # 진입점 (26개 명령어)
-│       ├── context/              # ContextIntelligence (Session Resume 등)
-│       ├── crow/                 # CrowServerManager (감지 전용)
+│       ├── extension.ts          # Entry point (26 commands)
+│       ├── context/              # ContextIntelligence (Session Resume, etc.)
+│       ├── crow/                 # CrowServerManager (detection only)
 │       ├── flow/                 # BuildFeedback, BuildTaskProvider, ProjectDetector, ProjectTreeScanner
 │       ├── orchestra/            # FixLoopManager, SubagentManager, MentionRouter
 │       ├── safety/               # YoctoManager, FileGuard, GitStashManager
-│       ├── types/                # 타입 정의
+│       ├── types/                # Type definitions
 │       ├── ui/                   # StatusBarManager, TreeViewProviders
 │       └── visual/               # VisualVibePanels (Whiteboard, UI Preview, Diagram)
 ├── mcp-servers/
-│   └── vibezoo_mcp_bridge.py     # 31개 MCP 도구 (Python FastMCP)
-├── fromscratch/                  # 설계 문서
-│   ├── Architecture.md           # 아키텍처 상세
-│   ├── PLAN.md                   # 구현 계획
-│   └── ROADMAP.md                # 로드맵
-├── plans/                        # 기능 설계
-│   └── autonomous-fix-loop.md    # 자율 수정 루프 설계
-└── templates/                    # 설정 템플릿
+│   └── vibezoo_mcp_bridge.py     # 31 MCP tools (Python FastMCP)
+├── fromscratch/                  # Design documents
+│   ├── Architecture.md           # Architecture details
+│   ├── PLAN.md                   # Implementation plan
+│   └── ROADMAP.md                # Roadmap
+├── plans/                        # Feature designs
+│   └── autonomous-fix-loop.md    # Autonomous fix loop design
+└── templates/                    # Configuration templates
 ```
 
 ---
 
-## 🗺️ 로드맵 (Roadmap)
+## 🗺️ Roadmap
 
-| 마일스톤 | 시기 | 내용 | 상태 |
+| Milestone | Period | Description | Status |
 |:---|:---|:---|:---|
-| **M0** | 완료 | Quick Wins: 통합 커맨드, fs.watchFile, StatusBar 통합, Lazy Init | ✅ |
-| **M1** | 완료 | Autonomous Fix Loop + AST Scout + Crow 학습 | ✅ |
-| **M3** | 완료 | DeepAnalyzer AST + Self-healing CIM + Whiteboard 강화 | ✅ |
-| **M6** | 예정 | Self-evolving: 완전 자율, 멀티 파일 리팩토링, 크로스 세션 컨텍스트 | 📅 |
+| **M0** | Complete | Quick Wins: unified commands, fs.watchFile, StatusBar unification, Lazy Init | ✅ |
+| **M1** | Complete | Autonomous Fix Loop + AST Scout + Crow learning | ✅ |
+| **M3** | Complete | DeepAnalyzer AST + Self-healing CIM + Whiteboard enhancement | ✅ |
+| **M6** | Planned | Self-evolving: full autonomy, multi-file refactoring, cross-session context | 📅 |
 
 ---
 
-## 🤝 기여 (Contributing)
+## 🤝 Contributing
 
-VibeZoo는 개인 프로젝트입니다. 버그 제보나 기능 제안은 GitHub Issues를 이용해주세요.
+VibeZoo is a personal project. Please use GitHub Issues for bug reports or feature suggestions.
 
-## 📄 라이선스
+## 📄 License
 
 MIT License

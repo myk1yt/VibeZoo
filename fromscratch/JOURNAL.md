@@ -5,7 +5,7 @@
 
 ---
 
-- [2026-05-29 - v0.13.0: 성능 최적화 + 버그 수정 + 문서화](#2026-05-29---v0130-성능-최적화--버그-수정--문서화)
+- [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
 - [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
 - [2026-05-27 - v0.10.0: MCP auto-config fix, Whiteboard auto-integration](#2026-05-27-v0100-mcp-auto-config-fix-whiteboard-auto-integration)
@@ -113,24 +113,24 @@ After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1 file + Crow(external)
 
 ---
 
-## 2026-05-29 - v0.13.0: 성능 최적화 + 버그 수정 + 문서화
+## 2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation
 
-**변경사항**:
-- `SubagentManager.ts`: Crow URL 버그 수정 (bridge port 9027 → Crow port 9020)
-- `FileGuard.ts`: ON/OFF 토글 기능 추가 (`_enabled`, `toggle()`, `isEnabled()`)
-- `TreeViewProviders.ts` + `extension.ts`: 사이드바 FileGuard 토글 노드 (🛡️/🔓)
-- `package.json`: `vibezoo.toggleFileGuard` 커맨드 등록
-- `vibezoo_mcp_bridge.py`: `_iter_project_files` 최적화 (확장자별 N회 rglob → os.walk 1회)
-- `vibezoo_mcp_bridge.py`: `suggest_refactor` 중복 스캔 제거 (_iter_project_files_cached 캐시)
-- 31개 VibeZoo MCP 툴 전수 검증 완료 (전체 실구현 확인)
-- Extension 전역 설치 경로 복사 자동화 (workspace out/ → %USERPROFILE%\.vscode\extensions\local.vibezoo-0.13.0\out\)
+**Changes**:
+- `SubagentManager.ts`: Crow URL bug fix (bridge port 9027 → Crow port 9020)
+- `FileGuard.ts`: ON/OFF toggle feature added (`_enabled`, `toggle()`, `isEnabled()`)
+- `TreeViewProviders.ts` + `extension.ts`: Sidebar FileGuard toggle node (🛡️/🔓)
+- `package.json`: `vibezoo.toggleFileGuard` command registered
+- `vibezoo_mcp_bridge.py`: `_iter_project_files` optimization (N rglob per extension → 1 os.walk)
+- `vibezoo_mcp_bridge.py`: `suggest_refactor` duplicate scan removal (_iter_project_files_cached cache)
+- All 31 VibeZoo MCP tools verified (full real implementation confirmed)
+- Extension global install path copy automation (workspace out/ → %USERPROFILE%\.vscode\extensions\local.vibezoo-0.13.0\out\)
 
-**GitHub**: 8개 커밋 main → main push 완료
+**GitHub**: 8 commits main → main push completed
 
-### 2026-05-29 - 전역 MCP 중복 등록 방지
+### 2026-05-29 - Global MCP duplicate registration prevention
 
-**변경사항**:
-- `extension.ts`: `autoConfigureMCP()`에 전역 MCP 확인 로직 추가 (전역에 vibezoo 등록되어 있으면 프로젝트 레벨 `.roo/mcp.json` 생성 건너뜀)
+**Changes**:
+- `extension.ts`: Added global MCP check logic to `autoConfigureMCP()` (if vibezoo is registered globally, skip project-level `.roo/mcp.json` creation)
 
 ---
 

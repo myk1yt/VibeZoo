@@ -90,27 +90,27 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 │  │                        │    │  • SubagentManager           │  │
 │  │                        │    │  • CrowServerManager (detect)│  │
 │  │                        │    │  • ContextIntelligence       │  │
-│  └───────────┬────────────┘    └──────────────┬───────────────┘  │
-│              │                                │                   │
-└──────────────┼────────────────────────────────┼───────────────────┘
-               │ MCP/SSE                        │ child_process.spawn
-               ▼                                ▼
-┌──────────────────────────┐    ┌──────────────────────────────────┐
-│ Zoo Code Crow Memory     │    │ VibeZoo MCP Bridge               │
-│ (Zoo Code built-in)      │    │ vibezoo_mcp_bridge.py            │
-│ localhost:9020           │    │ localhost:9027/sse               │
-│                          │    │                                  │
-│ • crow_recall            │    │ • 31 MCP tools                  │
-│ • crow_ingest            │    │ • tree-sitter AST parsing        │
-│ • crow_compact           │    │ • Crow Memory integration        │
-│ • crow_evolve_propose    │    │   (crow_recall/ingest wrappers)  │
-│ • crow_diagnostics       │    │ • /health endpoint              │
-│ • crow_manage_backup     │    │ • ~/.vibezoo-fix-request.json   │
-│ • crow_manage_prompt     │    │ • ~/.vibezoo-whiteboard.json    │
-│ • crow_get_user_bias     │    │ • ~/.vibezoo-preferences.json   │
-│ • crow_check_drift       │    │                                  │
-│ • crow_project_info       │    │ FastMCP + SSE transport          │
-└──────────────────────────┘    └──────────────────────────────────┘
+│  │  └───────────┬────────────┘    └──────────────┬───────────────┘  │
+│  │              │                                │                   │
+│  └──────────────┼────────────────────────────────┼───────────────────┘
+│                 │ MCP/SSE                        │ child_process.spawn
+│                 ▼                                ▼
+│  ┌──────────────────────────┐    ┌──────────────────────────────────┐
+│  │ Zoo Code Crow Memory     │    │ VibeZoo MCP Bridge               │
+│  │ (Zoo Code built-in)      │    │ vibezoo_mcp_bridge.py            │
+│  │ localhost:9020           │    │ localhost:9027/sse               │
+│  │                          │    │                                  │
+│  │ • crow_recall            │    │ • 31 MCP tools                  │
+│  │ • crow_ingest            │    │ • tree-sitter AST parsing        │
+│  │ • crow_compact           │    │ • Crow Memory integration        │
+│  │ • crow_evolve_propose    │    │   (crow_recall/ingest wrappers)  │
+│  │ • crow_diagnostics       │    │ • /health endpoint              │
+│  │ • crow_manage_backup     │    │ • ~/.vibezoo-fix-request.json   │
+│  │ • crow_manage_prompt     │    │ • ~/.vibezoo-whiteboard.json    │
+│  │ • crow_get_user_bias     │    │ • ~/.vibezoo-preferences.json   │
+│  │ • crow_check_drift       │    │                                  │
+│  │ • crow_project_info       │    │ FastMCP + SSE transport          │
+│  └──────────────────────────┘    └──────────────────────────────────┘
 ```
 
 ### 2.1 Port Allocation
