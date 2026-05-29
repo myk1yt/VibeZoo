@@ -87,7 +87,6 @@ export class VisualVibePanels {
 
   constructor() {
     this.homedir = os.homedir();
-    // startWatching()은 openWhiteboard()에서 최초 1회 호출
   }
 
   // ── 수명주기 ──────────────────────────────────────────────
@@ -95,7 +94,8 @@ export class VisualVibePanels {
   activate(): void {
     if (this._activated) return;
     this._activated = true;
-    log('VisualVibePanels activated (watching deferred until whiteboard opens)');
+    this.startWatching();
+    log('VisualVibePanels activated (watching started)');
   }
 
   dispose(): void {
@@ -138,11 +138,7 @@ export class VisualVibePanels {
 
   /**
    * 파일 감시 시작 (fs.watchFile 기반).
-   * openWhiteboard()에서 최초 1회 호출.
-   *
-   * BUG FIX: handleFileChange 내부에서 mtime을 다시 검사하지 않음
-   *   — 외부 fs.watchFile 콜백에서 이미 최신 mtime을 검증했으므로
-   *   중복 검사 시 항상 false가 되어 파일을 읽지 못하는 버그 수정.
+   * activate()에서 최초 1회 호출.
    */
   private startWatching(): void {
     if (this._watching) return;
