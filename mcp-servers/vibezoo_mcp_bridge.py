@@ -1517,21 +1517,39 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
         except (json.JSONDecodeError, OSError):
             pass
 
-    # API 엔드포인트 추출 (Express / Next.js / FastAPI)
+    # API 엔드포인트 추출 (파일 확장자별 다른 패턴)
     output += "## API Endpoints\n\n"
     endpoints = []
-    for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".py"},
+    for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".py", ".go"},
                                   exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
             continue
-        for m in ["get", "post", "put", "delete", "patch"]:
-            for match in re.finditer(rf'{m}\s*\([\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
-                rel = _normalize_path(str(p.relative_to(root)))
-                endpoints.append(f"- `{m.upper()}` `{match.group(1)}` ({rel})")
-    for ep in endpoints[:20]:
-        output += ep + "\n"
-    if not endpoints:
+        rel = _normalize_path(str(p.relative_to(root)))
+        ext = p.suffix.lower()
+
+        if ext == ".py":
+            # Python: FastAPI/Flask 패턴
+            for match in re.finditer(r'@(?:app|router|bp|api)\.(get|post|put|delete|patch)\s*\(\s*[\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
+                endpoints.append(f"- `{match.group(1).upper()}` `{match.group(2)}` ({rel})")
+            # Django: path('url', view)
+            for match in re.finditer(r'path\s*\(\s*[\'"]([^\'"]+)[\'"]', content):
+                endpoints.append(f"- `GET` `{match.group(1)}` ({rel})")
+        elif ext in (".ts", ".tsx", ".js", ".jsx"):
+            # Express/Koa/Fastify 패턴
+            for m in ["get", "post", "put", "delete", "patch"]:
+                for match in re.finditer(rf'(?:app|router|server)\.{m}\s*\(\s*[\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
+                    endpoints.append(f"- `{m.upper()}` `{match.group(1)}` ({rel})")
+        elif ext == ".go":
+            # Gin/Echo 패턴
+            for m in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+                for match in re.finditer(rf'\.{m}\s*\(\s*"([^"]+)"', content):
+                    endpoints.append(f"- `{m}` `{match.group(1)}` ({rel})")
+
+    if endpoints:
+        for ep in endpoints[:20]:
+            output += ep + "\n"
+    else:
         output += "- No API endpoints detected.\n"
 
     # 데이터 모델 (AST 기반 필드 추출)
@@ -1757,7 +1775,7 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
     if py_indicator and not ext_tool_used:
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "pytest", "--co", "--quiet"],
+                [sys.executable, "-m", "pytest", "--collect-only", "--quiet"],
                 cwd=str(root), capture_output=True, text=True, timeout=30
             )
             if result.stdout and "test" in result.stdout.lower():
@@ -3097,7 +3115,7 @@ def recall_project(target_path: Optional[str] = None) -> str:
 
     # 1. Query arch register
     output += "## 🏗️ Architecture (arch register)\n\n"
-    arch_results = try_crow_recall(query=root_str, register="arch", limit=5)
+    arch_results = try_crow_recall(query=root_str, register="arch", limit=2)
     if arch_results:
         for item in arch_results:
             content = item.get("content", item.get("value", str(item)))
