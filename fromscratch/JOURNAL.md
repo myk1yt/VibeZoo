@@ -127,6 +127,11 @@ After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1 file + Crow(external)
 
 **GitHub**: 8개 커밋 main → main push 완료
 
+### 2026-05-29 - 전역 MCP 중복 등록 방지
+
+**변경사항**:
+- `extension.ts`: `autoConfigureMCP()`에 전역 MCP 확인 로직 추가 (전역에 vibezoo 등록되어 있으면 프로젝트 레벨 `.roo/mcp.json` 생성 건너뜀)
+
 ---
 
 ## 2026-05-28 - v0.13.0: Phase 1~6 Full Implementation

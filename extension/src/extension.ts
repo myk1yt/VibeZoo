@@ -425,6 +425,19 @@ export function deactivate(): void {
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 
 function autoConfigureMCP(port: number = 9027): void {
+  // 전역 MCP 설정에 이미 vibezoo가 등록되어 있으면 프로젝트 레벨 설정 불필요
+  try {
+    const globalMCPPath = path.join(os.homedir(), 'AppData', 'Roaming', 'Code', 'User', 'globalStorage',
+      'zoocodeorganization.zoo-code', 'settings', 'mcp_settings.json');
+    if (fs.existsSync(globalMCPPath)) {
+      const globalSettings = JSON.parse(fs.readFileSync(globalMCPPath, 'utf-8'));
+      if (globalSettings?.mcpServers?.vibezoo) {
+        console.log('[VibeZoo] 전역 MCP에 vibezoo 이미 등록됨 — 프로젝트 레벨 설정 건너뜀');
+        return;
+      }
+    }
+  } catch { /* 전역 설정 확인 실패 — 기존 동작 유지 */ }
+
   const folders = vscode.workspace.workspaceFolders;
   if (!folders?.[0]) return;
 
