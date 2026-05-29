@@ -80,10 +80,25 @@ class SubagentManager {
             { id: 'deepAnalyzer', name: 'Deep Analyzer', port: config.get('deepAnalyzer.port', 9026) },
         ];
     }
-    /** Bridge 서버 시작 (Python — FastMCP SSE) — 구버전 종료 후 재시작 */
+    /** Bridge 서버 시작 (Python — FastMCP SSE) — 기존 healthy 브릿지 재사용 or 구버전 종료 후 재시작 */
     async spawnBridge() {
         const port = this.getBridgePort();
         if (this.child) {
+            return port;
+        }
+        // ★ 기존에 healthy한 브릿지가 이미 실행 중이면 재사용 (Reload 시 MCP 연결 끊김 방지)
+        const alreadyHealthy = await this.checkHealth(port);
+        if (alreadyHealthy) {
+            console.log(`[VibeZoo] 기존 Bridge 재사용 (port ${port}) — kill 없이 즉시 반환`);
+            this.node = {
+                id: BRIDGE_NAME,
+                name: 'VibeZoo Bridge',
+                status: 'running',
+                currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer + Crow',
+                port: port,
+                startTime: Date.now(),
+            };
+            this._onChange.fire(this.node);
             return port;
         }
         // ★ 구버전 브릿지 강제 종료: detached + unref로 인해 Reload 후에도 프로세스가 살아있을 수 있음

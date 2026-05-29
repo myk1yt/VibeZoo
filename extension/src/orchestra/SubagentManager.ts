@@ -53,10 +53,26 @@ export class SubagentManager {
     ];
   }
 
-  /** Bridge 서버 시작 (Python — FastMCP SSE) — 구버전 종료 후 재시작 */
+  /** Bridge 서버 시작 (Python — FastMCP SSE) — 기존 healthy 브릿지 재사용 or 구버전 종료 후 재시작 */
   async spawnBridge(): Promise<number> {
     const port = this.getBridgePort();
     if (this.child) {
+      return port;
+    }
+
+    // ★ 기존에 healthy한 브릿지가 이미 실행 중이면 재사용 (Reload 시 MCP 연결 끊김 방지)
+    const alreadyHealthy = await this.checkHealth(port);
+    if (alreadyHealthy) {
+      console.log(`[VibeZoo] 기존 Bridge 재사용 (port ${port}) — kill 없이 즉시 반환`);
+      this.node = {
+        id: BRIDGE_NAME,
+        name: 'VibeZoo Bridge',
+        status: 'running',
+        currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer + Crow',
+        port: port,
+        startTime: Date.now(),
+      };
+      this._onChange.fire(this.node);
       return port;
     }
 
