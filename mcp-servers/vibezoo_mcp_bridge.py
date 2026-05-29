@@ -152,6 +152,28 @@ def _truncate(text: str, max_len: int = 2000, ellipsis: str = "...") -> str:
     return text[:max_len] + f"\n\n[{ellipsis} ({len(text) - max_len} more chars truncated)]"
 
 
+import tempfile
+import json
+
+def _atomic_write_json(file_path: str, data: dict, indent: int = 2):
+    base_dir = os.path.dirname(file_path)
+    if not base_dir:
+        base_dir = os.getcwd()
+    os.makedirs(base_dir, exist_ok=True)
+    temp_fd, temp_file_path = tempfile.mkstemp(dir=base_dir, suffix=".vztmp")
+    try:
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as temp_file:
+            json.dump(data, temp_file, indent=indent, ensure_ascii=False)
+        if hasattr(os, "sync"):
+            os.sync()
+        os.replace(temp_file_path, file_path)
+    except Exception as write_error:
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+        raise write_error
+
+
+
 def _npx_cmd() -> str:
     """Windows 호환 npx 명령어"""
     return "npx.cmd" if sys.platform == "win32" else "npx"
@@ -464,59 +486,31 @@ def get_project_root(target_path: str = "") -> str:
     return os.getcwd()
 
 
-# ── Crow Memory 연동 (Exponential Backoff) ────────────
-
-import random
-
-def _crow_request_with_retry(method: str, path: str, max_retries: int = 3,
-                              base_delay_ms: int = 150, **kwargs):
-    """Crow HTTP 요청에 exponential backoff + random jitter 적용.
-    
-    150ms 시작, 2배씩 증가, 최대 3회, 3초 타임아웃.
-    모든 재시도 실패 시 조용히 실패 처리.
-    """
-    import requests
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            timeout = kwargs.pop("timeout", 3)
-            url = f"{CROW_URL}{path}"
-            if method == "GET":
-                resp = requests.get(url, timeout=timeout, **kwargs)
-            else:
-                resp = requests.post(url, timeout=timeout, **kwargs)
-            return resp
-        except Exception as e:
-            last_error = e
-            if attempt < max_retries - 1:
-                delay_ms = base_delay_ms * (2 ** attempt) + random.randint(0, 50)
-                time.sleep(delay_ms / 1000.0)
-    return None
-
+# ── Crow Memory 연동 ──────────────────────────────────
 
 def try_crow_ingest(content: str, register: str = "context", **kwargs):
-    """선택적으로 Crow Memory에 저장 (exponential backoff + jitter 적용)"""
-    resp = _crow_request_with_retry(
-        "POST", "/ingest",
-        json={"content": content, "register": register, **kwargs}
-    )
-    if resp is not None and resp.ok:
-        pass  # 성공
-    elif resp is None:
-        pass  # 모든 재시도 실패 — 조용히 무시
+    """선택적으로 Crow Memory에 저장 (실패해도 무시, 3초 타임아웃)"""
+    try:
+        import requests
+        payload = {"content": content, "register": register, **kwargs}
+        requests.post(f"{CROW_URL}/ingest", json=payload, timeout=CROW_TIMEOUT)
+    except Exception:
+        pass
 
 
 def try_crow_recall(query: str, register: str = "context", limit: int = 5) -> list:
-    """선택적으로 Crow Memory에서 회상 (exponential backoff + jitter 적용)"""
-    resp = _crow_request_with_retry(
-        "GET", "/recall",
-        params={"query": query, "register": register, "limit": limit}
-    )
-    if resp is not None and resp.ok:
-        try:
+    """선택적으로 Crow Memory에서 회상 (3초 타임아웃)"""
+    try:
+        import requests
+        resp = requests.get(
+            f"{CROW_URL}/recall",
+            params={"query": query, "register": register, "limit": limit},
+            timeout=CROW_TIMEOUT
+        )
+        if resp.ok:
             return resp.json().get("results", [])
-        except Exception:
-            pass
+    except Exception:
+        pass
     return []
 
 
@@ -1393,8 +1387,7 @@ def capture_screen() -> str:
             "type": "screenshot",
             "image": f"data:image/png;base64,{img_b64}"
         }
-        with open(WHITEBOARD_FILE, "w") as f:
-            json.dump(data, f)
+        _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
         
         output = (_markdown_header("Screen Capture")
                   + f"Screen captured ({img.width}x{img.height}). Image saved to whiteboard.\n")
@@ -1436,8 +1429,7 @@ def draw_on_whiteboard(commands: str) -> str:
 
     try:
         data = {"timestamp": time.time(), "commands": parsed}
-        with open(WHITEBOARD_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
         try_crow_ingest(f"Whiteboard: {len(parsed)} drawing commands", register="context")
         return (_markdown_header("Whiteboard Drawing")
                 + f"Drew {len(parsed)} shapes on whiteboard.\n"
@@ -1476,8 +1468,7 @@ def open_whiteboard(message: str = "") -> str:
     try:
         data = {"action": "open", "message": message, "timestamp": time.time()}
         action_file = os.path.join(os.path.expanduser("~"), ".vibezoo-whiteboard-action.json")
-        with open(action_file, "w") as f:
-            json.dump(data, f)
+        _atomic_write_json(action_file, data, indent=2)
         try_crow_ingest(f"Whiteboard opened: {message[:100]}" if message else "Whiteboard opened", register="context")
         return (_markdown_header("Whiteboard")
                 + f"Whiteboard opened. {message}\n"
@@ -1494,8 +1485,7 @@ def open_ui_preview(code: str = "", framework: str = "react") -> str:
     try:
         data = {"action": "open_ui", "code": code, "framework": framework, "timestamp": time.time()}
         action_file = os.path.join(os.path.expanduser("~"), ".vibezoo-ui-action.json")
-        with open(action_file, "w") as f:
-            json.dump(data, f)
+        _atomic_write_json(action_file, data, indent=2)
         try_crow_ingest(f"UI Preview opened: {framework}", register="context")
         return (_markdown_header("UI Preview")
                 + f"UI Preview opened. Rendering {framework} component.\n"
@@ -1523,14 +1513,14 @@ def auto_fix_status() -> str:
         return json.dumps({"status": "idle", "message": "No active fix request", "timestamp": time.time()})
 
     try:
-        with open(FIX_REQUEST_FILE) as f:
+        with open(FIX_REQUEST_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # 상태를 in_progress로 변경
         data["status"] = "in_progress"
         data["lastReadAt"] = time.time()
-        with open(FIX_REQUEST_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        
+        _atomic_write_json(FIX_REQUEST_FILE, data, indent=2)
 
         # Crow Memory recall — 과거 유사 에러 패턴 조회 (register="bug")
         error_code = ""
@@ -1610,8 +1600,7 @@ def retry_build() -> str:
                     fix_data["status"] = "resolved"
                 else:
                     fix_data["status"] = "pending" if attempt_num < fix_data.get("maxAttempts", 3) else "abandoned"
-                with open(FIX_REQUEST_FILE, "w") as f:
-                    json.dump(fix_data, f, indent=2)
+                _atomic_write_json(FIX_REQUEST_FILE, fix_data, indent=2)
 
                 # Crow ingest — 실패 시 에러 패턴 저장
                 if result.returncode != 0:
@@ -2721,8 +2710,7 @@ def learn_preference(rule: str, category: str = "coding_style") -> str:
             "rule": rule,
             "timestamp": time.time(),
         })
-        with open(PREFERENCES_FILE, "w") as f:
-            json.dump(prefs, f, indent=2, ensure_ascii=False)
+        _atomic_write_json(PREFERENCES_FILE, prefs, indent=2)
     except Exception as e:
         return (_markdown_header("Learn Preference Error", "❌")
                 + f"**Failed to save: `{e}`**\n"
@@ -2808,546 +2796,12 @@ def get_preferences(category: Optional[str] = None) -> str:
 
 
 # ═══════════════════════════════════════════════════════════
-# Phase 4: Intent-to-Code Bridge — 화이트보드 → 코드 생성
-# ═══════════════════════════════════════════════════════════
-
-def _find_nearby_text(objects: list, rect_props: dict, threshold: int = 50) -> str:
-    """사각형 props와 근접한 텍스트 객체 찾기."""
-    rx = rect_props.get("left", 0)
-    ry = rect_props.get("top", 0)
-    rw = rect_props.get("width", 100)
-    rh = rect_props.get("height", 100)
-    cx, cy = rx + rw / 2, ry + rh / 2
-
-    best_text = ""
-    best_dist = threshold
-    for obj in objects:
-        if obj.get("type") != "text":
-            continue
-        p = obj.get("props", {})
-        ox, oy = p.get("left", 0), p.get("top", 0)
-        dist = ((cx - ox) ** 2 + (cy - oy) ** 2) ** 0.5
-        if dist < best_dist:
-            best_dist = dist
-            best_text = p.get("text", "")
-    return best_text
-
-
-def _extract_members_from_rect(objects: list, rect_props: dict) -> list:
-    """사각형 내부의 텍스트에서 멤버 변수/메서드 추출."""
-    rx = rect_props.get("left", 0)
-    ry = rect_props.get("top", 0)
-    rw = rect_props.get("width", 200)
-    rh = rect_props.get("height", 150)
-
-    members = []
-    for obj in objects:
-        if obj.get("type") != "text":
-            continue
-        p = obj.get("props", {})
-        ox, oy = p.get("left", 0), p.get("top", 0)
-        # 사각형 내부에 있는 텍스트만
-        if rx <= ox <= rx + rw and ry <= oy <= ry + rh:
-            text = p.get("text", "").strip()
-            if text and not text.startswith("//"):
-                for line in text.split("\n"):
-                    line = line.strip()
-                    if line:
-                        members.append(line)
-    return members
-
-
-def _find_nearest_class(classes: list, point: dict) -> Optional[str]:
-    """가장 가까운 클래스 이름 반환."""
-    if not classes or not point:
-        return None
-    px, py = point.get("x", 0), point.get("y", 0)
-    best_name = None
-    best_dist = 200
-    for cls in classes:
-        cx, cy = cls.get("position", {}).get("x", 0), cls.get("position", {}).get("y", 0)
-        dist = ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
-        if dist < best_dist:
-            best_dist = dist
-            best_name = cls.get("name")
-    return best_name
-
-
-@mcp.tool
-def extract_intent_from_whiteboard() -> str:
-    """화이트보드(~/.vibezoo-whiteboard.json)에서 설계 의도를 추출합니다.
-    
-    rect → class/component, line/arrow → 의존성으로 변환하여 JSON 반환.
-    
-    Returns:
-        JSON: { classes: [{name, members, position}], relations: [{from, to, type}] }
-    """
-    try:
-        if not os.path.exists(WHITEBOARD_FILE):
-            return json.dumps({"classes": [], "relations": [], "error": "Whiteboard file not found"})
-
-        with open(WHITEBOARD_FILE, "r") as f:
-            data = json.load(f)
-
-        objects = data.get("commands", data.get("objects", []))
-        classes = []
-        relations = []
-
-        for obj in objects:
-            if obj.get("type") == "rect":
-                props = obj.get("props", obj)
-                name = _find_nearby_text(objects, props)
-                if not name:
-                    name = f"Component_{len(classes) + 1}"
-                members = _extract_members_from_rect(objects, props)
-                classes.append({
-                    "name": name,
-                    "members": members,
-                    "position": {"x": props.get("left", 0), "y": props.get("top", 0)},
-                })
-
-        for obj in objects:
-            t = obj.get("type")
-            if t in ("line", "arrow"):
-                props = obj.get("props", obj)
-                x1, y1 = props.get("x1", 0), props.get("y1", 0)
-                x2, y2 = props.get("x2", 200), props.get("y2", 200)
-                from_cls = _find_nearest_class(classes, {"x": x1, "y": y1})
-                to_cls = _find_nearest_class(classes, {"x": x2, "y": y2})
-                if from_cls and to_cls and from_cls != to_cls:
-                    rel_type = "imports"
-                    if props.get("dashed", False) or obj.get("strokeDashArray"):
-                        rel_type = "extends"
-                    relations.append({
-                        "from": from_cls,
-                        "to": to_cls,
-                        "type": rel_type,
-                    })
-
-        result = {
-            "classes": classes,
-            "relations": relations,
-            "object_count": len(objects),
-        }
-
-        try_crow_ingest(
-            json.dumps({"action": "extract_intent", "classes": len(classes), "relations": len(relations)}),
-            register="arch"
-        )
-
-        return json.dumps(result, indent=2, ensure_ascii=False)
-
-    except Exception as e:
-        return json.dumps({"error": str(e), "classes": [], "relations": []})
-
-
-def _generate_class_stub(cls: dict, relations: list) -> str:
-    """클래스 정보 → TypeScript 스켈레톤 코드 생성."""
-    name = cls.get("name", "UnknownClass")
-    members = cls.get("members", [])
-
-    lines = []
-    lines.append(f"export class {name} {{")
-
-    has_constructor = False
-    for member in members:
-        member = member.strip()
-        if member.startswith("(") and member.endswith(")"):
-            inner = member.strip("()")
-            if ":" in inner:
-                parts = inner.split(":", 1)
-                lines.append(f"  {parts[0].strip()}?: {parts[1].strip()};")
-        elif ":" in member:
-            parts = member.split(":", 1)
-            lines.append(f"  {parts[0].strip()}: {parts[1].strip()};")
-        elif member.startswith("+"):
-            has_constructor = True
-        else:
-            lines.append(f"  // {member}")
-
-    lines.append("")
-
-    if has_constructor:
-        lines.append(f"  constructor() {{")
-        lines.append(f"    // TODO: implement")
-        lines.append(f"  }}")
-        lines.append("")
-
-    lines.append("}")
-    return "\n".join(lines)
-
-
-@mcp.tool
-def generate_code_from_whiteboard(output_dir: str = "") -> str:
-    """화이트보드 설계를 기반으로 TypeScript 스켈레톤 코드를 생성합니다.
-    
-    extract_intent_from_whiteboard() 결과를 사용하여 클래스 stub 생성.
-    
-    Args:
-        output_dir: 생성된 파일을 저장할 디렉토리
-        
-    Returns:
-        Markdown: 생성된 파일 목록
-    """
-    intent_raw = extract_intent_from_whiteboard()
-    try:
-        intent = json.loads(intent_raw)
-    except Exception as e:
-        return _markdown_header("Code Generation Error", "❌") + f"**Failed to parse whiteboard: {e}**\n" + _markdown_footer()
-
-    if intent.get("error"):
-        return _markdown_header("Code Generation Error", "❌") + f"**{intent['error']}**\n" + _markdown_footer()
-
-    classes = intent.get("classes", [])
-    relations = intent.get("relations", [])
-
-    if not classes:
-        return _markdown_header("Code Generation") + "**No classes/components found on whiteboard.**\n\nDraw rectangles and add text labels, then try again.\n" + _markdown_footer()
-
-    out_dir = output_dir or os.getcwd()
-    os.makedirs(out_dir, exist_ok=True)
-
-    generated_files = []
-    for cls in classes:
-        name = cls.get("name", "UnknownClass")
-        file_name = re.sub(r'([A-Z])', r'-\1', name).lower().strip("-")
-        file_path = os.path.join(out_dir, f"{file_name}.ts")
-
-        code = _generate_class_stub(cls, relations)
-
-        imports = []
-        for rel in relations:
-            if rel.get("to") == name:
-                from_name = rel.get("from", "")
-                if from_name:
-                    from_file = re.sub(r'([A-Z])', r'-\1', from_name).lower().strip("-")
-                    imports.append(f"import {{ {from_name} }} from './{from_file}';")
-            if rel.get("from") == name:
-                to_name = rel.get("to", "")
-                if to_name:
-                    to_file = re.sub(r'([A-Z])', r'-\1', to_name).lower().strip("-")
-                    imports.append(f"import {{ {to_name} }} from './{to_file}';")
-            if rel.get("from") == name and rel.get("type") == "extends":
-                code = code.replace(f"export class {name} {{", f"export class {name} extends {rel.get('to', 'Base')} {{")
-
-        if imports:
-            unique_imports = list(set(imports))
-            code = "\n".join(unique_imports) + "\n\n" + code
-
-        try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(code)
-            generated_files.append(file_path)
-        except Exception as e:
-            return _markdown_header("Code Generation Error", "❌") + f"**Failed to write {file_path}: {e}**\n" + _markdown_footer()
-
-    output = _markdown_header("Code Generation Complete")
-    output += f"Generated **{len(generated_files)}** files from whiteboard design.\n\n"
-    output += "## Generated Files\n\n"
-    for f in generated_files:
-        rel_path = os.path.relpath(f, out_dir)
-        output += f"- `{rel_path}`\n"
-    output += "\n## Design Summary\n\n"
-    output += f"- **Classes/Components**: {len(classes)}\n"
-    output += f"- **Relations/Connections**: {len(relations)}\n"
-    output += "\n### Class Details\n\n"
-    for cls in classes:
-        name = cls.get("name", "?")
-        members = cls.get("members", [])
-        output += f"**{name}**: {len(members)} members\n"
-        for m in members[:5]:
-            output += f"- `{m}`\n"
-        if len(members) > 5:
-            output += f"- ... and {len(members) - 5} more\n"
-        output += "\n"
-
-    if relations:
-        output += "### Relations\n\n"
-        for rel in relations:
-            arrow = "──▶" if rel.get("type") == "imports" else "─▷"
-            output += f"- `{rel['from']}` {arrow} `{rel['to']}` ({rel['type']})\n"
-
-    try_crow_ingest(
-        json.dumps({"action": "generate_code", "files": len(generated_files), "classes": len(classes)}),
-        register="arch"
-    )
-
-    output += _markdown_footer()
-    return output
-
-
-# ═══════════════════════════════════════════════════════════
-# Phase 3: Virtual Subagent — SubagentPool + 5 MCP 도구
-# ═══════════════════════════════════════════════════════════
-
-from dataclasses import dataclass, field
-from enum import Enum
-import uuid
-
-
-class SubagentRole(Enum):
-    SCOUT = "scout"
-    REVIEWER = "reviewer"
-    TESTER = "tester"
-    DEEP = "deep"
-
-
-ROLE_TOOLS = {
-    SubagentRole.SCOUT: "search_codebase",
-    SubagentRole.REVIEWER: "review_code",
-    SubagentRole.TESTER: "generate_tests",
-    SubagentRole.DEEP: "analyze_call_graph",
-}
-
-
-@dataclass
-class SubagentTask:
-    id: str
-    role: SubagentRole
-    description: str
-    status: str = "pending"  # pending → running → completed / failed
-    result: str = ""
-    created_at: float = field(default_factory=time.time)
-    completed_at: float = 0.0
-
-
-SUBAGENT_WORK_DIR = os.path.join(os.path.expanduser("~"), ".vibezoo-subagents")
-
-
-class SubagentPool:
-    """비동기 Subagent 작업 풀. 최대 5개 동시 실행."""
-
-    def __init__(self, max_concurrent: int = 5):
-        self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._tasks: dict[str, SubagentTask] = {}
-        self._lock = asyncio.Lock()
-        os.makedirs(SUBAGENT_WORK_DIR, exist_ok=True)
-
-    async def create(self, role: str, description: str) -> str:
-        """새 Subagent 작업 생성 → 즉시 비동기 실행."""
-        try:
-            r = SubagentRole(role.lower())
-        except ValueError:
-            raise ValueError(f"Invalid role: {role}. Allowed: {[e.value for e in SubagentRole]}")
-
-        task_id = str(uuid.uuid4())
-        task = SubagentTask(id=task_id, role=r, description=description)
-        async with self._lock:
-            self._tasks[task_id] = task
-
-        # 비동기 실행
-        asyncio.create_task(self._execute(task_id))
-        return task_id
-
-    async def _execute(self, task_id: str):
-        """Subagent 작업 실행 (Semaphore로 동시성 제어)."""
-        async with self._semaphore:
-            async with self._lock:
-                task = self._tasks.get(task_id)
-                if not task:
-                    return
-                task.status = "running"
-
-            tool_name = ROLE_TOOLS.get(task.role, "search_codebase")
-            try:
-                # 기존 MCP 도구 호출
-                import inspect
-                tools = {
-                    "search_codebase": search_codebase,
-                    "review_code": review_code,
-                    "generate_tests": generate_tests,
-                    "analyze_call_graph": analyze_call_graph,
-                }
-                fn = tools.get(tool_name)
-                if fn:
-                    sig = inspect.signature(fn)
-                    # description을 첫 번째 파라미터로 전달
-                    params = list(sig.parameters.keys())
-                    kwargs = {}
-                    if params:
-                        kwargs[params[0]] = task.description
-                    result = fn(**kwargs)
-                    task.result = str(result)
-                else:
-                    task.result = f"Tool {tool_name} not found"
-
-                task.status = "completed"
-            except Exception as e:
-                task.status = "failed"
-                task.result = f"Error: {e}"
-            finally:
-                task.completed_at = time.time()
-                # 결과를 파일에 저장
-                self._save_result(task)
-
-    def _save_result(self, task: SubagentTask):
-        """작업 결과를 ~/.vibezoo-subagents/ 디렉토리에 저장."""
-        try:
-            filepath = os.path.join(SUBAGENT_WORK_DIR, f"{task.id}.json")
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump({
-                    "id": task.id,
-                    "role": task.role.value,
-                    "description": task.description,
-                    "status": task.status,
-                    "result": task.result,
-                    "created_at": task.created_at,
-                    "completed_at": task.completed_at,
-                }, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass
-
-    def get_status(self, task_id: str) -> str:
-        """작업 상태 조회."""
-        task = self._tasks.get(task_id)
-        if not task:
-            return json.dumps({"error": f"Task {task_id} not found"})
-        return json.dumps({
-            "id": task.id,
-            "role": task.role.value,
-            "status": task.status,
-            "description": task.description,
-            "created_at": task.created_at,
-            "completed_at": task.completed_at,
-        }, indent=2)
-
-    def get_result(self, task_id: str) -> str:
-        """작업 결과 조회."""
-        task = self._tasks.get(task_id)
-        if not task:
-            # 파일에서 시도
-            filepath = os.path.join(SUBAGENT_WORK_DIR, f"{task_id}.json")
-            if os.path.exists(filepath):
-                try:
-                    with open(filepath, "r") as f:
-                        return json.dumps(json.load(f), indent=2, ensure_ascii=False)
-                except Exception:
-                    pass
-            return json.dumps({"error": f"Task {task_id} not found"})
-        return json.dumps({
-            "id": task.id,
-            "role": task.role.value,
-            "status": task.status,
-            "description": task.description,
-            "result": task.result,
-            "created_at": task.created_at,
-            "completed_at": task.completed_at,
-        }, indent=2, ensure_ascii=False)
-
-    def list_all(self) -> str:
-        """모든 작업 목록 반환."""
-        if not self._tasks:
-            return json.dumps({"tasks": [], "message": "No subagent tasks"})
-        task_list = []
-        for tid, task in self._tasks.items():
-            task_list.append({
-                "id": tid,
-                "role": task.role.value,
-                "status": task.status,
-                "description": task.description[:80],
-                "created_at": task.created_at,
-            })
-        # 최신순 정렬
-        task_list.sort(key=lambda x: x["created_at"], reverse=True)
-        return json.dumps({"tasks": task_list}, indent=2, ensure_ascii=False)
-
-    def cancel(self, task_id: str) -> str:
-        """작업 취소 (실행 중인 작업은 취소 플래그만 설정)."""
-        task = self._tasks.get(task_id)
-        if not task:
-            return json.dumps({"error": f"Task {task_id} not found"})
-        if task.status == "running":
-            task.status = "cancelled"
-            task.result = "Cancelled by user"
-            task.completed_at = time.time()
-            self._save_result(task)
-            return json.dumps({"status": "cancelled", "id": task_id})
-        return json.dumps({"status": task.status, "id": task_id, "message": "Task is not running"})
-
-
-# 전역 SubagentPool 인스턴스
-subagent_pool = SubagentPool()
-
-
-@mcp.tool
-async def create_subagent(role: str, task: str) -> str:
-    """새로운 가상 Subagent를 생성하고 비동기 작업을 시작합니다.
-    
-    Args:
-        role: Subagent 역할 (scout, reviewer, tester, deep)
-        task: 수행할 작업 설명
-        
-    Returns:
-        작업 ID (JSON)
-    """
-    try:
-        task_id = await subagent_pool.create(role, task)
-        return json.dumps({
-            "task_id": task_id,
-            "role": role,
-            "status": "created",
-            "message": f"Subagent {role} 작업이 생성되었습니다.",
-        }, indent=2, ensure_ascii=False)
-    except ValueError as e:
-        return json.dumps({"error": str(e)}, indent=2)
-
-
-@mcp.tool
-def check_subagent(task_id: str) -> str:
-    """Subagent 작업의 현재 상태를 확인합니다.
-    
-    Args:
-        task_id: create_subagent에서 반환된 작업 ID
-        
-    Returns:
-        JSON: { id, role, status, description, created_at, completed_at }
-    """
-    return subagent_pool.get_status(task_id)
-
-
-@mcp.tool
-def get_subagent_result(task_id: str) -> str:
-    """완료된 Subagent 작업의 결과를 조회합니다.
-    
-    Args:
-        task_id: create_subagent에서 반환된 작업 ID
-        
-    Returns:
-        JSON: { id, role, status, description, result, ... }
-    """
-    return subagent_pool.get_result(task_id)
-
-
-@mcp.tool
-def list_subagents() -> str:
-    """모든 Subagent 작업 목록을 반환합니다.
-    
-    Returns:
-        JSON: { tasks: [{ id, role, status, description, created_at }] }
-    """
-    return subagent_pool.list_all()
-
-
-@mcp.tool
-def cancel_subagent(task_id: str) -> str:
-    """실행 중인 Subagent 작업을 취소합니다.
-    
-    Args:
-        task_id: 취소할 작업 ID
-        
-    Returns:
-        JSON: { status, id }
-    """
-    return subagent_pool.cancel(task_id)
-
-
-# ═══════════════════════════════════════════════════════════
 # 메인 — SSE 서버 시작
 # ═══════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VibeZoo MCP Bridge Server")
-    parser.add_argument("--port", type=int, default=9027, help="SSE server port")
+    parser.add_argument("--port", type=int, default=9020, help="SSE server port")
     args = parser.parse_args()
 
     print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")

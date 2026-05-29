@@ -34,7 +34,7 @@ export class SubagentManager {
   }
 
   private getBridgePort(): number {
-    return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9027);
+    return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9020);
   }
 
   /** 개별 에이전트 포트 목록 */
@@ -48,10 +48,39 @@ export class SubagentManager {
     ];
   }
 
-  /** Bridge 서버 시작 (Python — FastMCP SSE) */
+  /** Bridge 서버 시작 (Python — FastMCP SSE) — 싱글톤 감지 포함 */
   async spawnBridge(): Promise<number> {
     const port = this.getBridgePort();
     if (this.child) {
+      return port;
+    }
+
+    // ★ 싱글톤 감지: 이미 실행 중인 브릿지가 있으면 spawn 생략
+    const alive = await this.checkHealth(port);
+    if (alive) {
+      console.log(`[VibeZoo] 기존 MCP Bridge 감지됨 (port ${port}) — spawn 생략, 공유 사용`);
+      this.node = {
+        id: BRIDGE_NAME,
+        name: 'VibeZoo Bridge',
+        status: 'running',
+        currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer (shared)',
+        port: port,
+        startTime: Date.now(),
+      };
+      this._onChange.fire(this.node);
+
+      // 개별 에이전트 노드 발행
+      const agentPorts = this.getAgentPorts();
+      for (const agent of agentPorts) {
+        this._onChange.fire({
+          id: agent.id,
+          name: agent.name,
+          status: 'running',
+          currentTask: `${agent.name} ready via Bridge (:${port})`,
+          port: agent.port,
+          startTime: Date.now(),
+        });
+      }
       return port;
     }
 
@@ -70,14 +99,13 @@ export class SubagentManager {
       // 실패해도 진행 — 이미 설치되어 있을 수 있음
     }
 
-    const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
-
+    // 브릿지 spawn (이제 Crow URL을 스스로 가리키도록)
     this.child = spawn('python', [this.bridgeScript, '--port', String(port)], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        CROW_SERVER_URL: `http://localhost:${crowPort}`,
+        CROW_SERVER_URL: `http://127.0.0.1:${port}`,  // 로컬 Crow를 스스로 참조
       },
     });
 
@@ -92,13 +120,13 @@ export class SubagentManager {
       id: BRIDGE_NAME,
       name: 'VibeZoo Bridge',
       status: 'running',
-      currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer',
+      currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer + Crow',
       port: port,
       startTime: Date.now(),
     };
 
-    // 준비 대기 (최대 10초)
-    await this.waitForReady(port, 10000);
+    // 준비 대기 (최대 15초 — Crow Memory 로딩 포함)
+    await this.waitForReady(port, 15000);
 
     if (this.node && this.node.startTime) {
       this.node.elapsedMs = Date.now() - this.node.startTime;
@@ -118,8 +146,23 @@ export class SubagentManager {
       });
     }
 
-    console.log(`[VibeZoo] MCP Bridge started on port ${this.getBridgePort()}`);
-    return this.getBridgePort();
+    console.log(`[VibeZoo] MCP Bridge started on port ${port} (Crow+VibeZoo 통합)`);
+    return port;
+  }
+
+  /** 싱글톤 감지: 이미 실행 중인 브릿지 헬스체크 */
+  private async checkHealth(port: number): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   updateNodeStatus(status: SubagentNode['status'], task?: string): void {

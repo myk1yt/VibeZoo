@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "vibezoo": {
-      "url": "http://localhost:9027/sse",
+      "url": "http://localhost:9020/sse",
       "transport": "sse"
     }
   }

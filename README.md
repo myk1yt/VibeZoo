@@ -1,10 +1,10 @@
-# VibeZoo v0.13.0
+# VibeZoo v0.12.0
 
 > **Zoo Code를 위한 AI 동반자 확장.** 소스 코드 0% 수정. 100% Companion-First.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/MCP_tools-36-green" alt="mcp tools">
+  <img src="https://img.shields.io/badge/version-0.12.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/MCP_tools-31-green" alt="mcp tools">
   <img src="https://img.shields.io/badge/TypeScript-16_files-orange" alt="typescript">
   <img src="https://img.shields.io/badge/Python-FastMCP-yellow" alt="python">
   <img src="https://img.shields.io/badge/tree--sitter-AST-purple" alt="tree-sitter">
@@ -41,7 +41,7 @@ VibeZoo는 Crow Memory를 실행하지 않습니다 — Zoo Code의 내장 Crow�
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      VS Code 창                           │
+│                      VS Code 창 (싱글톤 브릿지 공유)      │
 │  ┌──────────────────┐  ┌──────────────────────────────┐ │
 │  │    Zoo Code       │  │   VibeZoo Extension (local)  │ │
 │  │    (LLM + Crow)   │  │   ────────────────────────   │ │
@@ -50,41 +50,45 @@ VibeZoo는 Crow Memory를 실행하지 않습니다 — Zoo Code의 내장 Crow�
 │  │   or other LLM    │  │   • FixLoopManager (자율 수정) │ │
 │  │                   │  │   • VisualVibePanels (화이트)  │ │
 │  │   Crow Memory     │  │   • YoctoManager (백업/복구)  │ │
-│  │   (내장, :9020)   │  │   • FileGuard + GitStash      │ │
+│  │   (내장, 호환)    │  │   • FileGuard + GitStash      │ │
 │  └────────┬─────────┘  └────────────┬─────────────────┘ │
-│           │ MCP/SSE                  │ spawn             │
-└───────────┼──────────────────────────┼───────────────────┘
-            │                          │
-            ▼                          ▼
-┌────────────────────┐  ┌────────────────────────────────┐
-│   Crow Memory      │  │  VibeZoo MCP Bridge (:9027)    │
-│   (Zoo Code 내장)  │  │  vibezoo_mcp_bridge.py          │
-│   • crow_recall    │  │  • 31개 MCP 도구                │
-│   • crow_ingest    │  │  • tree-sitter AST 파서         │
-│   • 10개 도구      │  │  • Crow 연동 (ingest/recall)   │
-└────────────────────┘  │  • /health 엔드포인트           │
-                        └────────────────────────────────┘
+│           │ MCP/SSE (:9020)         │ 감지/spawn (싱글톤) │
+└───────────┼─────────────────────────┼───────────────────┘
+            │                         │
+            ▼                         ▼
+┌──────────────────────────────────────────────────────┐
+│  VibeZoo 통합 MCP Bridge (:9020) — 싱글톤 프로세스   │
+│  vibezoo_mcp_bridge.py                               │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  Crow Memory 10종 도구  │  VibeZoo 31종 도구   │  │
+│  │  • crow_recall          │  • search_codebase   │  │
+│  │  • crow_ingest          │  • review_code       │  │
+│  │  • crow_diagnostics     │  • map_dependencies  │  │
+│  │  • ... (7 more)         │  • ... (28 more)     │  │
+│  └────────────────────────────────────────────────┘  │
+│  저장소: ~/.vibezoo-crow-memory/ (JSON 파일)         │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### 포트 할당
 | 포트 | 서비스 | 관리 주체 |
 |:---|:---|:---|
-| 9020 | Crow Memory | Zoo Code (내장) |
-| 9027 | VibeZoo MCP Bridge | VibeZoo Extension (Python spawn) |
+| 9020 | VibeZoo 통합 MCP Bridge (Crow Memory + VibeZoo) | VibeZoo Extension (Python spawn, 싱글톤) |
 
 ### 데이터 흐름
 ```
-사용자 채팅 → Zoo Code LLM → MCP tool call → VibeZoo Bridge (:9027)
+사용자 채팅 → Zoo Code LLM → MCP tool call → VibeZoo 통합 Bridge (:9020)
                                                     │
                           ┌─────────────────────────┤
                           ▼                         ▼
                     정적 분석 도구              파일 시스템
-                    (tree-sitter AST,          (~/.vibezoo-*.json)
-                     regex, subprocess)              │
-                          │                         ▼
-                          ▼                   VibeZoo Extension
-                    Crow Memory               (파일 감시 → Webview 렌더링)
-                    (패턴 학습/조회)
+                    (tree-sitter AST,          (~/.vibezoo-*.json,
+                     regex, subprocess)        ~/.vibezoo-crow-memory/)
+                          │                         │
+                          ▼                         ▼
+                    Crow Memory 저장소          VibeZoo Extension
+                    (~/.vibezoo-crow-memory/    (파일 감시 → Webview 렌더링)
+                     JSON 기반 파일 저장소)
 ```
 
 ---
@@ -161,7 +165,7 @@ cd extension
 npm install
 npx tsc --noEmit
 npx vsce package
-code --install-extension vibezoo-0.12.0.vsix --force
+code --install-extension vibezoo-0.13.0.vsix --force
 ```
 
 ### 2. Python 의존성
@@ -173,9 +177,9 @@ pip install fastmcp uvicorn requests tree-sitter
 `Ctrl+Shift+P` → `Developer: Reload Window`
 
 VibeZoo가 자동으로:
-1. MCP Bridge(Python)를 spawn (port 9027)
-2. Crow Memory(Zoo Code 내장, port 9020)를 감지
-3. `.roo/mcp.json`에 VibeZoo MCP 서버 자동 등록
+1. Python MCP Bridge를 spawn (port 9020, 싱글톤 — 첫 번째 창만 실행, 이후 창은 공유)
+2. Bridge가 Crow Memory 10종 도구 + VibeZoo 31종 도구를 함께 제공
+3. `.roo/mcp.json`에 VibeZoo 통합 MCP 서버 자동 등록
 
 ### 4. 확인
 `Ctrl+Shift+P` → `VibeZoo: Verify Foundation`

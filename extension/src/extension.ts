@@ -22,8 +22,6 @@ import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetecto
 import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
-import { SelfChecker } from './safety/SelfCheck';
-import { NotificationThrottle } from './ui/StatusBarManager';
 
 // ── 중복 활성화 방지 ───────────────────────────────────────
 const _activeExtensions = new Set<string>();
@@ -186,16 +184,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.instantRewind', async (sessionName?: string) => {
       if (!yocto) {
-        NotificationThrottle.showWarning('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
+        vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
         return;
       }
       try {
         const result = await yocto.instantRewind(sessionName);
-        NotificationThrottle.showInfo(
+        vscode.window.showInformationMessage(
           `YOLO Rewind 완료: ${result.restoredFiles}/${result.totalFiles} 파일 복구 (${result.durationMs}ms)`
         );
       } catch (err: any) {
-        NotificationThrottle.showError(`Rewind 실패: ${err.message}`);
+        vscode.window.showErrorMessage(`Rewind 실패: ${err.message}`);
       }
     })
   );
@@ -204,7 +202,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.toggleYolo', async () => {
       if (!gitStash) {
-        NotificationThrottle.showWarning('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
+        vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
         return;
       }
       const entered = await gitStash.enterYolo();
@@ -267,12 +265,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const ok = await crowServer.reconnect();
         if (ok) {
-          NotificationThrottle.showInfo('✅ VibeZoo: Zoo Code Crow Memory 연결 확인 성공!');
+          vscode.window.showInformationMessage('✅ VibeZoo: Zoo Code Crow Memory 연결 확인 성공!');
         } else {
-          NotificationThrottle.showWarning('⚠️ VibeZoo: Zoo Code Crow Memory에 연결할 수 없습니다.');
+          vscode.window.showWarningMessage('⚠️ VibeZoo: Zoo Code Crow Memory에 연결할 수 없습니다.');
         }
       } catch (err: any) {
-        NotificationThrottle.showError(`❌ Crow 연결 실패: ${err.message}`);
+        vscode.window.showErrorMessage(`❌ Crow 연결 실패: ${err.message}`);
       }
     })
   );
@@ -298,25 +296,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // Self Check
-  context.subscriptions.push(
-    vscode.commands.registerCommand('vibezoo.selfCheck', async () => {
-      const selfChecker = new SelfChecker('0.13.0');
-      const report = await selfChecker.runAll();
-      const markdown = selfChecker.formatReport(report);
-      const channel = vscode.window.createOutputChannel('VibeZoo Self Check');
-      channel.clear();
-      channel.append(markdown);
-      channel.show();
-      NotificationThrottle.showInfo(`Self Check 완료: ${report.overall}`);
-    })
-  );
-
   // Show Agent Info (TreeView 아이템 클릭 시)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.showAgentInfo', (node: any) => {
       if (node?.name) {
-        NotificationThrottle.showInfo(
+        vscode.window.showInformationMessage(
           `🔍 ${node.name}: ${node.currentTask || node.status || 'ready'} (port: ${node.port})`
         );
       }
@@ -377,7 +361,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (!hasShownWelcome) {
     context.globalState.update('vibezoo.welcomeShown', true);
     setTimeout(() => {
-      NotificationThrottle.showInfo(
+      vscode.window.showInformationMessage(
         '🎉 VibeZoo 준비 완료! Ctrl+Shift+P → VibeZoo: Help',
         'Help 보기', '닫기'
       ).then(choice => {
@@ -392,7 +376,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (autoBuildFix) {
         const outcome = await autoBuildFix.run(result);
         if (outcome.status === 'success') {
-          NotificationThrottle.showInfo(
+          vscode.window.showInformationMessage(
             `VibeZoo: AutoBuildFix 성공 (${outcome.attempt}회 시도)`
           );
         }
@@ -420,7 +404,7 @@ export function deactivate(): void {
 
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 
-function autoConfigureMCP(): void {
+function autoConfigureMCP(port: number = 9020): void {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders?.[0]) return;
 

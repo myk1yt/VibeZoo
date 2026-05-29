@@ -16,6 +16,13 @@ export class CrowServerManager {
   /** 마지막 healthCheck 결과 캐시 (외부에서 재사용 가능) */
   private _lastHealthy: boolean = false;
 
+  /** Bridge 통합 모드에서 직접 healthy 상태 설정 */
+  markHealthy(): void {
+    this._lastHealthy = true;
+    this._onStatusChange.fire({ connected: true });
+    this.startHealthCheck();
+  }
+
   constructor() {
     this.config = {
       port: vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020),
