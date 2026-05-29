@@ -33,6 +33,8 @@ build/
 
 # Test scripts (temporary)
 test_*.py
+_insert_*.py
+_debug*
 
 # VibeZoo data (user local)
 .zoo-code/
