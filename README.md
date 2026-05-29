@@ -1,9 +1,9 @@
-# VibeZoo v0.12.0
+# VibeZoo v0.13.0
 
 > **Zoo Code를 위한 AI 동반자 확장.** 소스 코드 0% 수정. 100% Companion-First.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.13.0-blue" alt="version">
   <img src="https://img.shields.io/badge/MCP_tools-31-green" alt="mcp tools">
   <img src="https://img.shields.io/badge/TypeScript-16_files-orange" alt="typescript">
   <img src="https://img.shields.io/badge/Python-FastMCP-yellow" alt="python">
@@ -129,7 +129,7 @@ VibeZoo는 Crow Memory를 실행하지 않습니다 — Zoo Code의 내장 Crow�
 ### 🛡️ Fearless YOLO (안전망)
 - **Yocto**: 실시간 파일 백업 (200ms debounce)
 - **Instant Rewind**: `Ctrl+Shift+Z` → 0.3초 내 전체 복구 (확인 대화상자 추가)
-- **File Guard**: `.yoloignore` 보호 파일 자동 복구
+- **File Guard**: `.yoloignore` 보호 파일 자동 복구 (사이드바 ON/OFF 토글 가능)
 - **Git Stash**: YOLO 모드 진입/퇴장 자동화
 
 ### 📊 StatusBar + TreeView

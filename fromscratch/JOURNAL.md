@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-05-29 - v0.13.0: 성능 최적화 + 버그 수정 + 문서화](#2026-05-29---v0130-성능-최적화--버그-수정--문서화)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
 - [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
 - [2026-05-27 - v0.10.0: MCP auto-config fix, Whiteboard auto-integration](#2026-05-27-v0100-mcp-auto-config-fix-whiteboard-auto-integration)
@@ -109,6 +110,22 @@ After:  VibeZoo Extension + vibezoo_mcp_bridge.py 1 file + Crow(external)
 - Companion-First architecture (extension pack for Zoo Code)
 - API-based LLM (no local model needed)
 - Crow Memory as external independent system
+
+---
+
+## 2026-05-29 - v0.13.0: 성능 최적화 + 버그 수정 + 문서화
+
+**변경사항**:
+- `SubagentManager.ts`: Crow URL 버그 수정 (bridge port 9027 → Crow port 9020)
+- `FileGuard.ts`: ON/OFF 토글 기능 추가 (`_enabled`, `toggle()`, `isEnabled()`)
+- `TreeViewProviders.ts` + `extension.ts`: 사이드바 FileGuard 토글 노드 (🛡️/🔓)
+- `package.json`: `vibezoo.toggleFileGuard` 커맨드 등록
+- `vibezoo_mcp_bridge.py`: `_iter_project_files` 최적화 (확장자별 N회 rglob → os.walk 1회)
+- `vibezoo_mcp_bridge.py`: `suggest_refactor` 중복 스캔 제거 (_iter_project_files_cached 캐시)
+- 31개 VibeZoo MCP 툴 전수 검증 완료 (전체 실구현 확인)
+- Extension 전역 설치 경로 복사 자동화 (workspace out/ → %USERPROFILE%\.vscode\extensions\local.vibezoo-0.13.0\out\)
+
+**GitHub**: 8개 커밋 main → main push 완료
 
 ---
 
