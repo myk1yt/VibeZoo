@@ -540,6 +540,7 @@ def _extract_regex_imports(file_path: str) -> list:
     return imports
 
 
+# POWR
 def get_project_root(target_path: str = "") -> str:
     if target_path:
         p = Path(target_path)
@@ -772,14 +773,17 @@ def find_references(symbol: str) -> str:
     """
     err = _validate_string(symbol, "symbol")
     if err:
-        return _markdown_header("Find References Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Find References Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     root = Path(os.getcwd())
     definitions = []
     usages = []
     exclude = DEFAULT_EXCLUDE_DIRS
-    
+
     _init_tree_sitter()
+
+    # Phase 3: 참조 타입 분류
+    ref_types = {"read": [], "write": [], "call": [], "type_ref": [], "import_ref": []}
     
     for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=exclude):
         content = _read_file_content(p)
@@ -787,55 +791,106 @@ def find_references(symbol: str) -> str:
             continue
         rel = _normalize_path(str(p.relative_to(root)))
         ext = p.suffix.lower()
+        file_lines = content.split("\\n")
         
         # AST로 함수/클래스 정의 찾기
         if ext in TS_JS_EXTS and _ts_available:
             ast = _parse_with_tree_sitter(content, ext)
             for fn in ast.get("functions", []):
                 if fn["name"] == symbol:
-                    definitions.append(f"`{rel}:{fn['line']}` — `{fn['type']} {fn['name']}()` (definition)")
+                    definitions.append({"file": rel, "line": fn["line"], "desc": f"`{fn['type']} {fn['name']}()`", "type": "definition"})
             for cls in ast.get("classes", []):
                 if cls["name"] == symbol:
-                    definitions.append(f"`{rel}:{cls['line']}` — `class {cls['name']}` (definition)")
+                    definitions.append({"file": rel, "line": cls["line"], "desc": f"`class {cls['name']}`", "type": "definition"})
             for iface in ast.get("interfaces", []):
                 if iface["name"] == symbol:
-                    definitions.append(f"`{rel}:{iface['line']}` — `{iface['type']} {iface['name']}` (definition)")
+                    definitions.append({"file": rel, "line": iface["line"], "desc": f"`{iface['type']} {iface['name']}`", "type": "definition"})
         
-        # 사용 위치 찾기 (regex, 정의 제외)
-        for i, line in enumerate(content.split("\n"), 1):
-            if symbol in line:
-                # AST 정의와 동일 라인이면 스킵
-                is_def = any(
-                    d.split(":")[0].rstrip("`") == rel and str(i) in d
-                    for d in definitions
-                )
-                if not is_def:
-                    stripped = line.strip()[:120]
-                    usages.append(f"`{rel}:{i}` — `{stripped}`")
-    
+        # 사용 위치 찾기 + 타입 분류 (Phase 3)
+        for i, line in enumerate(file_lines, 1):
+            if symbol not in line:
+                continue
+            is_def = any(d["file"] == rel and d["line"] == i for d in definitions)
+            if is_def:
+                continue
+            stripped = line.strip()
+            ref_type = "read"
+            if f"import {symbol}" in stripped or f"from '{symbol}" in stripped or f'from "{symbol}"' in stripped:
+                ref_type = "import_ref"
+            elif f"new {symbol}" in stripped or f"extends {symbol}" in stripped or f"implements {symbol}" in stripped:
+                ref_type = "type_ref"
+            elif f" {symbol}(" in stripped or f"{symbol}(" in stripped:
+                ref_type = "call"
+            elif f" = {symbol}" in stripped or f"={symbol}" in stripped:
+                ref_type = "read"
+            elif f"let {symbol}" in stripped or f"const {symbol}" in stripped or f"var {symbol}" in stripped:
+                ref_type = "write"
+            usages.append({"file": rel, "line": i, "text": stripped[:120], "type": ref_type})
+            ref_types[ref_type].append(f"`{rel}:{i}`")
+
     output = _markdown_header(f'References: `{symbol}`')
-    
+
     if definitions:
-        output += f"## 📍 Definition ({len(definitions)})\n"
+        output += f"## 📍 Definition ({len(definitions)})\\n"
         for d in definitions:
-            output += f"- {d}\n"
-        output += "\n"
-    
+            output += f"- `{d['file']}:{d['line']}` — {d['desc']}\\n"
+        output += "\\n"
+
     if usages:
-        output += f"## 🔗 Usages ({len(usages[:20])})\n"
-        for u in usages[:20]:
-            output += f"- {u}\n"
-        if len(usages) > 20:
-            output += f"\n... +{len(usages)-20} more\n"
-        output += "\n"
-    
-    if not definitions and not usages:
-        output += f"No references found for `{symbol}`.\n"
-    
+        output += f"## 🔗 References ({len(usages)})\\n\\n"
+        output += "### By Reference Type\\n\\n"
+        type_labels = {"call": "📞 Function Calls", "read": "📖 Read Access", "write": "✏️ Write Access", "type_ref": "🔤 Type Reference", "import_ref": "📦 Import Reference"}
+        for t, label in type_labels.items():
+            items = ref_types.get(t, [])
+            if items:
+                output += f"**{label}** ({len(items)})\\n"
+                for item in items[:8]:
+                    output += f"- {item}\\n"
+                if len(items) > 8:
+                    output += f"- ... +{len(items)-8} more\\n"
+                output += "\\n"
+        
+        output += "### By File\\n\\n"
+        by_file = defaultdict(list)
+        for u in usages:
+            by_file[u["file"]].append(u)
+        for file_path, refs in sorted(by_file.items(), key=lambda x: -len(x[1]))[:10]:
+            output += f"**`{file_path}`** ({len(refs)} refs)\\n"
+            for r in refs[:5]:
+                output += f"- Line {r['line']}: [{r['type']}] `{r['text'][:80]}`\\n"
+            if len(refs) > 5:
+                output += f"  ... +{len(refs)-5} more\\n"
+            output += "\\n"
+
+        # Phase 3: 호출 체인
+        output += "### Call Chain — Functions using this symbol\\n\\n"
+        caller_functions = {}
+        for u in usages:
+            if u["type"] == "call":
+                p = Path(root) / u["file"]
+                if p.exists():
+                    content2 = _read_file_content(p)
+                    if content2:
+                        ext2 = p.suffix.lower()
+                        if ext2 in TS_JS_EXTS and _ts_available:
+                            ast2 = _parse_with_tree_sitter(content2, ext2)
+                            for fn in ast2.get("functions", []):
+                                if fn["line"] <= u["line"] <= fn.get("end_line", fn["line"]):
+                                    caller_key = f"{u['file']}::{fn['name']}"
+                                    if caller_key not in caller_functions:
+                                        caller_functions[caller_key] = {"file": u["file"], "function": fn["name"], "line": fn["line"], "call_lines": []}
+                                    caller_functions[caller_key]["call_lines"].append(u["line"])
+        if caller_functions:
+            for ckey, cinfo in sorted(caller_functions.items(), key=lambda x: -len(x[1]["call_lines"]))[:10]:
+                lines_str = ", ".join(str(l) for l in cinfo["call_lines"][:5])
+                output += f"- `{cinfo['file']}` → `{cinfo['function']}()` (calls at line(s) {lines_str})\\n"
+        else:
+            output += "- No call chain data available.\\n"
+    else:
+        output += f"No references found for `{symbol}`.\\n"
+
     output += _markdown_footer()
     return output
-
-
 @mcp.tool
 def summarize_architecture(target_path: Optional[str] = None) -> str:
     """프로젝트 아키텍처를 분석하여 요약합니다.
@@ -847,8 +902,7 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
     """
     root = Path(get_project_root(target_path))
     root_str = str(root)
-    
-    # 빠른 기술 스택 감지 (기존 로직 유지)
+
     techs = {
         "package.json": "Node.js/TypeScript",
         "go.mod": "Go",
@@ -859,28 +913,25 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
         "Gemfile": "Ruby",
     }
     found_techs = [tech for file, tech in techs.items() if (root / file).exists()]
-    
-    # 핵심: 의존성 분석 (내부 호출)
+
     dep_output = map_dependencies(target_path=root_str)
-    # 의존성 수 파싱
-    dep_lines = []
     highest_deps = []
     parsing_imports = False
-    for line in dep_output.split("\n"):
+    for line in dep_output.split("\\n"):
         if "Import Count by File" in line:
             parsing_imports = True
             continue
         if parsing_imports and line.startswith("- `"):
-            # "- `extension/src/extension.ts`: **8** imports" 파싱
             m = re.match(r'- `(.+?)`:\s*\*{0,2}(\d+)\*{0,2}\s*imports?', line)
             if m:
                 highest_deps.append((m.group(1), int(m.group(2))))
         if parsing_imports and line.startswith("---"):
             break
-    
-    # 순환 참조 감지
-    has_cycles = "✅ No circular dependencies" not in dep_output
-    
+
+    output = _markdown_header("Architecture Analysis")
+    output += f"**Project**: `{root.name}`\\n"
+    output += f"**Tech Stack**: {', '.join(found_techs) if found_techs else 'Auto-detect failed'}\\n\\n"
+
     # 진입점 식별
     entry_patterns = ["main.py", "index.ts", "index.js", "app.ts", "main.go", "__init__.py",
                       "extension.ts", "server.ts", "server.js"]
@@ -891,10 +942,104 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
                 rel = _normalize_path(str(p.relative_to(root)))
                 entries.append(rel)
     entries = entries[:5]
-    
-    # 레이어 분류 (파일 경로 기반 휴리스틱)
-    layers = defaultdict(list)
+    if entries:
+        output += "## Entry Points\\n"
+        for e in entries:
+            output += f"- `{e}`\\n"
+        output += "\\n"
+
+    # Phase 3: Import 기반 레이어 자동 발견
+    output += "## Auto-Discovered Layers (import-based)\\n\\n"
+    dir_import_count = defaultdict(int)
+    all_files = []
     for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        all_files.append(p)
+    for p in all_files:
+        content = _read_file_content(p)
+        if content is None:
+            continue
+        rel = _normalize_path(str(p.relative_to(root)))
+        imports = []
+        if p.suffix in TS_JS_EXTS:
+            ast_imports = _extract_ast_imports(content, p.suffix)
+            imports = [i["module"] for i in ast_imports]
+        else:
+            imports = _extract_regex_imports(str(p))
+        for imp in imports:
+            if imp.startswith("."):
+                imp_dir = os.path.dirname(os.path.normpath(os.path.join(os.path.dirname(rel), imp)))
+                if imp_dir and imp_dir != ".":
+                    dir_import_count[imp_dir] += 1
+    
+    top_dirs = sorted(dir_import_count.items(), key=lambda x: -x[1])[:5]
+    if top_dirs:
+        for dir_name, count in top_dirs:
+            output += f"- **{dir_name}/** → imported by {count} files\\n"
+    else:
+        output += "- No significant import-based layers detected.\\n"
+    output += "\\n"
+
+    # Phase 3: 기술 부채 진단
+    output += "## Technical Debt Diagnosis\\n\\n"
+    debt_items = []
+    has_cycles = "✅ No circular dependencies" not in dep_output
+    if has_cycles:
+        debt_items.append("⚠️ Circular dependencies detected — high coupling risk")
+    high_dep_files = [(f, c) for f, c in highest_deps if c > 10]
+    if high_dep_files:
+        for f, c in high_dep_files[:3]:
+            debt_items.append(f"⚠️ `{f}` has {c} imports — too many responsibilities?")
+    total_files = len(all_files)
+    if total_files > 100:
+        debt_items.append(f"📏 Large project ({total_files} source files) — consider modularization")
+    if len(found_techs) > 2:
+        debt_items.append(f"🔀 Multiple tech stacks ({', '.join(found_techs)}) — cognitive load")
+    if debt_items:
+        for item in debt_items:
+            output += f"- {item}\\n"
+    else:
+        output += "- ✅ No significant technical debt detected.\\n"
+    output += "\\n"
+
+    output += "## Dependency Metrics\\n"
+    if highest_deps:
+        output += f"- **Most imported files** (hub modules):\\n"
+        for fpath, count in highest_deps[:5]:
+            output += f"  - `{fpath}` ← {count} dependents\\n"
+    output += f"- **Circular dependencies**: {'⚠️ Detected' if has_cycles else '✅ None'}\\n\\n"
+
+    # Phase 3: 파일 타입 분포 + 변경 트렌드
+    output += "## Code Metrics\\n\\n"
+    ext_count = defaultdict(int)
+    for p in all_files:
+        ext_count[p.suffix] += 1
+    output += "### File Type Distribution\\n"
+    for ext, count in sorted(ext_count.items(), key=lambda x: -x[1]):
+        output += f"- `{ext}`: {count} files\\n"
+    
+    output += "\\n### Change Trend (git log)\\n"
+    try:
+        git_result = subprocess.run(
+            ["git", "log", "--oneline", "--since=30.days", "--format=%ad", "--date=short"],
+            cwd=root_str, capture_output=True, text=True, timeout=10
+        )
+        if git_result.stdout.strip():
+            commits = git_result.stdout.strip().split("\\n")
+            output += f"- Commits in last 30 days: {len(commits)}\\n"
+            from collections import Counter as Ctr
+            date_counts = Ctr(commits)
+            most_active = date_counts.most_common(3)
+            if most_active:
+                output += f"- Most active days: {', '.join(f'{d}({c})' for d, c in most_active)}\\n"
+        else:
+            output += "- No recent git activity found.\\n"
+    except Exception:
+        output += "- Git history not available.\\n"
+    output += "\\n"
+
+    # 레이어 분류 (기존 유지)
+    layers = defaultdict(list)
+    for p in all_files:
         rel = _normalize_path(str(p.relative_to(root)))
         if "extension/src" in rel or "src/" in rel or "lib/" in rel:
             sub = rel.split("/")
@@ -916,67 +1061,32 @@ def summarize_architecture(target_path: Optional[str] = None) -> str:
             layers["API/MCP Interface"].append(rel)
         elif "templates" in rel or "plans" in rel or "fromscratch" in rel:
             layers["Documentation/Config"].append(rel)
-    
-    # 출력 구성 — AI가 바로 파싱할 수 있는 고밀도 형식
-    output = _markdown_header("Architecture Analysis")
-    output += f"**Project**: `{root.name}`\n"
-    output += f"**Tech Stack**: {', '.join(found_techs) if found_techs else 'Auto-detect failed'}\n\n"
-    
-    # 1. 진입점
-    if entries:
-        output += "## Entry Points\n"
-        for e in entries:
-            output += f"- `{e}`\n"
-        output += "\n"
-    
-    # 2. 레이어 구조
     if layers:
-        output += "## Layer Structure\n"
+        output += "## Layer Structure (path-based)\\n"
         for layer_name, files in sorted(layers.items(), key=lambda x: -len(x[1])):
             if files:
-                output += f"- **{layer_name}** ({len(files)} files)\n"
+                output += f"- **{layer_name}** ({len(files)} files)\\n"
                 for f in files[:5]:
-                    output += f"  - `{f}`\n"
+                    output += f"  - `{f}`\\n"
                 if len(files) > 5:
-                    output += f"  - ... +{len(files)-5} more\n"
-        output += "\n"
-    
-    # 3. 의존성 핵심 지표
-    output += "## Dependency Metrics\n"
-    if highest_deps:
-        output += f"- **Most imported files** (hub modules):\n"
-        for fpath, count in highest_deps[:5]:
-            output += f"  - `{fpath}` ← {count} dependents\n"
-    output += f"- **Circular dependencies**: {'⚠️ Detected' if has_cycles else '✅ None'}\n\n"
-    
-    # 4. 파일 통계 (간결하게)
-    total_files = 0
+                    output += f"  - ... +{len(files)-5} more\\n"
+        output += "\\n"
+
     total_lines = 0
-    for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
-        total_files += 1
+    for p in all_files:
         try:
-            total_lines += len(p.read_text(encoding="utf-8", errors="ignore").split("\n"))
+            total_lines += len(p.read_text(encoding="utf-8", errors="ignore").split("\\n"))
         except Exception:
             pass
-    
-    output += f"## Stats\n"
-    output += f"- Source files: {total_files}\n"
-    output += f"- Total lines: ~{total_lines}\n"
+    output += f"## Stats\\n"
+    output += f"- Source files: {total_files}\\n"
+    output += f"- Total lines: ~{total_lines}\\n"
     if found_techs:
-        output += f"- Primary language: {found_techs[0]}\n"
-    
-    try_crow_ingest(
-        json.dumps({"action": "arch_summary", "files": total_files, "tech": found_techs, "layers": len(layers)}),
-        register="arch"
-    )
+        output += f"- Primary language: {found_techs[0]}\\n"
+
+    try_crow_ingest(json.dumps({"action": "arch_summary", "files": total_files, "tech": found_techs, "layers": len(layers)}), register="arch")
     output += _markdown_footer()
     return output
-
-
-# ═══════════════════════════════════════════════════════════
-# Reviewer: 코드 리뷰 도구 (AST 강화)
-# ═══════════════════════════════════════════════════════════
-
 @mcp.tool
 def review_code(file_path: str) -> str:
     """지정된 파일의 코드 리뷰를 수행합니다.
@@ -1112,76 +1222,150 @@ def check_quality(target_path: Optional[str] = None) -> str:
     root = Path(get_project_root(target_path))
     output = _markdown_header("Code Quality Check")
 
-    # ── 빠른 경로: 자체 품질 분석 (외부 도구 불필요) ──
     source_files = list(_iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS))
     total_files = len(source_files)
     total_lines = 0
     long_lines = 0
     todo_count = 0
-    
-    for p in source_files[:50]:  # 최대 50개 파일만 빠르게 샘플링
+    empty_catch_count = 0
+    console_log_count = 0
+    debugger_count = 0
+    any_type_count = 0
+    ts_ignore_count = 0
+    empty_except_count = 0
+    func_count_total = 0
+    class_count_total = 0
+
+    for p in source_files:
         content = _read_file_content(p)
         if content is None:
             continue
-        lines = content.split("\n")
+        lines = content.split("\\n")
         total_lines += len(lines)
         long_lines += sum(1 for l in lines if len(l) > 120)
         todo_count += len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
+        empty_catch_count += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', content))
+        console_log_count += len(re.findall(r'console\.(log|warn|error|debug)', content))
+        debugger_count += len(re.findall(r'\bdebugger\b', content))
+        any_type_count += len(re.findall(r':\s*any\b', content))
+        ts_ignore_count += len(re.findall(r'@ts-ignore|@ts-nocheck', content))
+        empty_except_count += len(re.findall(r'except\s*:', content))
+        func_count_total += len(re.findall(r'(?:function|async function|def\s+)', content))
+        class_count_total += len(re.findall(r'\bclass\s+\w+', content))
+
+    output += "## Quality Metrics\\n\\n"
+    output += f"- Source files: {total_files}\\n"
+    output += f"- Total lines: {total_lines}\\n"
+    output += f"- Functions: {func_count_total}\\n"
+    output += f"- Classes: {class_count_total}\\n\\n"
+
+    issues_found = 0
+    severity_scores = []
     
-    output += "## Quick Analysis\n\n"
-    output += f"- Files analyzed: {total_files}\n"
-    output += f"- Total lines: ~{total_lines}\n"
     if long_lines > 0:
-        output += f"- ⚠️ Lines >120 chars: {long_lines}\n"
+        ratio = long_lines / max(total_lines, 1) * 100
+        w = "⚠️" if ratio > 1 else "📏"
+        output += f"- {w} Lines >120 chars: {long_lines} ({ratio:.1f}%)\\n"
+        severity_scores.append(("long_lines", ratio))
+        issues_found += 1
     if todo_count > 0:
-        output += f"- 📝 TODO/FIXME markers: {todo_count}\n"
-    output += "\n"
+        ratio = todo_count / max(total_files, 1)
+        w = "⚠️" if ratio > 0.5 else "📝"
+        output += f"- {w} TODO/FIXME markers: {todo_count}\\n"
+        severity_scores.append(("todos", ratio))
+        issues_found += 1
+    if console_log_count > 0:
+        output += f"- ⚠️ console.* calls: {console_log_count}\\n"
+        severity_scores.append(("console_log", console_log_count))
+        issues_found += 1
+    if debugger_count > 0:
+        output += f"- ❌ debugger statements: {debugger_count}\\n"
+        severity_scores.append(("debugger", debugger_count))
+        issues_found += 1
+    if any_type_count > 0:
+        output += f"- ⚠️ `any` type usage: {any_type_count}\\n"
+        severity_scores.append(("any_type", any_type_count))
+        issues_found += 1
+    if ts_ignore_count > 0:
+        output += f"- ⚠️ @ts-ignore/@ts-nocheck: {ts_ignore_count}\\n"
+        severity_scores.append(("ts_ignore", ts_ignore_count))
+        issues_found += 1
+    if empty_catch_count > 0:
+        output += f"- ❌ Empty catch blocks: {empty_catch_count}\\n"
+        severity_scores.append(("empty_catch", empty_catch_count))
+        issues_found += 1
+    if empty_except_count > 0:
+        output += f"- ⚠️ Bare except:: {empty_except_count}\\n"
+        severity_scores.append(("bare_except", empty_except_count))
+        issues_found += 1
+
+    # ── 품질 등급 산정 (A-F) ──
+    score = 100.0
+    for name, val in severity_scores:
+        if name == "long_lines":
+            score -= val * 5
+        elif name == "todos":
+            score -= val * 2
+        elif name == "console_log":
+            score -= val * 2
+        elif name == "debugger":
+            score -= val * 10
+        elif name == "any_type":
+            score -= val * 1.5
+        elif name == "ts_ignore":
+            score -= val * 3
+        elif name == "empty_catch":
+            score -= val * 8
+        elif name == "bare_except":
+            score -= val * 5
+    score = max(0, min(100, score))
+    
+    if score >= 90:
+        grade = "A"
+        grade_desc = "Excellent"
+    elif score >= 80:
+        grade = "B"
+        grade_desc = "Good"
+    elif score >= 70:
+        grade = "C"
+        grade_desc = "Fair"
+    elif score >= 60:
+        grade = "D"
+        grade_desc = "Poor"
+    elif score >= 40:
+        grade = "E"
+        grade_desc = "Bad"
+    else:
+        grade = "F"
+        grade_desc = "Critical"
+    if issues_found == 0:
+        grade = "A+"
+        grade_desc = "Perfect"
+    
+    output += f"\\n## Quality Grade\\n\\n"
+    output += f"- **Grade**: `{grade}` ({grade_desc})\\n"
+    output += f"- **Score**: {score:.1f}/100\\n"
+    output += f"- **Issues found**: {issues_found}\\n\\n"
 
     # ESLint
     if (root / "package.json").exists():
         try:
-            result = subprocess.run(
-                [_npx_cmd(), "eslint", ".", "--ext", ".ts,.tsx,.js,.jsx", "--format", "compact", "--quiet"],
-                cwd=str(root), capture_output=True, text=True, timeout=30
-            )
+            result = subprocess.run([_npx_cmd(), "eslint", ".", "--ext", ".ts,.tsx,.js,.jsx", "--format", "compact", "--quiet"],
+                                   cwd=str(root), capture_output=True, text=True, timeout=30)
             if result.stdout:
-                output += f"## ESLint\n\n```\n{_truncate(result.stdout, 2000)}\n```\n"
+                output += f"## ESLint\\n\\n```\\n{_truncate(result.stdout, 2000)}\\n```\\n"
             else:
-                output += "## ESLint\n\n✅ No issues found.\n"
+                output += "## ESLint\\n\\n✅ No issues found.\\n"
         except FileNotFoundError:
-            output += "## ESLint\n\n⚠️ ESLint not installed.\n"
+            output += "## ESLint\\n\\n⚠️ ESLint not installed.\\n"
         except subprocess.TimeoutExpired:
-            output += "## ESLint\n\n⚠️ ESLint timed out (30s).\n"
+            output += "## ESLint\\n\\n⚠️ ESLint timed out (30s).\\n"
         except Exception as e:
-            output += f"## ESLint\n\n❌ Error: {e}\n"
+            output += f"## ESLint\\n\\n❌ Error: {e}\\n"
 
-    # go vet
-    if (root / "go.mod").exists():
-        try:
-            result = subprocess.run(
-                ["go", "vet", "./..."],
-                cwd=str(root), capture_output=True, text=True, timeout=30
-            )
-            if result.stderr:
-                output += f"## go vet\n\n```\n{_truncate(result.stderr, 1000)}\n```\n"
-            else:
-                output += "## go vet\n\n✅ No issues found.\n"
-        except FileNotFoundError:
-            output += "## go vet\n\n⚠️ Go not available.\n"
-        except subprocess.TimeoutExpired:
-            output += "## go vet\n\n⚠️ go vet timed out (30s).\n"
-        except Exception as e:
-            output += f"## go vet\n\n❌ Error: {e}\n"
-
-    try_crow_ingest(f"Quality check on {root.name}", register="style")
+    try_crow_ingest(f"Quality check on {root.name}: grade={grade} score={score:.1f}", register="style")
     output += _markdown_footer()
     return output
-
-
-# ═══════════════════════════════════════════════════════════
-# Deep Analyzer: 코드 심층 분석 도구
-# ═══════════════════════════════════════════════════════════
-
 @mcp.tool
 def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     """프로젝트의 함수 호출 그래프를 분석합니다.
@@ -1193,7 +1377,7 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     """
     err = _validate_int(depth, "depth", 1, 20)
     if err:
-        return _markdown_header("Call Graph Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Call Graph Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     root = Path(get_project_root(file_path))
     output = _markdown_header("Call Graph Analysis")
@@ -1201,26 +1385,106 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
     # tree-sitter 초기화
     _init_tree_sitter()
 
-    if (root / "go.mod").exists():
-        try:
-            # go callgraph is not standard; use go vet as a lightweight alternative
-            result = subprocess.run(
-                ["go", "vet", "./..."],
-                cwd=str(root), capture_output=True, text=True, timeout=30
-            )
-            if result.stderr:
-                output += f"## Go Vet\n\n```\n{_truncate(result.stderr, 2000)}\n```\n"
-            else:
-                output += "## Go Vet\n\n✅ No issues found.\n"
-        except FileNotFoundError:
-            output += "## Go Vet\n\n⚠️ Go not available.\n"
-        except subprocess.TimeoutExpired:
-            output += "## Go Vet\n\n⚠️ go vet timed out.\n"
-        except Exception as e:
-            output += f"## Go Vet\n\n❌ Error: {e}\n"
+    # ── 전체 함수 정의 맵 구축 (Phase 2) ──
+    output += "## Function Definition Map\\n\\n"
+    func_defs = {}
+    for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        content = _read_file_content(p)
+        if content is None:
+            continue
+        rel = _normalize_path(str(p.relative_to(root)))
+        ast = _parse_with_tree_sitter(content, p.suffix)
+        for fn in ast.get("functions", []):
+            key = f"{rel}::{fn['name']}"
+            func_defs[key] = {"file": rel, "name": fn["name"], "line": fn["line"], "end_line": fn.get("end_line", fn["line"])}
+    
+    if func_defs:
+        output += f"- Total function definitions: {len(func_defs)}\\n"
+        file_func_count = defaultdict(int)
+        for key, info in func_defs.items():
+            file_func_count[info["file"]] += 1
+        for f, cnt in sorted(file_func_count.items(), key=lambda x: -x[1])[:10]:
+            output += f"- `{f}`: {cnt} functions\\n"
+    else:
+        output += "- No function definitions found.\\n"
+    output += "\\n"
 
-    # TypeScript/JavaScript: AST 기반 함수 호출 분석
-    output += "\n## Function Call Graph (AST)\n\n"
+    # ── Fan-in / Fan-out 메트릭 (Phase 2) ──
+    output += "## Fan-in / Fan-out Metrics\\n\\n"
+    all_calls = defaultdict(list)
+    all_callees = defaultdict(list)
+    
+    for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        content = _read_file_content(p)
+        if content is None:
+            continue
+        rel = _normalize_path(str(p.relative_to(root)))
+        calls = _extract_ast_calls(content, p.suffix)
+        for c in calls:
+            caller_key = f"{rel}::{c['name']}"
+            matched = False
+            for fkey, finfo in func_defs.items():
+                if c["name"] == finfo["name"] or c["name"].endswith("." + finfo["name"]):
+                    all_calls[caller_key].append(fkey)
+                    all_callees[fkey].append(caller_key)
+                    matched = True
+                    break
+            if not matched:
+                all_calls[caller_key].append(c["name"])
+    
+    fan_out_list = [(len(targets), caller) for caller, targets in all_calls.items()]
+    fan_out_list.sort(key=lambda x: -x[0])
+    output += "### Top Fan-out (most calls made)\\n\\n"
+    for count, caller in fan_out_list[:5]:
+        output += f"- `{caller}` → {count} calls\\n"
+    
+    fan_in_list = [(len(callers), callee) for callee, callers in all_callees.items()]
+    fan_in_list.sort(key=lambda x: -x[0])
+    output += "\\n### Top Fan-in (most called)\\n\\n"
+    for count, callee in fan_in_list[:5]:
+        output += f"- `{callee}` ← {count} callers\\n"
+    
+    if not fan_out_list and not fan_in_list:
+        output += "- No call data available.\\n"
+    output += "\\n"
+
+    # ── 데드 코드 감지 (Phase 2) ──
+    output += "## Dead Code Detection\\n\\n"
+    dead_funcs = []
+    for fkey, finfo in func_defs.items():
+        if fkey not in all_callees or len(all_callees[fkey]) == 0:
+            if not any(finfo["name"] in str(caller) and finfo["file"] in str(caller) for caller in all_calls.get(fkey, [])):
+                dead_funcs.append(finfo)
+    
+    if dead_funcs:
+        output += f"⚠️ {len(dead_funcs)} potentially dead function(s) (no callers):\\n\\n"
+        for df in dead_funcs[:10]:
+            output += f"- `{df['file']}:{df['line']}` — `{df['name']}()`\\n"
+        if len(dead_funcs) > 10:
+            output += f"- ... +{len(dead_funcs)-10} more\\n"
+    else:
+        output += "✅ No dead code detected (or all functions have callers).\\n"
+    output += "\\n"
+
+    # ── Mermaid Flow Chart (Phase 2) ──
+    if fan_in_list:
+        output += "## Call Graph (Mermaid)\\n\\n"
+        output += "```mermaid\\nflowchart TD;\\n"
+        shown = set()
+        for count, callee in fan_in_list[:5]:
+            callee_id = callee.replace("/", "_").replace(".", "_").replace("::", "_")
+            output += f"  {callee_id}['{callee}']\n"
+            shown.add(callee)
+            for caller in all_callees.get(callee, [])[:3]:
+                caller_id = caller.replace("/", "_").replace(".", "_").replace("::", "_")
+                if caller_id not in shown:
+                    output += f"  {caller_id}['{caller}']\n"
+                    shown.add(caller_id)
+                output += f"  {caller_id} --> {callee_id}\n"
+        output += "```\n\n"
+
+    # TypeScript/JavaScript: AST 기존 함수 호출 분석 (유지)
+    output += "## Per-File Call Analysis\\n\\n"
     total_calls = 0
     processed_files = 0
     for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
@@ -1233,22 +1497,21 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
         if calls:
             call_counts = Counter(c["name"] for c in calls)
             top_calls = call_counts.most_common(10)
-            output += f"### `{rel}`\n\n"
-            output += f"- **Total calls**: {len(calls)}\n"
-            output += f"- **Unique functions called**: {len(call_counts)}\n"
+            output += f"### `{rel}`\\n\\n"
+            output += f"- **Total calls**: {len(calls)}\\n"
+            output += f"- **Unique functions called**: {len(call_counts)}\\n"
             for func_name, count in top_calls:
-                output += f"  - `{func_name}` ({count}x)\n"
-            output += "\n"
+                output += f"  - `{func_name}` ({count}x)\\n"
+            output += "\\n"
             total_calls += len(calls)
 
     if total_calls == 0:
         if processed_files == 0:
-            output += "- No TypeScript/JavaScript files found.\n"
+            output += "- No TypeScript/JavaScript files found.\\n"
         else:
-            output += "- No function calls detected via AST.\n"
+            output += "- No function calls detected via AST.\\n"
 
-    # 파일 간 의존성 (AST 기반 import)
-    output += "\n## File-Level Dependencies (AST)\n\n"
+    output += "## File-Level Dependencies (AST)\\n\\n"
     dep_count = 0
     for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
@@ -1259,17 +1522,15 @@ def analyze_call_graph(file_path: Optional[str] = None, depth: int = 3) -> str:
         if ast_imports:
             modules = list(set(i["module"] for i in ast_imports if not i["module"].startswith(".")))
             local = list(set(i["module"] for i in ast_imports if i["module"].startswith(".")))
-            output += f"- `{rel}` → {len(modules)} external + {len(local)} local imports\n"
+            output += f"- `{rel}` → {len(modules)} external + {len(local)} local imports\\n"
             dep_count += 1
 
     if dep_count == 0:
-        output += "- No dependencies detected.\n"
+        output += "- No dependencies detected.\\n"
 
-    try_crow_ingest(f"Call graph: {total_calls} calls across {dep_count} files", register="arch")
+    try_crow_ingest(f"Call graph: {total_calls} calls, {len(dead_funcs)} dead funcs, {len(func_defs)} defs (Phase2)", register="arch")
     output += _markdown_footer()
     return output
-
-
 @mcp.tool
 def map_dependencies(target_path: Optional[str] = None) -> str:
     """프로젝트 파일 간 의존성을 분석하고 순환 참조를 탐지합니다.
@@ -1290,68 +1551,169 @@ def map_dependencies(target_path: Optional[str] = None) -> str:
                                   exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         rel = _normalize_path(str(p.relative_to(root)))
         ext = p.suffix
+        content = _read_file_content(p)
+        if content is None:
+            continue
 
         # AST 기반 import 추출 (TS/JS/JSX)
         if ext in TS_JS_EXTS:
-            content = _read_file_content(p)
-            if content is None:
-                continue
             ast_imports = _extract_ast_imports(content, ext)
             if ast_imports:
                 deps[rel] = [i["module"] for i in ast_imports]
                 continue
 
-        # regex fallback (Python, Go, 또는 AST 실패 시)
+        # Python AST import 추출 (Phase 2)
+        if ext == ".py":
+            py_imports = _extract_python_imports(content)
+            if py_imports:
+                deps[rel] = [i["module"] for i in py_imports]
+                continue
+
+        # Go import 추출 (Phase 2)
+        if ext == ".go":
+            go_imports = _extract_go_imports(content)
+            if go_imports:
+                deps[rel] = [i["module"] for i in go_imports]
+                continue
+
+        # regex fallback
         imports = _extract_regex_imports(str(p))
         if imports:
             deps[rel] = imports
 
-    # 순환 참조 탐지 (DFS)
-    def find_cycles(graph, start, path=None, visited=None):
-        if path is None:
-            path = []
-        if visited is None:
-            visited = set()
-        if start in path:
-            idx = path.index(start)
-            return [" → ".join(path[idx:] + [start])]
-        if start in visited:
-            return []
-        visited.add(start)
-        cycles = []
-        for dep in graph.get(start, []):
-            if dep in graph:
-                try:
-                    cycles.extend(find_cycles(graph, dep, path + [start], visited))
-                except RecursionError:
-                    continue
-        return cycles
-
-    all_cycles = []
-    for file in deps:
+    # ── 패키지 매니저 정보 (Phase 2) ──
+    output += "## Package Manager Info\\n\\n"
+    pkg_managers = []
+    if (root / "package.json").exists():
         try:
-            all_cycles.extend(find_cycles(deps, file))
-        except RecursionError:
-            continue
+            pkg = json.loads((root / "package.json").read_text())
+            deps_count = len(pkg.get("dependencies", {}))
+            dev_deps_count = len(pkg.get("devDependencies", {}))
+            pkg_managers.append(f"- **npm/yarn**: {deps_count} deps + {dev_deps_count} devDeps")
+        except Exception:
+            pkg_managers.append("- **npm/yarn**: package.json found (parse error)")
+    if (root / "go.mod").exists():
+        try:
+            gomod = (root / "go.mod").read_text()
+            module_name = ""
+            for line in gomod.split("\\n"):
+                if line.startswith("module "):
+                    module_name = line[7:].strip()
+                    break
+            pkg_managers.append(f"- **Go module**: {module_name}")
+        except Exception:
+            pkg_managers.append("- **Go module**: go.mod found")
+    if (root / "requirements.txt").exists():
+        try:
+            reqs = (root / "requirements.txt").read_text().strip().split("\\n")
+            pkg_managers.append(f"- **pip**: {len(reqs)} packages listed")
+        except Exception:
+            pkg_managers.append("- **pip**: requirements.txt found")
+    if (root / "Cargo.toml").exists():
+        pkg_managers.append("- **Cargo**: Rust project")
+    if pkg_managers:
+        for pm in pkg_managers:
+            output += pm + "\\n"
+    else:
+        output += "- No package manager detected.\\n"
+    output += "\\n"
+
+    # ── 순환 참조 탐지 (Iterative DFS, 스택 기반 — Phase 2) ──
+    def find_cycles_iterative(graph):
+        """Iterative DFS로 순환 참조 탐지 (재귀 한계 회피, 스택 기반)"""
+        cycles = []
+        visited_all = set()
+        
+        for start in graph:
+            if start in visited_all:
+                continue
+            stack = [(start, [start], {start})]
+            while stack:
+                node, path, branch_visited = stack.pop()
+                for dep in graph.get(node, []):
+                    if dep not in graph:
+                        continue
+                    if dep == start and len(path) >= 2:
+                        cycle_path = " → ".join(path + [dep])
+                        cycles.append(cycle_path)
+                    elif dep not in branch_visited:
+                        new_path = path + [dep]
+                        new_branch = branch_visited | {dep}
+                        stack.append((dep, new_path, new_branch))
+                        visited_all.add(dep)
+        return list(set(cycles))
+
+    all_cycles = find_cycles_iterative(deps)
 
     if all_cycles:
-        all_cycles = list(set(all_cycles))[:10]
-        output += "### ⚠️ Circular Dependencies Found\n\n"
+        all_cycles = all_cycles[:10]
+        output += "### ⚠️ Circular Dependencies Found\\n\\n"
         for cycle in all_cycles:
-            output += f"- `{cycle}`\n"
+            output += f"- `{cycle}`\\n"
     else:
-        output += "✅ No circular dependencies detected.\n"
+        output += "✅ No circular dependencies detected.\\n"
+    output += "\\n"
+
+    # ── 영향도 분석 (Phase 2) ──
+    output += "## Impact Analysis\\n\\n"
+    reverse_deps = defaultdict(list)
+    for file_path, imports in deps.items():
+        for imp in imports:
+            reverse_deps[imp].append(file_path)
+    
+    impact_entries = []
+    for file_path in deps:
+        affected = reverse_deps.get(file_path, [])
+        direct_affected = len(affected)
+        if direct_affected == 0:
+            grade = "LOW"
+        elif direct_affected <= 2:
+            grade = "MEDIUM"
+        elif direct_affected <= 5:
+            grade = "HIGH"
+        else:
+            grade = "CRITICAL"
+        impact_entries.append((direct_affected, file_path, grade))
+    
+    impact_entries.sort(key=lambda x: -x[0])
+    for direct_affected, file_path, grade in impact_entries[:10]:
+        output += f"- `{file_path}` → affects **{direct_affected}** file(s) — **{grade}**\\n"
+    if not impact_entries:
+        output += "- No dependency data for impact analysis.\\n"
+    output += "\\n"
+
+    # ── Mermaid 다이어그램 (순환 참조 시각화 — Phase 2) ──
+    if all_cycles:
+        output += "## Circular Dependency Diagram (Mermaid)\\n\\n"
+        output += "```mermaid\\ngraph TD;\\n"
+        cycle_files = set()
+        for cycle in all_cycles:
+            for f in cycle.split(" → "):
+                f_clean = f.replace("`", "").strip()
+                if f_clean:
+                    cycle_files.add(f_clean)
+        for f in cycle_files:
+            safe_id = f.replace("/", "_").replace(".", "_").replace(":", "_")
+            output += f"  {safe_id}['{f}']\n"
+        for cycle in all_cycles:
+            parts = cycle.split(" → ")
+            for i in range(len(parts)):
+                a = parts[i].replace("`", "").strip()
+                b = parts[(i + 1) % len(parts)].replace("`", "").strip()
+                if a and b and a in cycle_files and b in cycle_files:
+                    a_id = a.replace("/", "_").replace(".", "_").replace(":", "_")
+                    b_id = b.replace("/", "_").replace(".", "_").replace(":", "_")
+                    output += f"  {a_id} --> {b_id}\\n"
+        output += "```\\n\\n"
 
     # 파일별 의존성 수
-    output += "\n## Import Count by File\n\n"
+    output += "## Import Count by File\\n\\n"
     for file, imports in sorted(deps.items(), key=lambda x: -len(x[1]))[:20]:
-        output += f"- `{file}`: **{len(imports)}** imports\n"
+        output += f"- `{file}`: **{len(imports)}** imports\\n"
 
-    try_crow_ingest(f"Dep analysis: {len(deps)} files, {len(all_cycles)} cycles (AST)", register="arch")
+    try_crow_ingest(f"Dep analysis: {len(deps)} files, {len(all_cycles)} cycles (Phase2)", register="arch")
     output += _markdown_footer()
     return output
-
-
 @mcp.tool
 def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3) -> str:
     """프로젝트 전체에서 반복되는 코드 패턴을 AST 기반으로 추출합니다.
@@ -1363,100 +1725,87 @@ def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3
     """
     err = _validate_int(min_occurrences, "min_occurrences", 1, 10000)
     if err:
-        return _markdown_header("Pattern Extraction Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Pattern Extraction Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     root = Path(get_project_root(target_path))
     _init_tree_sitter()
-    
-    # AST 기반 정확한 패턴 카운트
+
     patterns = {
-        "async/await": 0,        # AST: function_declaration with async, await_expression
-        "try-catch": 0,          # AST: try_statement
-        "arrow functions": 0,    # AST: arrow_function
-        "class definitions": 0,  # AST: class_declaration
-        "interface/type": 0,     # AST: interface_declaration, type_alias_declaration
-        "generics usage": 0,     # AST: type_arguments
-        "destructuring": 0,      # AST: object_pattern, array_pattern
-        "template literals": 0,  # AST: template_string
-        "optional chaining": 0,  # regex: `?.` (tree-sitter에서도 지원)
-        "nullish coalescing": 0, # regex: `??`
+        "async/await": 0, "try-catch": 0, "arrow functions": 0,
+        "class definitions": 0, "interface/type": 0, "generics usage": 0,
+        "destructuring": 0, "template literals": 0, "optional chaining": 0, "nullish coalescing": 0,
     }
-    
-    # 사전 데이터 (regex 기반 보조)
     comments_todos = 0
     console_logs = 0
     ts_ignore = 0
     debugger_count = 0
-    
     file_count = 0
+    lib_calls = Counter()
+    
     for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         content = _read_file_content(p)
         if content is None:
             continue
         file_count += 1
         ext = p.suffix.lower()
-        
-        # AST 기반 분석 (TS/JS)
+
         if ext in TS_JS_EXTS and _ts_available:
             try:
                 ast = _parse_with_tree_sitter(content, ext)
-                
-                # arrow 함수 카운트
                 for fn in ast.get("functions", []):
                     if fn["type"] == "arrow_function":
                         patterns["arrow functions"] += 1
-                # async/await는 함수 시그니처만으로는 불충분 — content 기반 보조
-                
                 patterns["class definitions"] += len(ast.get("classes", []))
                 patterns["interface/type"] += len(ast.get("interfaces", []))
             except Exception:
                 pass
-            
-            # AST로 call_expression 추출 → 메서드 체이닝, 옵셔널 체이닝 등 추가 분석
             try:
                 calls = _extract_ast_calls(content, ext)
-                # console.* 호출
                 for c in calls:
                     if c["name"].startswith("console."):
                         console_logs += 1
+                    if "." in c["name"] and not c["name"].startswith("console."):
+                        parts = c["name"].split(".")
+                        if len(parts) >= 2:
+                            lib_calls[f"{parts[0]}.{'.'.join(parts[1:])}"] += 1
             except Exception:
                 pass
-        
-        # 공통 regex 보조 (모든 언어)
+
         patterns["async/await"] += len(re.findall(r'\basync\s+(function|\(|=\s*\()', content))
         patterns["async/await"] += len(re.findall(r'\bawait\s+', content))
         patterns["try-catch"] += len(re.findall(r'\btry\s*\{', content))
         patterns["arrow functions"] += len(re.findall(r'(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>', content))
-        patterns["arrow functions"] += len(re.findall(r'\(\s*\)\s*=>', content[:10000]))  # 앞부분만
+        patterns["arrow functions"] += len(re.findall(r'\(\s*\)\s*=>', content[:10000]))
         patterns["generics usage"] += len(re.findall(r'<\s*\w+\s*(?:extends\s+\w+)?\s*>', content))
         patterns["destructuring"] += len(re.findall(r'\{\s*\w+\s*\}', content[:10000]))
         patterns["template literals"] += len(re.findall(r'`[^`]*\$\{[^}]+\}[^`]*`', content))
         patterns["optional chaining"] += len(re.findall(r'\w\?\.\w', content))
         patterns["nullish coalescing"] += len(re.findall(r'\w\s*\?\?\s*\w', content))
-        
-        # 사전 데이터
         comments_todos += len(re.findall(r'(?:TODO|FIXME|HACK|XXX)', content))
-        ts_ignore += len(re.findall(r'@ts-ignore', content))
-        ts_ignore += len(re.findall(r'@ts-nocheck', content))
+        ts_ignore += len(re.findall(r'@ts-ignore', content)) + len(re.findall(r'@ts-nocheck', content))
         debugger_count += len(re.findall(r'\bdebugger\b', content))
-    
+
     output = _markdown_header(f"Pattern Analysis ({file_count} files)")
-    
-    # 1. AST 기반 패턴
-    output += "\n## Code Patterns\n"
+    output += "\\n## Code Patterns\\n"
     found_any = False
     for pattern, count in sorted(patterns.items(), key=lambda x: -x[1]):
         if count >= min_occurrences:
-            output += f"- `{pattern}`: **{count}** occurrences\n"
+            output += f"- `{pattern}`: **{count}** occurrences\\n"
             found_any = True
         elif count > 0:
-            output += f"- `{pattern}`: {count} (below threshold)\n"
-    
+            output += f"- `{pattern}`: {count} (below threshold)\\n"
     if not found_any:
-        output += "- No significant patterns detected.\n"
-    
-    # 2. 코드 품질 지표
-    output += "\n## Quality Indicators\n"
+        output += "- No significant patterns detected.\\n"
+
+    output += "\\n## Library Function Usage Top 10\\n\\n"
+    top_lib = lib_calls.most_common(10)
+    if top_lib:
+        for lib, cnt in top_lib:
+            output += f"- `{lib}`: **{cnt}** calls\\n"
+    else:
+        output += "- No library function calls detected.\\n"
+
+    output += "\\n## Quality Indicators\\n"
     quality_items = []
     if console_logs > 0:
         quality_items.append(f"`console.*` calls: {console_logs}")
@@ -1466,21 +1815,15 @@ def extract_patterns(target_path: Optional[str] = None, min_occurrences: int = 3
         quality_items.append(f"`@ts-ignore/@ts-nocheck`: {ts_ignore}")
     if debugger_count > 0:
         quality_items.append(f"`debugger` statements: {debugger_count}")
-    
     if quality_items:
         for item in quality_items:
-            output += f"- ⚠️ {item}\n"
+            output += f"- ⚠️ {item}\\n"
     else:
-        output += "- ✅ No quality concerns detected.\n"
-    
-    try_crow_ingest(
-        json.dumps({"patterns_found": sum(1 for c in patterns.values() if c > 0), "files": file_count}),
-        register="style"
-    )
+        output += "- ✅ No quality concerns detected.\\n"
+
+    try_crow_ingest(json.dumps({"patterns_found": sum(1 for c in patterns.values() if c > 0), "files": file_count}), register="style")
     output += _markdown_footer()
     return output
-
-
 @mcp.tool
 def reverse_engineer(target_path: Optional[str] = None, output_format: str = "markdown") -> str:
     """코드베이스로부터 아키텍처 문서, API 명세, ERD를 자동 생성합니다.
@@ -1492,12 +1835,12 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
     """
     err = _validate_string(output_format, "format")
     if err:
-        return _markdown_header("Reverse Engineering Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Reverse Engineering Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     allowed_formats = {"markdown", "openapi", "mermaid"}
     if output_format not in allowed_formats:
         return (_markdown_header("Reverse Engineering Error", "❌")
-                + f"**Invalid format: `{output_format}`. Allowed: {', '.join(allowed_formats)}**\n"
+                + f"**Invalid format: `{output_format}`. Allowed: {', '.join(allowed_formats)}**\\n"
                 + _markdown_footer())
 
     root = Path(get_project_root(target_path))
@@ -1511,14 +1854,14 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
     if pkg_json.exists():
         try:
             pkg = json.loads(pkg_json.read_text())
-            output += f"- **Name**: {pkg.get('name', 'N/A')}\n"
-            output += f"- **Description**: {pkg.get('description', 'N/A')}\n"
-            output += f"- **Version**: {pkg.get('version', 'N/A')}\n\n"
+            output += f"- **Name**: {pkg.get('name', 'N/A')}\\n"
+            output += f"- **Description**: {pkg.get('description', 'N/A')}\\n"
+            output += f"- **Version**: {pkg.get('version', 'N/A')}\\n\\n"
         except (json.JSONDecodeError, OSError):
             pass
 
-    # API 엔드포인트 추출 (파일 확장자별 다른 패턴)
-    output += "## API Endpoints\n\n"
+    # ── AST 기반 API 라우트 추출 (Phase 2: Express, FastAPI, Flask, Gin) ──
+    output += "## API Endpoints\\n\\n"
     endpoints = []
     for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".py", ".go"},
                                   exclude_dirs=DEFAULT_EXCLUDE_DIRS):
@@ -1528,32 +1871,60 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
         rel = _normalize_path(str(p.relative_to(root)))
         ext = p.suffix.lower()
 
-        if ext == ".py":
-            # Python: FastAPI/Flask 패턴
-            for match in re.finditer(r'@(?:app|router|bp|api)\.(get|post|put|delete|patch)\s*\(\s*[\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
-                endpoints.append(f"- `{match.group(1).upper()}` `{match.group(2)}` ({rel})")
-            # Django: path('url', view)
-            for match in re.finditer(r'path\s*\(\s*[\'"]([^\'"]+)[\'"]', content):
-                endpoints.append(f"- `GET` `{match.group(1)}` ({rel})")
-        elif ext in (".ts", ".tsx", ".js", ".jsx"):
-            # Express/Koa/Fastify 패턴
-            for m in ["get", "post", "put", "delete", "patch"]:
-                for match in re.finditer(rf'(?:app|router|server)\.{m}\s*\(\s*[\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
-                    endpoints.append(f"- `{m.upper()}` `{match.group(1)}` ({rel})")
-        elif ext == ".go":
-            # Gin/Echo 패턴
-            for m in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
-                for match in re.finditer(rf'\.{m}\s*\(\s*"([^"]+)"', content):
-                    endpoints.append(f"- `{m}` `{match.group(1)}` ({rel})")
+        # Express
+        if ext in TS_JS_EXTS:
+            for m in ["get", "post", "put", "delete", "patch", "all"]:
+                for match in re.finditer(rf'(?:router|app|route)\.{m}\s*\(\s*[\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
+                    endpoints.append(f"- `{m.upper()}` `{match.group(1)}` ({rel}) — Express")
 
-    if endpoints:
-        for ep in endpoints[:20]:
-            output += ep + "\n"
-    else:
-        output += "- No API endpoints detected.\n"
+        # FastAPI / Flask
+        if ext == ".py":
+            for m in ["get", "post", "put", "delete", "patch"]:
+                for match in re.finditer(rf'@(?:app|router)\.{m}\s*\(\s*[\'"]([^\'"]+)[\'"]', content, re.IGNORECASE):
+                    endpoints.append(f"- `{m.upper()}` `{match.group(1)}` ({rel}) — FastAPI/Flask")
+            for match in re.finditer(r"@app\.route\s*\(\s*['\"]([^'\"]+)['\"]", content):
+                methods_match = re.search(r"methods\s*=\s*\[([^\]]+)\]", content[match.start():match.end()+200])
+                if methods_match:
+                    methods_str = methods_match.group(1)
+                    for m2 in re.finditer(r"'([A-Z]+)'", methods_str):
+                        endpoints.append(f"- `{m2.group(1)}` `{match.group(1)}` ({rel}) — Flask")
+                else:
+                    endpoints.append(f"- `GET` `{match.group(1)}` ({rel}) — Flask")
+
+        # Gin
+        if ext == ".go":
+            for m in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+                for match in re.finditer(rf'(?:router|r)\.{m}\s*\(\s*[\'"]([^\'"]+)[\'"]', content):
+                    endpoints.append(f"- `{m}` `{match.group(1)}` ({rel}) — Gin")
+    
+    for ep in endpoints[:30]:
+        output += ep + "\\n"
+    if not endpoints:
+        output += "- No API endpoints detected.\\n"
+
+    # ── 미들웨어/가드 체인 분석 (Phase 2) ──
+    output += "\\n## Middleware / Guard Chain\\n\\n"
+    middleware_count = 0
+    for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".py"},
+                                  exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        content = _read_file_content(p)
+        if content is None:
+            continue
+        rel = _normalize_path(str(p.relative_to(root)))
+        uses = re.findall(r'app\.use\(\s*([^)]+)\)', content)
+        if uses:
+            for u in uses[:3]:
+                middleware_count += 1
+                output += f"- `{rel}`: `app.use({u.strip()[:80]})`\\n"
+        mids = re.findall(r'@app\.middleware', content)
+        if mids:
+            middleware_count += len(mids)
+            output += f"- `{rel}`: {len(mids)} middleware decorator(s)\\n"
+    if middleware_count == 0:
+        output += "- No middleware/guard chains detected.\\n"
 
     # 데이터 모델 (AST 기반 필드 추출)
-    output += "\n## Data Models\n\n"
+    output += "\\n## Data Models\\n\\n"
     models = []
     all_fields = {}
     for p in _iter_project_files_cached(root, extensions={".ts", ".tsx", ".js", ".jsx", ".go"},
@@ -1562,8 +1933,6 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
         if content is None:
             continue
         rel = _normalize_path(str(p.relative_to(root)))
-
-        # AST 기반 필드 추출 (TS/JS)
         if p.suffix in TS_JS_EXTS:
             ast_fields = _extract_ast_fields(content, p.suffix)
             for model in ast_fields.get("models", []):
@@ -1573,48 +1942,97 @@ def reverse_engineer(target_path: Optional[str] = None, output_format: str = "ma
                 if field_list:
                     all_fields[model_name] = field_list
         else:
-            # Go: regex fallback
             for match in re.finditer(r'(?:type\s+)?(\w+)\s+struct\s*\{', content):
                 models.append(f"- `{match.group(1)}` ({rel})")
 
-    # 필드 상세 정보 출력
     if all_fields:
-        output += "\n### Field Details\n\n"
+        output += "\\n### Field Details\\n\\n"
         for model_name, fields in all_fields.items():
-            output += f"**{model_name}**\n\n"
+            output += f"**{model_name}**\\n\\n"
             for f in fields:
-                output += f"- `{f['name']}`: `{f['type']}`\n"
-            output += "\n"
+                output += f"- `{f['name']}`: `{f['type']}`\\n"
+            output += "\\n"
 
-    for m in models[:20]:
-        output += m + "\n"
-    if not models:
-        output += "- No data models detected.\n"
+        # 관계 추론 (Phase 2)
+        output += "### Model Relationships\\n\\n"
+        relation_count = 0
+        for model_name, fields in all_fields.items():
+            for f in fields:
+                ftype = f["type"].replace("[]", "").replace("|", "").strip()
+                if ftype in all_fields and ftype != model_name:
+                    is_array = "[]" in f["type"] or "Array" in f["type"]
+                    card = "1:N" if is_array else "1:1"
+                    relation_count += 1
+                    output += f"- `{model_name}` → `{ftype}` ({card}) via `{f['name']}`\\n"
+        if relation_count == 0:
+            output += "- No explicit model relationships detected.\\n"
+    else:
+        for m in models[:20]:
+            output += m + "\\n"
+
+    if not models and not all_fields:
+        output += "- No data models detected.\\n"
 
     # 형식별 출력
     if output_format == "mermaid":
-        output += "\n## ER Diagram (Mermaid)\n\n```mermaid\nerDiagram\n"
+        output += "\\n## ER Diagram (Mermaid)\\n\\n```mermaid\\nerDiagram\\n"
         if all_fields:
             for model_name, fields in all_fields.items():
-                output += f"  {model_name} {{\n"
+                output += f"  {model_name} {{\\n"
                 for f in fields:
                     ftype = f["type"].replace("|", " or ")
-                    output += f"    {ftype} {f['name']}\n"
-                output += "  }\n"
+                    output += f"    {ftype} {f['name']}\\n"
+                output += "  }}\\n"
+            for model_name, fields in all_fields.items():
+                for f in fields:
+                    ftype = f["type"].replace("[]", "").replace("|", "").strip()
+                    if ftype in all_fields and ftype != model_name:
+                        is_array = "[]" in f["type"] or "Array" in f["type"]
+                        if is_array:
+                            output += f"  {model_name} ||--o{{ {ftype} : has\\n"
+                        else:
+                            output += f"  {model_name} ||--|| {ftype} : references\\n"
         else:
-            output += "  User ||--o{ Order : places\n  Order ||--|{ OrderItem : contains\n"
-        output += "```\n"
+            output += "  User ||--o{ Order : places\\n  Order ||--|{ OrderItem : contains\\n"
+        output += "```\\n"
     elif output_format == "openapi":
-        output += "\n## OpenAPI 3.0 Spec\n\n```yaml\nopenapi: 3.0.0\ninfo:\n  title: Auto-detected API\n  version: 0.1.0\npaths: {}\n```\n"
+        output += "\\n## OpenAPI 3.0 Spec\\n\\n```yaml\\nopenapi: 3.0.0\\ninfo:\\n  title: Auto-detected API\\n  version: 0.1.0\\n"
+        if endpoints:
+            output += "paths:\\n"
+            path_map = defaultdict(list)
+            for ep in endpoints:
+                m = re.match(r'- `(\w+)` `([^`]+)`', ep)
+                if m:
+                    method = m.group(1).lower()
+                    path = m.group(2)
+                    path_map[path].append(method)
+            for path, methods in sorted(path_map.items()):
+                output += f"  {path}:\\n"
+                for method in methods:
+                    output += f"    {method}:\\n"
+                    output += f"      summary: Auto-detected endpoint\\n"
+                    output += f"      responses:\\n"
+                    output += f"        '200':\\n"
+                    output += f"          description: Successful response\\n"
+        else:
+            output += "paths: {}\\n"
+        if all_fields:
+            output += "components:\\n  schemas:\\n"
+            for model_name, fields in all_fields.items():
+                output += f"    {model_name}:\\n"
+                output += f"      type: object\\n"
+                output += f"      properties:\\n"
+                for f in fields:
+                    ftype = f["type"].replace("|", " or ")
+                    example_map = {"string": "string", "number": 0, "boolean": True, "integer": 0}
+                    example = example_map.get(ftype, ftype)
+                    output += f"        {f['name']}:\\n"
+                    output += f"          type: {ftype}\\n"
+                    output += f"          example: {json.dumps(example, ensure_ascii=False)}\\n"
+        output += "```\\n"
 
     output += _markdown_footer()
     return output
-
-
-# ═══════════════════════════════════════════════════════════
-# Tester: 테스트 생성 도구
-# ═══════════════════════════════════════════════════════════
-
 @mcp.tool
 def generate_tests(source_path: str, framework: Optional[str] = None) -> str:
     """지정된 소스 파일에 대한 단위 테스트를 생성합니다.
@@ -1626,7 +2044,7 @@ def generate_tests(source_path: str, framework: Optional[str] = None) -> str:
     """
     err = _validate_file_path(source_path)
     if err:
-        return _markdown_header("Test Generation Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Test Generation Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     root = Path(os.getcwd())
     target = Path(source_path)
@@ -1634,58 +2052,162 @@ def generate_tests(source_path: str, framework: Optional[str] = None) -> str:
         target = root / source_path
 
     if not target.exists() or not target.is_file():
-        return _markdown_header("Test Generation Error", "❌") + f"**File not found: {source_path}**\n" + _markdown_footer()
+        return _markdown_header("Test Generation Error", "❌") + f"**File not found: {source_path}**\\n" + _markdown_footer()
 
     content = _read_file_content(target)
     if content is None:
-        return _markdown_header("Test Generation Error", "❌") + f"**Cannot read file: {source_path}**\n" + _markdown_footer()
+        return _markdown_header("Test Generation Error", "❌") + f"**Cannot read file: {source_path}**\\n" + _markdown_footer()
 
     ext = target.suffix.lower()
-    lines = content.split("\n")
+    lines = content.split("\\n")
 
     # AST 기반 함수 감지 (TS/JS)
     func_count = 0
     function_names = []
+    function_details = []
     if ext in TS_JS_EXTS:
         _init_tree_sitter()
         ast = _parse_with_tree_sitter(content, ext)
         functions = ast.get("functions", [])
         func_count = len(functions)
         function_names = [fn["name"] for fn in functions[:20]]
+        function_details = functions
     else:
-        # regex fallback
         for line in lines:
             if re.search(r'(?:export\s+)?(?:function|async function|const\s+\w+\s*=\s*(?:async\s*)?\(|def\s+\w+\s*\()', line):
                 func_count += 1
 
     output = _markdown_header(f"Test Generation: {target.name}")
-    output += f"- **Framework**: {framework or 'auto-detect'}\n"
-    output += f"- **Functions detected**: {func_count}\n"
-    output += f"- **Lines**: {len(lines)}\n\n"
+    output += f"- **Framework**: {framework or 'auto-detect'}\\n"
+    output += f"- **Functions detected**: {func_count}\\n"
+    output += f"- **Lines**: {len(lines)}\\n\\n"
 
     if function_names:
-        output += "### Functions Found\n\n"
+        output += "### Functions Found\\n\\n"
         for name in function_names:
-            output += f"- `{name}()`\n"
-        output += "\n"
+            output += f"- `{name}()`\\n"
+        output += "\\n"
+
+    # ── Phase 3: 경계값 테스트 케이스 생성 ──
+    output += "## Boundary Value Test Cases\\n\\n"
+    if function_details:
+        param_guesses = []
+        for fn in function_details[:5]:
+            fn_text = "\\n".join(content.split("\\n")[fn["line"]-1:min(len(content.split("\\n")), fn["line"]+2)])
+            params = re.findall(r'(\w+)\s*(?::\s*\w+)?\s*(?:[,)])', fn_text)
+            if params:
+                real_params = [p for p in params if p not in (fn["name"], "async", "function", "export", "default")]
+                for p in real_params[:3]:
+                    param_guesses.append((fn["name"], p, "any"))
+        if param_guesses:
+            for fn_name, param_name, param_type in param_guesses:
+                output += f"- `{fn_name}('{param_name}')`: boundary tests → null, empty, valid, invalid, large input\\n"
+        else:
+            output += "- No parameters detected for boundary analysis.\\n"
+    else:
+        output += "- No function details available.\\n"
+    output += "\\n"
+
+    # ── Phase 3: 조건문 분기 분석 ──
+    output += "## Branch Coverage\\n\\n"
+    branch_count = 0
+    for line in lines:
+        if re.search(r'\bif\s*\(', line) or 'else if' in line or 'else' in line.strip()[:4]:
+            branch_count += 1
+    output += f"- **Conditional branches detected**: {branch_count}\\n"
+    output += "- **Suggested test cases**: test each branch (true/false)\\n"
+    switch_count = len(re.findall(r'\bswitch\s*\(', content))
+    if switch_count > 0:
+        output += f"- **Switch statements**: {switch_count} — test each case including default\\n"
+    output += "\\n"
+
+    # ── Phase 3: 에러 케이스 생성 ──
+    output += "## Error Case Generation\\n\\n"
+    error_indicators = {
+        "try-catch": len(re.findall(r'\btry\s*\{', content)),
+        "null check": len(re.findall(r'(?:===?\s*null|!==?\s*null|==\s*null)', content)),
+        "undefined check": len(re.findall(r'(?:===?\s*undefined|!==?\s*undefined)', content)),
+        "error return": len(re.findall(r'throw\s+new\s+', content)),
+    }
+    has_errors = False
+    for name, count in error_indicators.items():
+        if count > 0:
+            output += f"- `{name}`: {count} occurrence(s) → add error-handling test\\n"
+            has_errors = True
+    if not has_errors:
+        output += "- No explicit error handling detected. Add tests for:\\n"
+        output += "  - Null/undefined inputs\\n"
+        output += "  - Empty collections\\n"
+        output += "  - Invalid parameter types\\n"
+    output += "\\n"
+
+    # ── Phase 3: Mock 데이터 제안 ──
+    output += "## Mock Data Suggestions\\n\\n"
+    mock_suggestions = []
+    if ext == ".py":
+        mock_suggestions.append("- Use `unittest.mock` or `pytest.fixture`")
+    elif ext in (".ts", ".tsx"):
+        mock_suggestions.append("- Use `vi.mock()` (Vitest) or `jest.mock()`")
+    elif ext == ".go":
+        mock_suggestions.append("- Use `testing` package with interface mocks")
+    
+    all_param_names = []
+    for fn in function_details[:5]:
+        fn_text_str = "\\n".join(content.split("\\n")[fn["line"]-1:fn["line"]+1])
+        params_found = re.findall(r'\b(\w+)\s*:\s*(\w+)', fn_text_str)
+        for pname, ptype in params_found:
+            if pname not in (fn["name"], "async", "function"):
+                all_param_names.append((pname, ptype))
+    
+    seen_types = set()
+    for pname, ptype in all_param_names:
+        if ptype not in seen_types:
+            seen_types.add(ptype)
+            if ptype == "string":
+                mock_suggestions.append(f"- `{pname}` (string): use \"test-{pname}\"")
+            elif ptype in ("number", "int"):
+                mock_suggestions.append(f"- `{pname}` ({ptype}): use `42`, `0`, `-1`")
+            elif ptype == "boolean":
+                mock_suggestions.append(f"- `{pname}` (boolean): use `true`, `false`")
+            elif ptype == "array":
+                mock_suggestions.append(f"- `{pname}` (array): use `[]`, `[1,2,3]`")
+    for s in mock_suggestions:
+        output += s + "\\n"
+
+    # ── Phase 3: 예상 동작 추론 ──
+    output += "\\n## Expected Behavior Inference\\n\\n"
+    for fn in function_details[:5]:
+        fn_name = fn["name"]
+        if fn_name.startswith("get") or fn_name.startswith("find") or fn_name.startswith("fetch"):
+            output += f"- `{fn_name}()`: Returns data → expect defined result\\n"
+        elif fn_name.startswith("set") or fn_name.startswith("save") or fn_name.startswith("create"):
+            output += f"- `{fn_name}()`: Mutates/creates state → expect side effect or return ID\\n"
+        elif fn_name.startswith("delete") or fn_name.startswith("remove"):
+            output += f"- `{fn_name}()`: Deletes data → expect success/true\\n"
+        elif fn_name.startswith("validate") or fn_name.startswith("is") or fn_name.startswith("has"):
+            output += f"- `{fn_name}()`: Returns boolean → expect true/false cases\\n"
+        elif fn_name.startswith("format") or fn_name.startswith("transform") or fn_name.startswith("convert"):
+            output += f"- `{fn_name}()`: Transforms data → expect specific output format\\n"
+        elif fn_name.startswith("handle") or fn_name.startswith("on"):
+            output += f"- `{fn_name}()`: Event handler → expect side effects or state changes\\n"
+        else:
+            output += f"- `{fn_name}()`: Check function → test return value\\n"
 
     if ext in (".ts", ".tsx"):
-        output += "## Jest/Vitest Test Structure\n\n"
-        output += "```typescript\nimport { describe, it, expect } from 'vitest';\n"
-        output += f"import {{ ... }} from './{target.stem}';\n\n"
-        output += "describe('', () => {\n  it('should work', () => {\n    // TODO: write test\n  });\n});\n```\n"
+        output += "\\n## Jest/Vitest Test Structure\\n\\n"
+        output += "```typescript\\nimport { describe, it, expect } from 'vitest';\\n"
+        output += f"import {{ ... }} from './{target.stem}';\\n\\n"
+        output += "describe('', () => {\\n  it('should work', () => {\\n    // TODO: write test\\n  });\\n});\\n```\\n"
     elif ext == ".py":
-        output += "## pytest Test Structure\n\n"
-        output += "```python\nimport pytest\n\n\ndef test_():\n    \"\"\"TODO: write test\"\"\"\n    pass\n```\n"
+        output += "\n## pytest Test Structure\n\n"
+        output += '```python\nimport pytest\n\n\ndef test_():\n    """TODO: write test"""\n    pass\n```\n'
     elif ext == ".go":
-        output += "## Go Test Structure\n\n"
-        output += "```go\npackage main\n\nimport \"testing\"\n\nfunc Test_(t *testing.T) {\n\t// TODO: write test\n}\n```\n"
+        output += "\n## Go Test Structure\n\n"
+        output += '```go\npackage main\n\nimport "testing"\n\nfunc Test_(t *testing.T) {\n\t// TODO: write test\n}\n```\n'
 
-    try_crow_ingest(f"Generated tests for {target.name}: {func_count} functions", register="context")
+    try_crow_ingest(f"Generated tests for {target.name}: {func_count} functions, {branch_count} branches (Phase3)", register="context")
     output += _markdown_footer()
     return output
-
-
 @mcp.tool
 def analyze_coverage(target_path: Optional[str] = None) -> str:
     """테스트 커버리지를 분석합니다.
@@ -1697,8 +2219,7 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
     """
     root = Path(get_project_root(target_path))
     output = _markdown_header("Coverage Analysis")
-    
-    # ── 빠른 경로: 자체 분석 (외부 도구 불필요) ──
+
     test_patterns = {
         ".ts": [".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx", "__tests__"],
         ".tsx": [".test.tsx", ".spec.tsx", "__tests__"],
@@ -1706,99 +2227,106 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
         ".py": ["test_", "_test", "tests/"],
         ".go": ["_test.go"],
     }
-    
     source_files = []
     test_files = []
-    
+    source_to_test = defaultdict(list)
+    test_to_source = defaultdict(list)
+
     for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
         rel = _normalize_path(str(p.relative_to(root)))
         fname = p.name
         ext = p.suffix.lower()
-        
         is_test = False
         if ext in test_patterns:
             for pattern in test_patterns[ext]:
-                if pattern in fname or pattern in rel.replace("\\", "/"):
+                if pattern in fname or pattern in rel.replace("\\\\", "/"):
                     is_test = True
                     break
-        
         if is_test:
             test_files.append(rel)
+            for ext2 in [".ts", ".tsx", ".js", ".py", ".go"]:
+                src_patterns = [
+                    rel.replace(".test", "").replace(".spec", "").replace("_test", ""),
+                    rel.replace("__tests__/", "").replace("test/", "").replace("tests/", ""),
+                ]
+                for sp in src_patterns:
+                    src_path = Path(root) / sp
+                    if src_path.exists() and not any(tp in sp for tp in ["test", ".test.", ".spec."]):
+                        source_to_test[sp].append(rel)
+                        test_to_source[rel].append(sp)
         else:
             source_files.append(rel)
-    
+
     total_source = len(source_files)
     total_tests = len(test_files)
     ratio = round(total_tests / max(total_source, 1), 2)
-    
-    output += "## Quick Analysis (no external tools)\n\n"
-    output += f"- **Source files**: {total_source}\n"
-    output += f"- **Test files**: {total_tests}\n"
-    output += f"- **Test/Source ratio**: {ratio}\n"
-    
+
+    output += "## Coverage Analysis (no external tools)\\n\\n"
+    output += f"- **Source files**: {total_source}\\n"
+    output += f"- **Test files**: {total_tests}\\n"
+    output += f"- **Test/Source ratio**: {ratio}\\n"
     if total_tests == 0:
-        output += "- ⚠️ **No test files detected.**\n"
+        output += "- ⚠️ **No test files detected.**\\n"
     elif ratio < 0.3:
-        output += f"- ⚠️ Low coverage likely (ratio {ratio} < 0.3)\n"
+        output += f"- ⚠️ Low coverage likely (ratio {ratio} < 0.3)\\n"
     elif ratio >= 0.5:
-        output += f"- ✅ Decent test presence (ratio {ratio})\n"
-    
-    # 테스트 파일 목록 (최대 10개)
+        output += f"- ✅ Decent test presence (ratio {ratio})\\n"
+
+    # ── 누락 테스트 감지 ──
+    output += "\\n## Missing Test Detection\\n\\n"
+    untested_sources = [src for src in source_files if src not in source_to_test]
+    if untested_sources:
+        output += f"⚠️ {len(untested_sources)} source files have NO corresponding test:\\n\\n"
+        for src in untested_sources[:10]:
+            output += f"- `{src}`\\n"
+        if len(untested_sources) > 10:
+            output += f"- ... +{len(untested_sources)-10} more\\n"
+        output += "\\n> Tip: Create test files following naming conventions (`.test.ts`, `_test.go`, `test_*.py`)\\n"
+    else:
+        output += "✅ All source files have corresponding test files.\\n"
+    output += "\\n"
+
     if test_files:
-        output += "\n### Test Files\n"
+        output += "### Test Files\\n"
         for tf in test_files[:10]:
-            output += f"- `{tf}`\n"
+            output += f"- `{tf}`\\n"
         if len(test_files) > 10:
-            output += f"- ... +{len(test_files)-10} more\n"
-    
-    # ── 전체 경로: 외부 도구 실행 (있을 경우만, 30s 타임아웃) ──
+            output += f"- ... +{len(test_files)-10} more\\n"
+    if test_to_source:
+        output += "\\n### Test → Source Mapping\\n\\n"
+        for test_f, src_list in list(test_to_source.items())[:5]:
+            output += f"- `{test_f}` → {', '.join(src_list[:3])}\\n"
+
     ext_tool_used = False
-    
-    # Vitest (JS/TS 프로젝트)
     if (root / "package.json").exists() and (root / "node_modules" / ".bin" / "vitest").exists():
         try:
-            result = subprocess.run(
-                [_npx_cmd(), "vitest", "run", "--coverage", "--reporter=text"],
-                cwd=str(root), capture_output=True, text=True, timeout=30
-            )
+            result = subprocess.run([_npx_cmd(), "vitest", "run", "--coverage", "--reporter=text"],
+                                   cwd=str(root), capture_output=True, text=True, timeout=30)
             if result.stdout:
-                lines = result.stdout.strip().split("\n")
-                output += "\n## Vitest Coverage (external)\n\n```\n" + "\n".join(lines[-20:]) + "\n```\n"
+                lines = result.stdout.strip().split("\\n")
+                output += "\\n## Vitest Coverage (external)\\n\\n```\\n" + "\\n".join(lines[-20:]) + "\\n```\\n"
                 ext_tool_used = True
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
         except Exception:
             pass
-    
-    # pytest-cov (Python 프로젝트)
+
     py_indicator = (root / "pyproject.toml").exists() or (root / "setup.py").exists() or (root / "requirements.txt").exists()
     if py_indicator and not ext_tool_used:
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", "--collect-only", "--quiet"],
-                cwd=str(root), capture_output=True, text=True, timeout=30
-            )
+            result = subprocess.run([sys.executable, "-m", "pytest", "--co", "--quiet"],
+                                   cwd=str(root), capture_output=True, text=True, timeout=30)
             if result.stdout and "test" in result.stdout.lower():
-                lines = result.stdout.strip().split("\n")
-                output += "\n## pytest (external)\n\n```\n" + "\n".join(lines[-15:]) + "\n```\n"
+                lines = result.stdout.strip().split("\\n")
+                output += "\\n## pytest (external)\\n\\n```\\n" + "\\n".join(lines[-15:]) + "\\n```\\n"
                 ext_tool_used = True
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
         except Exception:
             pass
-    
+
     if not ext_tool_used and (root / "package.json").exists() or py_indicator:
-        output += "\n> ℹ️ External coverage tool not available. Quick analysis above is based on file presence.\n"
-    
-    try_crow_ingest(json.dumps({"coverage_ratio": ratio, "source": total_source, "tests": total_tests}), register="context")
+        output += "\\n> ℹ️ External coverage tool not available. Analysis based on file presence.\\n"
+
+    try_crow_ingest(json.dumps({"coverage_ratio": ratio, "source": total_source, "tests": total_tests, "untested": len(untested_sources)}), register="context")
     output += _markdown_footer()
     return output
-
-
-# ═══════════════════════════════════════════════════════════
-# Whiteboard: AI-사용자 양방향 드로잉
-# ═══════════════════════════════════════════════════════════
-
 @mcp.tool
 def capture_screen() -> str:
     """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다."""
@@ -2694,79 +3222,94 @@ def analyze_changes() -> str:
     output = _markdown_header("Git Changes Analysis")
 
     try:
-        # git diff --stat
-        stat_result = subprocess.run(
-            ["git", "diff", "--stat"],
-            cwd=root, capture_output=True, text=True, timeout=10
-        )
+        stat_result = subprocess.run(["git", "diff", "--stat"], cwd=root, capture_output=True, text=True, timeout=10)
         stat_output = stat_result.stdout.strip()
-
-        # git diff (full)
-        diff_result = subprocess.run(
-            ["git", "diff"],
-            cwd=root, capture_output=True, text=True, timeout=10
-        )
+        diff_result = subprocess.run(["git", "diff"], cwd=root, capture_output=True, text=True, timeout=10)
         diff_output = diff_result.stdout.strip()
 
         if not stat_output:
-            output += "✅ No uncommitted changes detected.\n"
+            output += "✅ No uncommitted changes detected.\\n"
             output += _markdown_footer()
             return output
 
-        # Parse changed files from --stat
         changed_files = []
-        for line in stat_output.split("\n"):
+        for line in stat_output.split("\\n"):
             if "|" in line:
                 parts = line.split("|")
                 file_path = parts[0].strip()
                 changed_files.append(file_path)
 
-        output += f"## Changed Files ({len(changed_files)})\n\n"
+        output += f"## Changed Files ({len(changed_files)})\\n\\n"
         for f in changed_files:
-            output += f"- `{_normalize_path(f)}`\n"
-        output += "\n"
+            output += f"- `{_normalize_path(f)}`\\n"
+        output += "\\n"
 
-        # Full diff (truncated)
-        output += "## Diff Content\n\n"
+        # ── 변경 유형 분류 ──
+        output += "## Change Classification\\n\\n"
+        classifications = {"refactoring": 0, "bugfix": 0, "feature": 0, "docs": 0, "other": 0}
+        for f in changed_files:
+            ext = os.path.splitext(f)[1].lower()
+            if ext in (".md", ".txt", ".rst"):
+                classifications["docs"] += 1
+            elif ext in (".ts", ".tsx", ".js", ".jsx", ".py", ".go"):
+                file_diff = ""
+                in_file = False
+                for line in diff_output.split("\\n"):
+                    if f"diff --git a/{f}" in line:
+                        in_file = True
+                    elif line.startswith("diff --git"):
+                        in_file = False
+                    if in_file:
+                        file_diff += line + "\\n"
+                if "TODO" in file_diff or "FIXME" in file_diff:
+                    classifications["refactoring"] += 1
+                elif "fix" in file_diff.lower() or "bug" in file_diff.lower() or "error" in file_diff.lower():
+                    classifications["bugfix"] += 1
+                elif "test" in file_diff.lower() or "feat" in file_diff.lower():
+                    classifications["feature"] += 1
+                else:
+                    classifications["feature"] += 1
+            else:
+                classifications["other"] += 1
+        for ctype, count in classifications.items():
+            if count > 0:
+                emoji = {"refactoring": "🔧", "bugfix": "🐛", "feature": "✨", "docs": "📝", "other": "❓"}
+                output += f"- {emoji.get(ctype, '•')} **{ctype}**: {count} file(s)\\n"
+        output += "\\n"
+
+        output += "## Diff Content\\n\\n"
         if len(diff_output) > 8000:
-            output += f"> Diff is too large ({len(diff_output)} chars), showing first 8000 chars\n\n"
-            output += "```diff\n" + diff_output[:8000] + "\n```\n"
-            output += f"\n> ... ({len(diff_output) - 8000} more chars)\n"
+            output += f"> Diff is too large ({len(diff_output)} chars), showing first 8000 chars\\n\\n"
+            output += "```diff\\n" + diff_output[:8000] + "\\n```\\n"
+            output += f"\\n> ... ({len(diff_output) - 8000} more chars)\\n"
         else:
-            output += "```diff\n" + diff_output + "\n```\n"
+            output += "```diff\\n" + diff_output + "\\n```\\n"
 
-        # Crow recall for related context
         if changed_files:
-            output += "\n## 🧠 Related Crow Context\n\n"
+            output += "\\n## 🧠 Related Crow Context\\n\\n"
             for f in changed_files[:5]:
                 try:
                     file_name = os.path.basename(f)
-                    past_context = try_crow_recall(
-                        query=f"file changes in {file_name}",
-                        register="context",
-                        limit=2
-                    )
+                    past_context = try_crow_recall(query=f"file changes in {file_name}", register="context", limit=2)
                     if past_context:
                         for item in past_context:
                             content = item.get("content", item.get("value", str(item)))
-                            output += f"- `{file_name}`: {content[:200]}\n"
+                            output += f"- `{file_name}`: {content[:200]}\\n"
                     else:
-                        output += f"- `{file_name}`: No Crow context found.\n"
+                        output += f"- `{file_name}`: No Crow context found.\\n"
                 except Exception:
-                    output += f"- `{file_name}`: Could not query Crow.\n"
+                    output += f"- `{file_name}`: Could not query Crow.\\n"
 
     except FileNotFoundError:
-        output += "❌ Git not available. Make sure git is installed and this is a git repository.\n"
+        output += "❌ Git not available. Make sure git is installed and this is a git repository.\\n"
     except subprocess.TimeoutExpired:
-        output += "❌ Git diff timed out.\n"
+        output += "❌ Git diff timed out.\\n"
     except Exception as e:
-        output += f"❌ Error: {e}\n"
+        output += f"❌ Error: {e}\\n"
 
-    try_crow_ingest(f"analyze_changes: {len(changed_files)} files changed", register="life_context")
+    try_crow_ingest(f"analyze_changes: {len(changed_files)} files changed, types: {dict(classifications)}", register="life_context")
     output += _markdown_footer()
     return output
-
-
 @mcp.tool
 def review_pr(base_branch: str = "main", head_branch: str = "") -> str:
     """analyze_changes + review_code를 통합하여 PR 리뷰 보고서를 생성합니다.
@@ -2781,119 +3324,160 @@ def review_pr(base_branch: str = "main", head_branch: str = "") -> str:
     """
     err = _validate_string(base_branch, "base_branch")
     if err:
-        return _markdown_header("PR Review Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("PR Review Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     root = os.getcwd()
     output = _markdown_header("Pull Request Review")
-    output += f"> **Base**: `{base_branch}` → **Head**: `{head_branch or 'current'}`\n\n"
+    output += f"> **Base**: `{base_branch}` → **Head**: `{head_branch or 'current'}`\\n\\n"
 
     try:
-        # Build diff command
         diff_cmd = ["git", "diff"]
         if head_branch:
             diff_cmd.extend([f"{base_branch}...{head_branch}"])
         else:
             diff_cmd.append(f"{base_branch}..HEAD")
 
-        # Get diff stat
-        stat_result = subprocess.run(
-            diff_cmd + ["--stat"],
-            cwd=root, capture_output=True, text=True, timeout=10
-        )
+        stat_result = subprocess.run(diff_cmd + ["--stat"], cwd=root, capture_output=True, text=True, timeout=10)
         stat_output = stat_result.stdout.strip()
-
-        # Get full diff
-        diff_result = subprocess.run(
-            diff_cmd,
-            cwd=root, capture_output=True, text=True, timeout=10
-        )
+        diff_result = subprocess.run(diff_cmd, cwd=root, capture_output=True, text=True, timeout=10)
         diff_output = diff_result.stdout.strip()
 
         if not stat_output:
-            output += "⚠️ No differences found between branches.\n"
+            output += "⚠️ No differences found between branches.\\n"
             output += _markdown_footer()
             return output
 
-        # Parse changed files
         changed_files = []
-        for line in stat_output.split("\n"):
+        for line in stat_output.split("\\n"):
             if "|" in line:
                 parts = line.split("|")
                 file_path = parts[0].strip()
                 changed_files.append(file_path)
 
-        output += f"## 📂 Changed Files ({len(changed_files)})\n\n"
+        output += f"## 📂 Changed Files ({len(changed_files)})\\n\\n"
         for f in changed_files:
-            output += f"- `{_normalize_path(f)}`\n"
-        output += "\n"
+            output += f"- `{_normalize_path(f)}`\\n"
+        output += "\\n"
 
-        # Summary statistics
         total_additions = 0
         total_deletions = 0
-        for line in stat_output.split("\n"):
+        for line in stat_output.split("\\n"):
             m = re.search(r'(\d+) insertion', line)
-            if m:
-                total_additions += int(m.group(1))
+            if m: total_additions += int(m.group(1))
             m = re.search(r'(\d+) deletion', line)
-            if m:
-                total_deletions += int(m.group(1))
+            if m: total_deletions += int(m.group(1))
 
-        output += f"## 📈 Stats\n\n"
-        output += f"- **{len(changed_files)}** files changed\n"
-        output += f"- **+{total_additions}** / **-{total_deletions}** lines\n\n"
+        output += f"## 📈 Stats\\n\\n"
+        output += f"- **{len(changed_files)}** files changed\\n"
+        output += f"- **+{total_additions}** / **-{total_deletions}** lines\\n\\n"
 
-        # Review each changed file
-        output += "## 📝 Code Review per File\n\n"
+        # ── 변경 파일 간 의존성 분석 ──
+        output += "## 🔗 Dependency Analysis\\n\\n"
+        changed_set = set(changed_files)
+        project_root = Path(root)
+        file_deps = defaultdict(set)
+        for f in changed_files:
+            p = project_root / f
+            if p.exists():
+                content_f = _read_file_content(p)
+                if content_f:
+                    ext_f = p.suffix.lower()
+                    if ext_f in TS_JS_EXTS:
+                        ast_imports = _extract_ast_imports(content_f, ext_f)
+                        for imp in ast_imports:
+                            file_deps[f].add(imp["module"])
+                    else:
+                        regex_imports = _extract_regex_imports(str(p))
+                        for imp in regex_imports:
+                            file_deps[f].add(imp)
+        cross_refs = []
+        for f, deps_set in file_deps.items():
+            for dep in deps_set:
+                for cf in changed_set:
+                    if cf != f and (dep in cf or cf.endswith(dep.replace(".", "/"))):
+                        cross_refs.append((f, cf))
+        if cross_refs:
+            output += "⚠️ Cross-file dependencies detected in this PR:\\n\\n"
+            for src, target in cross_refs[:5]:
+                output += f"- `{src}` → imports `{target}`\\n"
+            output += "\\n> These files should be reviewed together for consistency.\\n"
+        else:
+            output += "✅ No cross-file dependencies detected.\\n"
+        output += "\\n"
+
+        # ── 롤백 위험도 평가 ──
+        output += "## ⚠️ Rollback Risk Assessment\\n\\n"
+        risk_score = 0
+        risk_factors = []
+        if len(changed_files) > 10:
+            risk_score += 2
+            risk_factors.append(f"Large PR ({len(changed_files)} files)")
+        if total_deletions > 100:
+            risk_score += 2
+            risk_factors.append(f"Heavy deletions ({total_deletions} lines)")
+        if total_additions > 200:
+            risk_score += 1
+            risk_factors.append(f"Large additions ({total_additions} lines)")
+        if cross_refs:
+            risk_score += 2
+            risk_factors.append(f"Cross-file dependencies ({len(cross_refs)})")
+        if "package.json" in changed_set or "go.mod" in changed_set or "requirements.txt" in changed_set:
+            risk_score += 3
+            risk_factors.append("Dependency manifest changed")
+        if risk_score == 0:
+            output += "🟢 **Low risk** — Safe to merge after review.\\n"
+        elif risk_score <= 3:
+            output += "🟡 **Medium risk** — Review carefully.\\n"
+        elif risk_score <= 6:
+            output += "🟠 **High risk** — Multiple reviewers recommended.\\n"
+        else:
+            output += "🔴 **Critical risk** — Consider splitting this PR.\\n"
+        if risk_factors:
+            output += "\\nRisk factors:\\n"
+            for rf in risk_factors:
+                output += f"- {rf}\\n"
+        output += "\\n"
+
+        output += "## 📝 Code Review per File\\n\\n"
         for f in changed_files[:10]:
-            output += f"### `{_normalize_path(f)}`\n\n"
-            p = Path(root) / f
+            output += f"### `{_normalize_path(f)}`\\n\\n"
+            p = project_root / f
             if p.exists():
                 review_result = review_code(f)
-                for line in review_result.split("\n"):
+                for line in review_result.split("\\n"):
                     if "⚠️" in line or "📝" in line or "✅" in line or "Found" in line:
-                        output += line + "\n"
+                        output += line + "\\n"
             else:
-                output += "*(file deleted in this PR)*\n"
-            output += "\n"
+                output += "*(file deleted in this PR)*\\n"
+            output += "\\n"
 
-        # Show diff for context
-        output += "## 🔍 Diff Preview\n\n"
+        output += "## 🔍 Diff Preview\\n\\n"
         if len(diff_output) > 4000:
-            output += f"```diff\n{diff_output[:4000]}\n```\n"
-            output += f"\n> ... ({len(diff_output) - 4000} more chars)\n"
+            output += f"```diff\\n{diff_output[:4000]}\\n```\\n"
+            output += f"\\n> ... ({len(diff_output) - 4000} more chars)\\n"
         else:
-            output += f"```diff\n{diff_output}\n```\n"
+            output += f"```diff\\n{diff_output}\\n```\\n"
 
-        # Crow recall for related context
-        output += "\n## 🧠 Crow Memory Context\n\n"
+        output += "\\n## 🧠 Crow Memory Context\\n\\n"
         for f in changed_files[:3]:
             file_name = os.path.basename(f)
             past_context = try_crow_recall(query=f"review {file_name}", register="style", limit=2)
             if past_context:
                 for item in past_context:
                     content = item.get("content", item.get("value", str(item)))
-                    output += f"- `{file_name}`: {content[:200]}\n"
-        output += "\n"
+                    output += f"- `{file_name}`: {content[:200]}\\n"
+        output += "\\n"
 
     except FileNotFoundError:
-        output += "❌ Git not available. Make sure git is installed and this is a git repository.\n"
+        output += "❌ Git not available. Make sure git is installed and this is a git repository.\\n"
     except subprocess.TimeoutExpired:
-        output += "❌ Git diff timed out.\n"
+        output += "❌ Git diff timed out.\\n"
     except Exception as e:
-        output += f"❌ Error: {e}\n"
+        output += f"❌ Error: {e}\\n"
 
-    try_crow_ingest(
-        json.dumps({"action": "review_pr", "base": base_branch, "head": head_branch}),
-        register="context"
-    )
+    try_crow_ingest(json.dumps({"action": "review_pr", "base": base_branch, "head": head_branch, "files": len(changed_files), "risk": risk_score}), register="context")
     output += _markdown_footer()
     return output
-
-
-# ═══════════════════════════════════════════════════════════
-# M3-C: refactor_across_files — 멀티 파일 리팩토링
-# ═══════════════════════════════════════════════════════════
-
 @mcp.tool
 def refactor_across_files(pattern: str, new_pattern: str, file_patterns: Optional[str] = None) -> str:
     """search_codebase로 패턴을 찾고, 모든 발생 위치에 대해 일괄 수정 제안을 생성합니다.
@@ -2909,101 +3493,79 @@ def refactor_across_files(pattern: str, new_pattern: str, file_patterns: Optiona
     """
     err = _validate_string(pattern, "pattern")
     if err:
-        return _markdown_header("Refactoring Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Refactoring Error", "❌") + f"**{err}**\\n" + _markdown_footer()
     err = _validate_string(new_pattern, "new_pattern")
     if err:
-        return _markdown_header("Refactoring Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header("Refactoring Error", "❌") + f"**{err}**\\n" + _markdown_footer()
 
     output = _markdown_header("Multi-File Refactoring Proposal")
-    output += f"> **Search**: `{pattern}`\n"
-    output += f"> **Replace with**: `{new_pattern}`\n"
-    output += f"> **File patterns**: `{file_patterns or '*.ts,*.tsx,*.js,*.jsx,*.py'}`\n\n"
+    output += f"> **Search**: `{pattern}`\\n"
+    output += f"> **Replace with**: `{new_pattern}`\\n"
+    output += f"> **File patterns**: `{file_patterns or '*.ts,*.tsx,*.js,*.jsx,*.py'}`\\n\\n"
 
-    # Search for the pattern
     search_result = search_codebase(query=pattern, file_patterns=file_patterns, max_results=50)
-
-    # Parse search results to extract file:line entries
     occurrences = []
-    for line in search_result.split("\n"):
+    for line in search_result.split("\\n"):
         m = re.match(r'^- `(.+?:\d+):', line)
-        if m:
-            occurrences.append(m.group(1))
+        if m: occurrences.append(m.group(1))
         m2 = re.match(r'^- `(.+?:\d+)`', line)
-        if m2:
-            occurrences.append(m2.group(1))
+        if m2: occurrences.append(m2.group(1))
 
     if not occurrences:
-        output += "✅ No occurrences found for this pattern.\n"
+        output += "✅ No occurrences found for this pattern.\\n"
         output += _markdown_footer()
         return output
 
-    output += f"## Found {len(occurrences)} Occurrences\n\n"
-
-    # Group by file
+    output += f"## Found {len(occurrences)} Occurrences\\n\\n"
     by_file = defaultdict(list)
     for occ in occurrences:
         parts = occ.split(":")
         if len(parts) >= 2:
-            file_path = parts[0]
-            line_num = parts[1]
-            by_file[file_path].append(line_num)
+            by_file[parts[0]].append(parts[1])
 
-    output += f"### Files Affected: {len(by_file)}\n\n"
+    output += f"### Files Affected: {len(by_file)}\\n\\n"
     for file_path, lines in sorted(by_file.items()):
         line_list = ", ".join(lines[:10])
         suffix = f" ... and {len(lines)-10} more" if len(lines) > 10 else ""
-        output += f"- `{_normalize_path(file_path)}` — lines {line_list}{suffix}\n"
+        output += f"- `{_normalize_path(file_path)}` — lines {line_list}{suffix}\\n"
 
-    # Generate replacement suggestions
-    output += "\n## Suggested Changes\n\n"
+    output += "\\n## Suggested Changes\\n\\n"
     for file_path, lines in sorted(by_file.items())[:10]:
         actual_path = Path(os.getcwd()) / file_path
-        if not actual_path.exists():
-            continue
+        if not actual_path.exists(): continue
         content = _read_file_content(actual_path)
-        if content is None:
-            continue
-        file_lines = content.split("\n")
-
-        output += f"### `{_normalize_path(file_path)}`\n\n"
-        output += f"```diff\n"
+        if content is None: continue
+        file_lines = content.split("\\n")
+        output += f"### `{_normalize_path(file_path)}`\\n\\n"
+        output += f"```diff\\n"
         for line_num_str in lines[:5]:
             idx = int(line_num_str) - 1
             if 0 <= idx < len(file_lines):
                 original = file_lines[idx]
-                output += f"-{original}\n"
+                output += f"-{original}\\n"
                 suggested = original.replace(pattern, new_pattern)
-                output += f"+{suggested}\n"
-        output += f"```\n\n"
+                output += f"+{suggested}\\n"
+        output += f"```\\n\\n"
 
-    # Risk analysis
-    output += "## ⚠️ Risk Assessment\n\n"
-    output += f"- **Scale**: {len(occurrences)} changes across {len(by_file)} files\n"
-    output += "- **Pattern type**: text replacement\n"
-    output += "- **Recommendation**: Review each change manually before applying\n"
-    output += "- **Rollback**: Use YOLO rewind if changes cause issues\n"
+    # ── 영향도 분석 ──
+    output += "## 📊 Impact Analysis\\n\\n"
+    total_affected_lines = sum(len(ls) for ls in by_file.values())
+    output += f"- **Scale**: {len(occurrences)} changes across {len(by_file)} files\\n"
+    output += f"- **Total affected lines**: {total_affected_lines}\\n"
+    if total_affected_lines > 50:
+        output += "- **Risk**: 🔴 **High** — extensive changes, may introduce side effects\\n"
+    elif total_affected_lines > 20:
+        output += "- **Risk**: 🟡 **Medium** — moderate changes, review recommended\\n"
+    else:
+        output += "- **Risk**: 🟢 **Low** — limited changes\\n"
+    if len(by_file) > 5:
+        output += "- **Dependency impact**: Changes span multiple files — ensure imports are updated\\n"
+    output += "\\n> Note: This is a **proposal only**. No files have been modified.\\n"
+    output += "> To apply changes, use your editor's find-and-replace or manual editing.\\n"
 
-    output += "\n> Note: This is a **proposal only**. No files have been modified.\n"
-    output += "> To apply changes, use your editor's find-and-replace or manual editing.\n"
-
-    try_crow_ingest(
-        json.dumps({
-            "action": "refactor_across_files",
-            "pattern": pattern,
-            "new_pattern": new_pattern,
-            "occurrences": len(occurrences),
-            "files_affected": len(by_file),
-        }),
-        register="style"
-    )
+    try_crow_ingest(json.dumps({"action": "refactor_across_files", "pattern": pattern, "new_pattern": new_pattern, "occurrences": len(occurrences), "files_affected": len(by_file)}), register="style")
     output += _markdown_footer()
     return output
-
-
-# ═══════════════════════════════════════════════════════════
-# M3-D: learn_project / recall_project — 프로젝트 지식 Crow 축적
-# ═══════════════════════════════════════════════════════════
-
 @mcp.tool
 def learn_project(target_path: Optional[str] = None) -> str:
     """summarize_architecture + extract_patterns + map_dependencies 결과를 Crow Memory에 축적합니다.
@@ -3115,7 +3677,7 @@ def recall_project(target_path: Optional[str] = None) -> str:
 
     # 1. Query arch register
     output += "## 🏗️ Architecture (arch register)\n\n"
-    arch_results = try_crow_recall(query=root_str, register="arch", limit=2)
+    arch_results = try_crow_recall(query=root_str, register="arch", limit=5)
     if arch_results:
         for item in arch_results:
             content = item.get("content", item.get("value", str(item)))
@@ -3286,14 +3848,9 @@ def get_preferences(category: Optional[str] = None) -> str:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VibeZoo MCP Bridge Server")
     parser.add_argument("--port", type=int, default=9027, help="SSE server port")
-    parser.add_argument("--stdio", action="store_true", help="Run in stdio transport mode (for command-based MCP)")
     args = parser.parse_args()
 
-    if args.stdio:
-        print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting in stdio mode...", file=sys.stderr)
-        print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)", file=sys.stderr)
-        mcp.run(transport="stdio")
-    else:
-        print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
-        print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
-        mcp.run(transport="sse", host="127.0.0.1", port=args.port)
+    print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
+    print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
+
+    mcp.run(transport="sse", host="127.0.0.1", port=args.port)
