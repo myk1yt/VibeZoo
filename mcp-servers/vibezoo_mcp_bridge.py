@@ -4082,7 +4082,8 @@ def fetch_page(url: str, max_length: int = 50000) -> str:
 
 @mcp.tool
 def web_search(query: str, max_results: int = 5) -> str:
-    """웹 검색을 수행합니다. Google 검색 결과를 가져와서 요약합니다.
+    """웹 검색을 수행합니다. 차단이 적은 DuckDuckGo HTML 엔진을 사용해 
+    노이즈 없이 정제된 결과만 딥시크에게 피딩합니다.
     
     Args:
         query: 검색어
@@ -4093,25 +4094,63 @@ def web_search(query: str, max_results: int = 5) -> str:
     """
     err = _validate_string(query, "query")
     if err:
-        return _markdown_header("Search Error", "❌") + f"**{err}**\\n" + _markdown_footer()
+        return _markdown_header("Search Error", "❌") + f"**{err}**\n" + _markdown_footer()
     
     try:
-        search_url = f"https://www.google.com/search?q={urllib.parse.quote(query)}&num={min(max_results, 10)}"
-        content = fetch_page(search_url, max_length=30000)
+        # 1. 구글 대신 차단이 없고 가벼운 DuckDuckGo HTML 엔드포인트 타겟팅
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
         
-        # Extract search results from markdown
-        output = _markdown_header(f"Web Search: {query}")
-        output += content
+        req = urllib.request.Request(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
+            }
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8', errors='replace')
+        
+        # 2. 정규표현식을 이용해 무거운 HTML 전체 변환을 피하고 검색 결과 블록만 정밀 타격
+        results = []
+        blocks = _re.findall(r'<div class="result__body">.*?</div>\s*</div>', html, _re.DOTALL)
+        
+        for block in blocks[:max_results]:
+            title_match = _re.search(r'<a class="result__url"[^>]*>(.*?)</a>', block, _re.DOTALL)
+            href_match = _re.search(r'href="([^"]+)"', block)
+            snippet_match = _re.search(r'<a class="result__snippet"[^>]*>(.*?)</a>', block, _re.DOTALL)
+            
+            if title_match and href_match:
+                title = _re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+                raw_href = href_match.group(1)
+                
+                if '/l/?kh=' in raw_href:
+                    parsed_url = urllib.parse.parse_qs(urllib.parse.urlparse(raw_href).query)
+                    href = parsed_url.get('uddg', [raw_href])[0]
+                else:
+                    href = raw_href
+                    
+                snippet = _re.sub(r'<[^>]+>', '', snippet_match.group(1)).strip() if snippet_match else "No description available."
+                
+                results.append(f"### \ud83d\udd17 [{title}]({href})\n- **URL**: {href}\n- **Summary**: {snippet}\n")
+        
+        if not results:
+            return _markdown_header(f"Search: {query}", "\u26a0\ufe0f") + "검색 결과를 파싱하지 못했거나 차단되었습니다. 쿼리를 단순화해보세요.\n" + _markdown_footer()
+        
+        output = _markdown_header(f"Search Results: {query}", "\U0001f310")
+        output += f"**Query**: `{query}`\n\n"
+        output += "\n".join(results)
         output += _markdown_footer()
         
-        try_crow_ingest(f"Web search: {query}", register="life_context")
+        try_crow_ingest(f"Web search success: {query}", register="life_context")
         return output
         
     except Exception as e:
         return (_markdown_header("Search Error", "❌")
-                + f"**Search failed**: {e}\\n"
+                + f"**Search failed due to system/network level block**: {e}\n"
                 + _markdown_footer())
-
 
 # ═══════════════════════════════════════════════════════════
 # 메인 — SSE 서버 시작
