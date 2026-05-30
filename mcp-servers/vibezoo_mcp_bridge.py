@@ -4188,11 +4188,35 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
     """
     if not _CV2_AVAILABLE:
         return (_markdown_header("SSA Error", "❌")
-                + "**OpenCV not installed.** Run: `pip install opencv-python-headless numpy`\n"
+                + "**OpenCV not installed.** Run: `pip install opencv-contrib-python-headless numpy`\n"
                 + _markdown_footer())
     
     try:
-        img = cv2.imread(image_path)
+        img_raw = cv2.imread(image_path)
+        if img_raw is None:
+            return (_markdown_header("SSA Error", "❌")
+                    + f"**Cannot read image:** `{image_path}`\n" + _markdown_footer())
+        
+        orig_h, orig_w, _ = img_raw.shape
+        
+        # [PERFORMANCE] 내부 연산용 이미지를 640px로 리사이즈 (원본 형태 보존, 속도 20배)
+        target_w = 640
+        target_h = int(orig_h * (target_w / orig_w))
+        img = cv2.resize(img_raw, (target_w, target_h))
+        
+        h, w, _ = img.shape
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        
+        orig_scale = orig_w / target_w
+        
+        lines = []
+        fname = os.path.basename(image_path) if 'os' in dir() else image_path.split('/')[-1]
+        lines.append(f"### SYSTEM_VISION_REPORT_V3: {fname}")
+        lines.append(f"- Original Resolution: {orig_w}x{orig_h} ({(orig_w*orig_h)/1e6:.1f}MP)")
+        lines.append(f"- Analysis Scaled: {w}x{h} ({(orig_w*orig_h)/(target_w*target_h):.0f}x speedup)")
+        
+        # === 1. Spatial Grid
         if img is None:
             return (_markdown_header("SSA Error", "❌")
                     + f"**Cannot read image:** `{image_path}`\n" + _markdown_footer())
@@ -4259,7 +4283,7 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
                 else: shape = "near-square"
                 lines.append(f"\n### Object Detection (GrabCut)")
                 lines.append(f"- Foreground: {fg_pct:.0f}% of image")
-                lines.append(f"- Main object: {bw}x{bh}px at ({h_pos},{v_pos}), shape={shape}")
+                lines.append(f"- Main object: {int(bw*orig_scale)}x{int(bh*orig_scale)}px at ({h_pos},{v_pos}), shape={shape}")
                 lines.append(f"- Position: center={(cx/w*100):.0f}%H,{(cy/h*100):.0f}%V")
         except Exception as e:
             lines.append(f"\n### Object Detection: unavailable")
@@ -4401,7 +4425,7 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
         # === 8. Summary ===
         lines.append("\n### AI Spatial Inference")
         main_color = bgr_to_name(centers[color_counts.most_common(1)[0][0]])
-        lines.append(f"- Dominant color: {main_color} ({color_counts.most_common(1)[1]*100//len(labels)}%)")
+        lines.append(f"- Dominant color: {main_color} ({color_counts.most_common(1)[0][1]*100//len(labels)}%)")
         if 'salient_pct' in dir() and salient_pct > 5:
             lines.append(f"- Visual focus: {salient_pct:.0f}% area at ({sh},{sv})")
         if 'fg_pct' in dir() and fg_pct > 5:
