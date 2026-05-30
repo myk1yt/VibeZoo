@@ -28,6 +28,9 @@ Thumbs.db
 *~
 
 # Build
+
+# Test artifacts
+test_output.png
 dist/
 build/
 
