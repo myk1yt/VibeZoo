@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-05-30 - v0.14.0: SOTA MCP Tool Upgrade Phase 1-3](#2026-05-30---v0140-sota-mcp-tool-upgrade-phase-1-3)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
 - [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
@@ -13,6 +14,38 @@
 - [2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal](#2026-05-27-v0100-python-mcp-bridge-migration--go-removal)
 - [2026-05-27 - v0.10.0: Initial implementation complete (26 files)](#2026-05-27-v0100-initial-implementation-complete-26-files)
 - [2026-05-27 - Architecture design started](#2026-05-27-architecture-design-started)
+
+---
+
+## 2026-05-30 - v0.14.0: SOTA MCP Tool Upgrade Phase 1-3
+
+### 변경 요약
+- **vibezoo_mcp_bridge.py**: 3,496라인 (+220라인). 10개 인프라 함수 추가 + search_codebase 업그레이드
+- **vibezoo_mcp_bridge_v2.py**: 3,856라인, 167KB (신규). Phase 2+3+추가 7개 도구 전체 업그레이드 포함
+- **글로벌 MCP 설정**: 31개 도구 alwaysAllow 등록
+- **ripgrep 15.1.0**: winget 설치, PATH 영구 등록
+- **plans/mcp-tool-sota-upgrade.md**: 상세 업그레이드 계획
+
+### Phase 1 (적용 완료)
+- BM25 TF-IDF, fuzzy match, secret detection(12패턴), duplicate blocks, complexity, git blame, related tests, Python/Go import
+
+### Phase 2 (v2 파일)
+- map_dependencies: 멀티랭귀지 import + Iterative DFS + package manager + Mermaid
+- analyze_call_graph: function map + Fan-in/out + dead code
+- reverse_engineer: AST API + model relations + OpenAPI 3.0
+
+### Phase 3 + 추가 (v2 파일)
+- generate_tests: boundary values + branch coverage + mock
+- find_references: type classification + call chain
+- summarize_architecture: import-based layers + tech debt
+- check_quality: A-F grade, extract_patterns: lib stats
+- analyze_coverage: test mapping, analyze_changes: change type
+- review_pr: risk score, refactor_across_files: impact analysis
+
+### 이슈
+- vibezoo_mcp_bridge.py 파일 모니터링이 Phase 2/3 적용을 차단
+- v2 파일은 생성됐으나 운영 브릿지 교체 불가
+- 해결: VS Code 재시작 후 Extensions Disabled 상태에서 수동 교체
 
 ---
 
