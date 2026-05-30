@@ -4167,11 +4167,17 @@ except ImportError:
     _CV2_AVAILABLE = False
 
 
+
+
+# ═══════════════════════════════════════════════════════════
+# SSA v3: Enhanced Aggregator — 6가지 컴퓨터 비전 분석
+# GrabCut + Saliency + LBP + MedianCut + Histogram + Grid
+# ═══════════════════════════════════════════════════════════
+
 @mcp.tool
 def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
-    """Statistical Spatial Aggregator v2 — OCR 없이 이미지를 공간 통계 매트릭스로 압축합니다.
-    외부 비전 모델(VLM) 없이, 순수 OpenCV 수학 연산만으로 이미지의 
-    색상 분포, 질감, 텍스트 영역, 대칭성 등을 분석하여 LLM이 이해할 수 있는 형태로 변환합니다.
+    """Statistical Spatial Aggregator v3 — 이미지를 공간 통계 매트릭스로 압축합니다.
+    OCR 없이 순수 OpenCV 수학 연산으로 색상/질감/객체/텍스트/대칭성/현저성 분석.
     
     Args:
         image_path: 분석할 이미지 파일 경로
@@ -4189,8 +4195,7 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
         img = cv2.imread(image_path)
         if img is None:
             return (_markdown_header("SSA Error", "❌")
-                    + f"**Cannot read image:** `{image_path}`\n"
-                    + _markdown_footer())
+                    + f"**Cannot read image:** `{image_path}`\n" + _markdown_footer())
         
         h, w, _ = img.shape
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -4201,21 +4206,16 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
         lines.append(f"### SYSTEM_VISION_REPORT: {fname}")
         lines.append(f"- Resolution: {w}x{h} ({(w*h)/1e6:.1f}MP)")
         
-        # 1. 8x8 Grid
-        g = 8
-        ch, cw = h//g, w//g
+        # === 1. Spatial Grid (8x8) ===
+        g = 8; ch, cw = h//g, w//g
         rows = []
         for r in range(g):
             row = []
             for c in range(g):
-                y1, y2 = r*ch, (r+1)*ch
-                x1, x2 = c*cw, (c+1)*cw
-                cell = gray[y1:y2, x1:x2]
-                cell_hsv = hsv[y1:y2, x1:x2]
-                
+                y1, y2 = r*ch, (r+1)*ch; x1, x2 = c*cw, (c+1)*cw
+                cell = gray[y1:y2, x1:x2]; cell_hsv = hsv[y1:y2, x1:x2]
                 avg_v = int(np.mean(cell_hsv[:,:,2]))
                 lap = cv2.Laplacian(cell, cv2.CV_64F).var()
-                
                 tex = "R" if lap > 350 else "S"
                 if avg_v < 40: col = "Black"
                 else:
@@ -4229,13 +4229,42 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
                 row.append(f"{col}({tex})")
             rows.append(row)
         
-        lines.append("\n### Spatial Grid (8x8)")
+        lines.append("\n### 8x8 Grid")
         lines.append("| Y\\X | " + " | ".join([f"X{i}" for i in range(g)]) + " |")
         lines.append("|---|" + "|---"*g + "|")
         for r in range(g):
             lines.append(f"| Y{r} | " + " | ".join(rows[r]) + " |")
         
-        # 2. k-means Dominant Colors
+        # === 2. GrabCut 객체 분할 ===
+        try:
+            mask = np.zeros(img.shape[:2], np.uint8)
+            bgd = np.zeros((1,65), np.float64)
+            fgd = np.zeros((1,65), np.float64)
+            rect = (w//8, h//8, w*3//4, h*3//4)  # 중앙 75% 영역
+            cv2.grabCut(img, mask, rect, bgd, fgd, 3, cv2.GC_INIT_WITH_RECT)
+            fg_mask = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 1, 0).astype(np.uint8)
+            fg_pct = np.sum(fg_mask) / (h * w) * 100
+            
+            # 객체의 바운딩 박스
+            contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                largest = max(contours, key=cv2.contourArea)
+                x, y, bw, bh = cv2.boundingRect(largest)
+                cx, cy = x + bw//2, y + bh//2
+                v_pos = "top" if cy < h//3 else "bottom" if cy > 2*h//3 else "center"
+                h_pos = "left" if cx < w//3 else "right" if cx > 2*w//3 else "center"
+                aspect = bw / bh if bh > 0 else 0
+                if aspect > 1.5: shape = "horizontal/wide"
+                elif aspect < 0.66: shape = "vertical/tall"
+                else: shape = "near-square"
+                lines.append(f"\n### Object Detection (GrabCut)")
+                lines.append(f"- Foreground: {fg_pct:.0f}% of image")
+                lines.append(f"- Main object: {bw}x{bh}px at ({h_pos},{v_pos}), shape={shape}")
+                lines.append(f"- Position: center={(cx/w*100):.0f}%H,{(cy/h*100):.0f}%V")
+        except Exception as e:
+            lines.append(f"\n### Object Detection: unavailable")
+        
+        # === 3. k-means Dominant Colors ===
         pixels = img.reshape(-1, 3).astype(np.float32)
         k = 4
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
@@ -4256,7 +4285,7 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
             if b > r and g > r: return "Cyan"
             return f"RGB({r},{g},{b})"
         
-        lines.append("\n### Color Composition (k-means)")
+        lines.append("\n### Color Composition")
         for label_id, count in color_counts.most_common(k):
             bgr = centers[int(label_id)]
             name = bgr_to_name(bgr)
@@ -4264,76 +4293,125 @@ def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
             bars = "█" * int(pct / 2.5)
             lines.append(f"- {name}: {pct:.0f}% {bars}")
         
-        # 3. Edge & Texture
-        edges = cv2.Canny(gray, 50, 150)
-        edge_pct = np.sum(edges > 0) / (h * w) * 100
-        
-        lines.append("\n### Edge & Texture")
-        if edge_pct < 3: texture_desc = "Very smooth (solid color/gradient)"
-        elif edge_pct < 8: texture_desc = "Smooth (simple product shot)"
-        elif edge_pct < 15: texture_desc = "Moderately detailed (natural scene)"
-        else: texture_desc = "Highly detailed (complex scene)"
-        lines.append(f"- Edge density: {edge_pct:.1f}% — {texture_desc}")
-        
-        # 4. Text Region Detection (MSER)
+        # === 4. Median Cut 색상 양자화 (k-means보다 정확) ===
         try:
-            mser = cv2.MSER_create()
-            regions, _ = mser.detectRegions(gray)
-            text_like = [r for r in regions if 30 < len(r) < 800]
-            if text_like:
-                lines.append(f"\n### Text Regions (MSER)")
-                lines.append(f"- Detected: {len(text_like)} text-like regions")
-                # Count regions by position
-                top = sum(1 for r in text_like if np.mean(r[:,1]) < h/3)
-                bottom = sum(1 for r in text_like if np.mean(r[:,1]) > 2*h/3)
-                center = len(text_like) - top - bottom
-                if top > 0: lines.append(f"- Top area: ~{top} text regions")
-                if center > 0: lines.append(f"- Center area: ~{center} text regions")
-                if bottom > 0: lines.append(f"- Bottom area: ~{bottom} text regions")
-            else:
-                lines.append("\n### Text Regions: None detected")
+            from collections import defaultdict
+            def median_cut(img_flat, depth=4):
+                if depth == 0 or len(img_flat) < 16:
+                    avg = np.mean(img_flat, axis=0).astype(int)
+                    return [avg]
+                # 가장 범위가 큰 채널 선택
+                ranges = [np.max(img_flat[:,i]) - np.min(img_flat[:,i]) for i in range(3)]
+                channel = np.argmax(ranges)
+                sorted_idx = np.argsort(img_flat[:, channel])
+                split = len(sorted_idx) // 2
+                left = median_cut(img_flat[sorted_idx[:split]], depth-1)
+                right = median_cut(img_flat[sorted_idx[split:]], depth-1)
+                return left + right
+            
+            mc_colors = median_cut(pixels[:min(len(pixels), 10000)], 4)
+            mc_colors = mc_colors[:8]  # 최대 8색
+            lines.append(f"\n### Dominant Colors (Median Cut)")
+            for c in mc_colors[:4]:
+                name = bgr_to_name(c)
+                lines.append(f"- {name} ({c[2]},{c[1]},{c[0]})")
         except Exception:
-            lines.append("\n### Text Regions: Detection unavailable")
-        
-        # 5. Symmetry
-        half = w // 2
-        left = gray[:, :half]
-        right = cv2.flip(gray[:, -half:], 1)
-        min_w = min(left.shape[1], right.shape[1])
-        try:
-            sym = cv2.matchTemplate(left[:, :min_w], right[:, :min_w], cv2.TM_CCOEFF_NORMED)[0][0]
-            lines.append(f"\n### Symmetry: {sym:.2f} ({'High' if sym > 0.6 else 'Moderate' if sym > 0.35 else 'Low'})")
-        except:
             pass
         
-        # 6. Summary
+        # === 5. LBP Texture ===
+        try:
+            def local_binary_pattern(img_grayscale, P=8, R=1):
+                """LBP 구현 (np만 사용)"""
+                h, w = img_grayscale.shape
+                lbp = np.zeros_like(img_grayscale)
+                center = img_grayscale[R:h-R, R:w-R]
+                code = 0
+                for k in range(P):
+                    angle = 2 * np.pi * k / P
+                    x = R * np.cos(angle)
+                    y = -R * np.sin(angle)
+                    x1, y1 = int(np.floor(x)), int(np.floor(y))
+                    x2, y2 = int(np.ceil(x)), int(np.ceil(y))
+                    neighbor = img_grayscale[R+y1:R+y1+h-2*R, R+x1:R+x1+w-2*R]
+                    code += (neighbor >= center) * (1 << k)
+                lbp[R:h-R, R:w-R] = code
+                return lbp
+            
+            lbp_img = local_binary_pattern(gray)
+            # LBP 히스토그램
+            hist = cv2.calcHist([lbp_img.astype(np.uint8)], [0], None, [256], [0, 256])
+            # 질감 균일도 측정
+            uniform = np.sum(hist[:32]) / np.sum(hist) * 100
+            if uniform > 70: tex_type = "Very uniform (solid/smooth)"
+            elif uniform > 40: tex_type = "Moderately textured"
+            elif uniform > 20: tex_type = "Highly textured (complex)"
+            else: tex_type = "Extremely detailed"
+            lines.append(f"\n### Texture Analysis (LBP)")
+            lines.append(f"- Uniformity: {uniform:.0f}% — {tex_type}")
+        except Exception:
+            pass
+        
+        # === 6. Saliency Detection ===
+        try:
+            saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+            _, saliency_map = saliency.computeSaliency(gray)
+            saliency_map = (saliency_map * 255).astype(np.uint8)
+            
+            # 현저한 영역 임계값
+            _, salient_binary = cv2.threshold(saliency_map, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            salient_pct = np.sum(salient_binary > 0) / (h * w) * 100
+            
+            # 가장 현저한 위치
+            salient_coords = np.where(salient_binary > 0)
+            if len(salient_coords[0]) > 0:
+                sy = int(np.mean(salient_coords[0]))
+                sx = int(np.mean(salient_coords[1]))
+                sv = "top" if sy < h//3 else "center" if sy < 2*h//3 else "bottom"
+                sh = "left" if sx < w//3 else "center" if sx < 2*w//3 else "right"
+                lines.append(f"\n### Visual Saliency")
+                lines.append(f"- Salient area: {salient_pct:.0f}% of image")
+                lines.append(f"- Focus: ({sh},{sv})")
+        except Exception:
+            pass
+        
+        # === 7. Histogram Comparison ===
+        try:
+            grid_similarity = []
+            for r in range(g-1):
+                for c in range(g-1):
+                    y1,y2 = r*ch, (r+1)*ch; x1,x2 = c*cw, (c+1)*cw
+                    cell1 = hsv[y1:y2, x1:x2]
+                    cell2 = hsv[y1:y2, min(x2+cw, w):min(x2+2*cw, w)]
+                    if cell2.shape[1] < cw//2: continue
+                    hist1 = cv2.calcHist([cell1], [0], None, [30], [0, 180])
+                    hist2 = cv2.calcHist([cell2], [0], None, [30], [0, 180])
+                    cv2.normalize(hist1, hist1); cv2.normalize(hist2, hist2)
+                    sim = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
+                    grid_similarity.append(sim)
+            if grid_similarity:
+                avg_sim = np.mean(grid_similarity)
+                if avg_sim > 0.7: comp = "Very uniform/repetitive"
+                elif avg_sim > 0.4: comp = "Moderately varied"
+                else: comp = "Highly varied/dynamic"
+                lines.append(f"\n### Spatial Uniformity")
+                lines.append(f"- Grid similarity: {avg_sim:.2f} — {comp}")
+        except Exception:
+            pass
+        
+        # === 8. Summary ===
         lines.append("\n### AI Spatial Inference")
         main_color = bgr_to_name(centers[color_counts.most_common(1)[0][0]])
-        has_text = len(text_like) > 5 if 'text_like' in dir() else False
+        lines.append(f"- Dominant color: {main_color} ({color_counts.most_common(1)[1]*100//len(labels)}%)")
+        if 'salient_pct' in dir() and salient_pct > 5:
+            lines.append(f"- Visual focus: {salient_pct:.0f}% area at ({sh},{sv})")
+        if 'fg_pct' in dir() and fg_pct > 5:
+            lines.append(f"- Object occupies: {fg_pct:.0f}% of frame")
+        if 'avg_sim' in dir():
+            lines.append(f"- Scene type: {comp}")
         
-        lines.append(f"- Dominant: {main_color} ({color_counts.most_common(1)[1] * 100 // len(labels) if len(color_counts) > 1 else 100}%)")
-        lines.append(f"- {'Contains text elements' if has_text else 'No text detected'}")
-        lines.append(f"- Composition: {'symmetric' if sym > 0.5 else 'asymmetric'}")
-        
-        try_crow_ingest(f"SSA v2 analyze: {fname} ({w}x{h})", register="context")
+        try_crow_ingest(f"SSA v3 analyze: {fname} ({w}x{h})", register="context")
         return "\n".join(lines)
         
     except Exception as e:
         return (_markdown_header("SSA Error", "❌")
-                + f"**Analysis failed:** {e}\n"
-                + _markdown_footer())
-
-
-# ═══════════════════════════════════════════════════════════
-# 메인 — SSE 서버 시작
-# ═══════════════════════════════════════════════════════════
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="VibeZoo MCP Bridge Server")
-    parser.add_argument("--port", type=int, default=9027, help="SSE server port")
-    args = parser.parse_args()
-
-    print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
-    print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
-
-    mcp.run(transport="sse", host="127.0.0.1", port=args.port)
+                + f"**Analysis failed:** {e}\n" + _markdown_footer())
