@@ -31,6 +31,9 @@ Thumbs.db
 
 # Test artifacts
 test_output.png
+analyzed_image.jpg
+*.jpg
+*.png
 dist/
 build/
 
