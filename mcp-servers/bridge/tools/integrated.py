@@ -1,5 +1,6 @@
 # VibeZoo Bridge — Integrated 도구 그룹
 # review_project + find_bugs + suggest_refactor + generate_docs
+# 점진적 스트리밍 지원 (streaming=True)
 
 import inspect
 import json
@@ -24,6 +25,7 @@ from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.search_engine import SearchEngine
 from bridge.ast_engine import AstEngine
 from bridge.file_cache import FileCache
+from bridge.tools._base import BaseTool
 
 # ── 내부 도구 호출 ──────────────────────────────────
 
@@ -141,12 +143,14 @@ def register(mcp):
     # ── 도구 등록 ──
 
     @mcp.tool
-    def review_project(target_path: str) -> str:
+    def review_project(target_path: str, streaming: bool = True) -> str:
         """search_codebase + review_code + check_quality + extract_patterns 통합.
         프로젝트 전체를 종합 리뷰하여 하나의 마크다운 보고서로 반환합니다.
+        streaming=True 시 각 단계별 진행 청크를 포함하여 LLM이 빠르게 첫 결과를 볼 수 있습니다.
 
         Args:
             target_path: 분석 대상 디렉토리 경로
+            streaming: True면 각 단계별 진행 청크 포함 (기본: True)
         """
         err = _validate_string(target_path, "target_path")
         if err:
@@ -156,7 +160,9 @@ def register(mcp):
         sections.append(_markdown_header("Project Review Report"))
         sections.append(f"> Target: `{target_path}`\n")
 
-        # 1. search_codebase
+        # ── Stage 1/4: search_codebase (25%) ──
+        if streaming:
+            sections.append(BaseTool.progress_chunk("1/4", 25, "🔍 Searching codebase for TODO/FIXME/HACK/BUG patterns..."))
         sections.append("## 🔍 Code Search\n")
         search_terms = ["TODO", "FIXME", "HACK", "BUG"]
         for term in search_terms:
@@ -168,7 +174,9 @@ def register(mcp):
             else:
                 sections.append(f"⚠️ Partial failure: {term_result}")
 
-        # 2. review_code
+        # ── Stage 2/4: review_code (50%) ──
+        if streaming:
+            sections.append(BaseTool.progress_chunk("2/4", 50, "📝 Reviewing source files (top 5)..."))
         sections.append("## 📝 Code Review\n")
         root = Path(get_project_root(target_path))
         reviewed = 0
@@ -190,7 +198,9 @@ def register(mcp):
         if reviewed == 0:
             sections.append("- No source files found to review.\n")
 
-        # 3. check_quality
+        # ── Stage 3/4: check_quality (75%) ──
+        if streaming:
+            sections.append(BaseTool.progress_chunk("3/4", 75, "📊 Analyzing project quality metrics..."))
         sections.append("## ✅ Quality Check\n")
         fn = _get_check_quality()
         quality, ok = _run_tool("check_quality", target_path=target_path)
@@ -199,7 +209,9 @@ def register(mcp):
         else:
             sections.append(f"⚠️ Partial failure: {quality}")
 
-        # 4. extract_patterns
+        # ── Stage 4/4: extract_patterns (100%) ──
+        if streaming:
+            sections.append(BaseTool.progress_chunk("4/4", 100, "🔬 Extracting recurring code patterns..."))
         sections.append("## 📊 Pattern Analysis\n")
         fn = _get_extract_patterns()
         patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=3)
@@ -215,6 +227,7 @@ def register(mcp):
                 "target": target_path,
                 "files_reviewed": reviewed,
                 "total_files": total_files,
+                "streaming": streaming,
                 "timestamp": time.time(),
             }),
             register="style"
@@ -222,6 +235,11 @@ def register(mcp):
 
         result = "\n\n---\n\n".join(sections)
         result += _markdown_footer()
+
+        if streaming:
+            stats = {"files_reviewed": reviewed, "total_files": total_files}
+            result = BaseTool.final_result(result, stats)
+
         return result
 
     @mcp.tool

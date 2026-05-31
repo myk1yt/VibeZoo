@@ -2,7 +2,7 @@
 
 
 class BaseTool:
-    """도구 기본 클래스 — 검증, 부분 결과, 에러 보고"""
+    """도구 기본 클래스 — 검증, 부분 결과, 에러 보고, 점진적 스트리밍"""
 
     @staticmethod
     def validate_file_path(file_path: str) -> str:
@@ -42,3 +42,32 @@ class BaseTool:
         if context:
             error_info["context"] = context
         return json.dumps(error_info)
+
+    @staticmethod
+    def progress_chunk(stage: str, progress: int, message: str) -> str:
+        """부분 결과 청크 반환 (streaming=True 시 사용).
+
+        Args:
+            stage: 현재 단계 식별자 (예: '1/4', '2/4')
+            progress: 진행률 퍼센트 (0-100)
+            message: 진행 상태 설명 메시지
+        Returns:
+            HTML 코멘트로 래핑된 진행 청크 문자열
+        """
+        return f"<!-- VIBEZOO_PROGRESS stage={stage} progress={progress}% -->\n**{message}**\n"
+
+    @staticmethod
+    def final_result(output: str, stats: dict = None) -> str:
+        """최종 결과 + 통계.
+
+        Args:
+            output: 최종 결과 문자열
+            stats: 추가 통계 정보 딕셔너리 (선택)
+        Returns:
+            최종 결과 (통계 포함 시 HTML 코멘트로 래핑)
+        """
+        if stats:
+            import json
+            stats_str = json.dumps(stats, ensure_ascii=False)
+            return f"{output}\n\n<!-- VIBEZOO_STATS {stats_str} -->\n"
+        return output

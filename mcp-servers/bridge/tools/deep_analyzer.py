@@ -35,6 +35,167 @@ def _get_ast_engine() -> AstEngine:
     return _ast_engine
 
 
+# ── AST 패턴 템플릿 라이브러리 ───────────────────────
+
+_PATTERN_TEMPLATES = {
+    # 언어 중립 패턴 (모든 언어에 적용 가능한 AST 구조)
+    "try-catch": {
+        "ast_pattern": {"type": "try_statement", "has_catch": True},
+        "description": "try-catch 예외 처리 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript", "python", "go", "rust"],
+        "node_types": {
+            "typescript": ["try_statement"],
+            "python": ["try_statement"],
+            "go": [],
+            "rust": [],
+        },
+    },
+    "callback-hell": {
+        "ast_pattern": {"max_nesting": 3, "contains": ["callback", "function("]},
+        "description": "콜백 중첩 과다 (Callback Hell)",
+        "anti_pattern": True,
+        "languages": ["typescript", "python"],
+        "detection": "nested_callback_depth",
+    },
+    "god-class": {
+        "ast_pattern": {"min_methods": 15, "min_lines": 500},
+        "description": "God Class — 클래스 책임 과다",
+        "anti_pattern": True,
+        "languages": ["typescript", "python", "rust"],
+        "detection": "method_count_threshold",
+        "threshold": 20,
+    },
+    "promise-chain": {
+        "ast_pattern": {"type": "call_expression", "contains": [".then(", ".catch("]},
+        "description": "Promise 체인 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript"],
+        "node_types": {
+            "typescript": ["call_expression"],
+        },
+    },
+    "null-check": {
+        "ast_pattern": {"type": "if_statement", "contains": ["== null", "== undefined", "=== null"]},
+        "description": "null/undefined 체크 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript"],
+    },
+    "long-method": {
+        "ast_pattern": {"min_lines": 50},
+        "description": "Long Method — 함수 분리 권장",
+        "anti_pattern": True,
+        "languages": ["typescript", "python", "go", "rust"],
+        "detection": "line_count_threshold",
+        "threshold": 50,
+    },
+    "async-await": {
+        "ast_pattern": {"type": "await_expression"},
+        "description": "async/await 사용 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript", "python", "rust"],
+        "node_types": {
+            "typescript": ["await_expression"],
+            "python": ["await"],
+            "rust": ["await_expression"],
+        },
+    },
+    "arrow-function": {
+        "ast_pattern": {"type": "arrow_function"},
+        "description": "화살표 함수 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript"],
+        "node_types": {
+            "typescript": ["arrow_function"],
+        },
+    },
+    "destructuring": {
+        "ast_pattern": {"type": "destructuring_assignment"},
+        "description": "구조 분해 할당 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript"],
+    },
+    "optional-chaining": {
+        "ast_pattern": {"type": "optional_chain_expression"},
+        "description": "옵셔널 체이닝 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript"],
+    },
+    "nullish-coalescing": {
+        "ast_pattern": {"type": "nullish_coalescing_expression"},
+        "description": "Nullish 병합 연산자 패턴",
+        "anti_pattern": False,
+        "languages": ["typescript"],
+    },
+}
+
+
+# ── AST 패턴 탐지 헬퍼 ──────────────────────────────
+
+
+def _compute_callback_depth(content: str, lang: str) -> int:
+    """콜백 중첩 깊이 계산 (들여쓰기 기반)"""
+    if lang not in ("typescript", "javascript", "python"):
+        return 0
+    max_depth = 0
+    depth = 0
+    in_callback = False
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # 콜백 감지: function(, ()=> , lambda
+        if re.search(r'(?:function\s*\(|\(\s*\)\s*=>|lambda\s+\w+\s*:)', stripped):
+            in_callback = True
+            depth = 1
+        elif in_callback:
+            indent = len(line) - len(line.lstrip())
+            depth = indent // 4
+            if depth > max_depth:
+                max_depth = depth
+            # 콜백 종료 (들여쓰기 감소)
+            if depth <= 0:
+                in_callback = False
+    return max_depth
+
+
+def _count_methods_per_class(ast: dict) -> list[tuple[str, int]]:
+    """클래스별 메서드 개수 반환"""
+    results = []
+    for cls in ast.get("classes", []):
+        methods = cls.get("methods", [])
+        if not methods:
+            # AST classes가 methods 필드가 없으면 함수 개수로 추정
+            methods = [f for f in ast.get("functions", [])
+                       if f.get("line", 0) >= cls.get("line", 0)
+                       and f.get("end_line", 0) <= cls.get("end_line", 999999)]
+        results.append((cls.get("name", "anonymous"), len(methods)))
+    return results
+
+
+def _compute_line_count_threshold(content: str, threshold: int = 50) -> list[dict]:
+    """함수/메서드별 라인 수 계산, threshold 초과 항목 반환"""
+    lines = content.split("\n")
+    results = []
+    # 간단한 휴리스틱: function/def 키워드 기준
+    func_pattern = re.compile(r'(?:function\s+(\w+)|def\s+(\w+)|(\w+)\s*=\s*(?:async\s*)?\(|\w+\s*\([^)]*\)\s*{)')
+    for match in func_pattern.finditer(content):
+        name = match.group(1) or match.group(2) or match.group(3) or "anonymous"
+        # 해당 함수의 시작 라인 찾기
+        line_num = content[:match.start()].count("\n") + 1
+        # 대략적인 함수 길이 추정 (다음 function/def까지)
+        remaining = content[match.start():]
+        next_func = re.search(r'\n(?:function|def)\s+', remaining[1:])
+        if next_func:
+            fn_end_line = line_num + remaining[:next_func.start()].count("\n")
+        else:
+            fn_end_line = len(lines)
+        fn_lines = fn_end_line - line_num
+        if fn_lines >= threshold:
+            results.append({"name": name, "line": line_num, "lines": fn_lines})
+    return results
+
+
 # ── 내부 함수 (scout.py에서 import) ──────────────────
 
 
@@ -180,6 +341,159 @@ def _run_map_dependencies(target_path: Optional[str] = None) -> str:
 
     try_crow_ingest(f"Dep analysis: {len(deps)} files, {len(all_cycles)} cycles", register="arch")
     return output + _markdown_footer()
+
+
+# ── AST 기반 패턴 추출 (extract_patterns 핵심) ──────
+
+
+def _extract_patterns_ast(target_path: str, min_occurrences: int = 3) -> str:
+    """
+    AST 서브트리 매칭으로 구조적 패턴 탐지.
+
+    기존 키워드 카운팅(content.count("async ")) → tree-sitter AST 노드 타입 매칭 + regex 폴백.
+    """
+    ast_engine = _get_ast_engine()
+    root = Path(get_project_root(target_path))
+    results = defaultdict(lambda: {"count": 0, "files": [], "examples": []})
+
+    for p in _iter_project_files_cached(root, SOURCE_EXTS, DEFAULT_EXCLUDE_DIRS):
+        ext = p.suffix.lower()
+        lang = ast_engine.LANGUAGES.get(ext, "")
+        if not lang and ext not in TS_JS_EXTS and ext != ".py":
+            continue
+
+        content = _read_file_content(p)
+        if not content:
+            continue
+
+        # AST 파싱 (TS/JS는 tree-sitter, 나머지는 regex 폴백)
+        ast_parsed = {}
+        if ext in TS_JS_EXTS:
+            try:
+                ast_engine._init_legacy_tree_sitter()
+                ast_parsed = ast_engine.parse(content, ext)
+            except Exception:
+                ast_parsed = {}
+
+        for pattern_name, template in _PATTERN_TEMPLATES.items():
+            if lang and template.get("languages") and lang not in template["languages"]:
+                # JS 파일도 typescript 패턴 적용
+                if lang == "javascript" and "typescript" not in template.get("languages", []):
+                    if "python" not in template.get("languages", []):
+                        continue
+
+            matched = False
+            example = ""
+
+            # AST 노드 타입 매칭 (TS/JS)
+            if ext in TS_JS_EXTS and ast_parsed:
+                node_types = template.get("node_types", {})
+                target_types = node_types.get(lang, node_types.get("typescript", node_types.get("python", [])))
+                if not target_types:
+                    # detection 기반 매칭
+                    pass
+                else:
+                    # AST 결과에서 노드 타입 검사
+                    if target_types and ast_parsed.get("functions"):
+                        for func in ast_parsed.get("functions", []):
+                            if func.get("type") in target_types:
+                                matched = True
+                                example = f"{p}:{func['line']} — {func['name']}"
+                                break
+                    if not matched and ast_parsed.get("classes"):
+                        for cls in ast_parsed.get("classes", []):
+                            if cls.get("type") in target_types:
+                                matched = True
+                                example = f"{p}:{cls['line']} — {cls['name']}"
+                                break
+
+            # 깊이/개수 기반 탐지 (모든 언어)
+            if not matched and "detection" in template:
+                det = template["detection"]
+                if det == "nested_callback_depth":
+                    depth = _compute_callback_depth(content, lang or "typescript")
+                    if depth >= 3:
+                        matched = True
+                        example = f"{p}: max callback depth = {depth}"
+                elif det == "method_count_threshold":
+                    threshold = template.get("threshold", 20)
+                    class_methods = _count_methods_per_class(ast_parsed)
+                    for cls_name, count in class_methods:
+                        if count >= threshold:
+                            matched = True
+                            example = f"{p}: {cls_name} has {count} methods (threshold: {threshold})"
+                            break
+                elif det == "line_count_threshold":
+                    threshold = template.get("threshold", 50)
+                    long_funcs = _compute_line_count_threshold(content, threshold)
+                    if long_funcs:
+                        matched = True
+                        example = f"{p}:{long_funcs[0]['line']} — {long_funcs[0]['name']} ({long_funcs[0]['lines']} lines)"
+
+            # Regex 폴백 매칭 (AST 실패 시)
+            if not matched:
+                ast_pattern = template.get("ast_pattern", {})
+                pattern_type = ast_pattern.get("type", "")
+                contains = ast_pattern.get("contains", [])
+
+                if pattern_type:
+                    # 패턴 타입별 regex
+                    type_regex_map = {
+                        "try_statement": r'\btry\s*\{',
+                        "if_statement": r'\bif\s*\(',
+                        "call_expression": r'\w+\s*\(',
+                        "arrow_function": r'=>\s*[\({]',
+                        "await_expression": r'\bawait\s+',
+                        "destructuring_assignment": r'(?:const|let|var)\s*\{[^}]+\}\s*=',
+                        "optional_chain_expression": r'\w\?\.\w',
+                        "nullish_coalescing_expression": r'\w\s*\?\?\s*\w',
+                    }
+                    regex = type_regex_map.get(pattern_type, "")
+                    if regex and re.search(regex, content):
+                        # contains 조건 확인
+                        if contains:
+                            if all(c in content for c in contains):
+                                matched = True
+                                # 예시 추출
+                                for match in re.finditer(regex, content):
+                                    line_num = content[:match.start()].count("\n") + 1
+                                    example = f"{p}:{line_num} — ...{_truncate(match.group(), 50)}"
+                                    break
+                        else:
+                            matched = True
+                            for match in re.finditer(regex, content):
+                                line_num = content[:match.start()].count("\n") + 1
+                                example = f"{p}:{line_num}"
+                                break
+
+            if matched:
+                results[pattern_name]["count"] += 1
+                if str(p) not in results[pattern_name]["files"]:
+                    results[pattern_name]["files"].append(str(p))
+                if len(results[pattern_name]["examples"]) < 3:
+                    results[pattern_name]["examples"].append(example)
+
+    # 결과 포맷팅
+    lines = []
+    lines.append("## Pattern Analysis (AST Subtree Matching)\n")
+
+    for pattern_name, data in sorted(results.items(), key=lambda x: -x[1]["count"]):
+        if data["count"] < min_occurrences:
+            continue
+        template = _PATTERN_TEMPLATES[pattern_name]
+        tag = "⚠️ ANTIPATTERN" if template.get("anti_pattern") else "📊 PATTERN"
+        lines.append(f"### {tag}: {template['description']}")
+        lines.append(f"- **Occurrences**: {data['count']} (in {len(data['files'])} files)")
+        if data["examples"]:
+            lines.append(f"- **Examples**:")
+            for ex in data["examples"]:
+                lines.append(f"  - `{ex}`")
+        lines.append("")
+
+    if len(lines) <= 2:
+        lines.append("- No structural patterns met the minimum occurrence threshold.\n")
+
+    return "\n".join(lines)
 
 
 def register(mcp):
@@ -342,104 +656,8 @@ def register(mcp):
         if err:
             return _markdown_header("Pattern Extraction Error", "❌") + f"**{err}**\n" + _markdown_footer()
 
-        root = Path(get_project_root(target_path))
-        ast_engine = _get_ast_engine()
-        ast_engine._init_legacy_tree_sitter()
-
-        patterns = {
-            "async/await": 0, "try-catch": 0, "arrow functions": 0,
-            "class definitions": 0, "interface/type": 0, "generics usage": 0,
-            "destructuring": 0, "template literals": 0, "optional chaining": 0, "nullish coalescing": 0,
-        }
-        comments_todos = 0
-        console_logs = 0
-        ts_ignore = 0
-        debugger_count = 0
-        file_count = 0
-        lib_calls = Counter()
-
-        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
-            content = _read_file_content(p)
-            if content is None:
-                continue
-            file_count += 1
-            ext = p.suffix.lower()
-
-            if ext in TS_JS_EXTS and ast_engine.is_available():
-                try:
-                    ast = ast_engine.parse(content, ext)
-                    for fn in ast.get("functions", []):
-                        if fn["type"] == "arrow_function":
-                            patterns["arrow functions"] += 1
-                    patterns["class definitions"] += len(ast.get("classes", []))
-                    patterns["interface/type"] += len(ast.get("interfaces", []))
-                except Exception:
-                    pass
-                try:
-                    calls = ast_engine.extract_calls(content, ext)
-                    for c in calls:
-                        if c["name"].startswith("console."):
-                            console_logs += 1
-                        if "." in c["name"] and not c["name"].startswith("console."):
-                            parts = c["name"].split(".")
-                            if len(parts) >= 2:
-                                lib_calls[f"{parts[0]}.{'.'.join(parts[1:])}"] += 1
-                except Exception:
-                    pass
-
-            patterns["async/await"] += len(re.findall(r'\basync\s+(function|\(|=\s*\()', content))
-            patterns["async/await"] += len(re.findall(r'\bawait\s+', content))
-            patterns["try-catch"] += len(re.findall(r'\btry\s*\{', content))
-            patterns["arrow functions"] += len(re.findall(r'(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>', content))
-            patterns["arrow functions"] += len(re.findall(r'\(\s*\)\s*=>', content[:10000]))
-            patterns["generics usage"] += len(re.findall(r'<\s*\w+\s*(?:extends\s+\w+)?\s*>', content))
-            patterns["destructuring"] += len(re.findall(r'\{\s*\w+\s*\}', content[:10000]))
-            patterns["template literals"] += len(re.findall(r'`[^`]*\$\{[^}]+\}[^`]*`', content))
-            patterns["optional chaining"] += len(re.findall(r'\w\?\.\w', content))
-            patterns["nullish coalescing"] += len(re.findall(r'\w\s*\?\?\s*\w', content))
-            comments_todos += len(re.findall(r'(?:TODO|FIXME|HACK|XXX)', content))
-            ts_ignore += len(re.findall(r'@ts-ignore', content)) + len(re.findall(r'@ts-nocheck', content))
-            debugger_count += len(re.findall(r'\bdebugger\b', content))
-
-        output = _markdown_header(f"Pattern Analysis ({file_count} files)")
-        output += "\n## Code Patterns\n"
-        found_any = False
-        for pattern, count in sorted(patterns.items(), key=lambda x: -x[1]):
-            if count >= min_occurrences:
-                output += f"- `{pattern}`: **{count}** occurrences\n"
-                found_any = True
-            elif count > 0:
-                output += f"- `{pattern}`: {count} (below threshold)\n"
-        if not found_any:
-            output += "- No significant patterns detected.\n"
-
-        output += "\n## Library Function Usage Top 10\n\n"
-        top_lib = lib_calls.most_common(10)
-        if top_lib:
-            for lib, cnt in top_lib:
-                output += f"- `{lib}`: **{cnt}** calls\n"
-        else:
-            output += "- No library function calls detected.\n"
-
-        output += "\n## Quality Indicators\n"
-        quality_items = []
-        if console_logs > 0:
-            quality_items.append(f"`console.*` calls: {console_logs}")
-        if comments_todos > 0:
-            quality_items.append(f"`TODO/FIXME/HACK`: {comments_todos}")
-        if ts_ignore > 0:
-            quality_items.append(f"`@ts-ignore/@ts-nocheck`: {ts_ignore}")
-        if debugger_count > 0:
-            quality_items.append(f"`debugger` statements: {debugger_count}")
-        if quality_items:
-            for item in quality_items:
-                output += f"- ⚠️ {item}\n"
-        else:
-            output += "- ✅ No quality concerns detected.\n"
-
-        try_crow_ingest(json.dumps({"patterns_found": sum(1 for c in patterns.values() if c > 0), "files": file_count}), register="style")
-        output += _markdown_footer()
-        return output
+        # AST 서브트리 매칭 구현 (시그니처 100% 호환)
+        return _extract_patterns_ast(target_path or ".", min_occurrences)
 
     @mcp.tool
     def reverse_engineer(target_path: Optional[str] = None, output_format: str = "markdown") -> str:

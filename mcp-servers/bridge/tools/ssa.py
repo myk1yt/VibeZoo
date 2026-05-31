@@ -638,16 +638,19 @@ def register(mcp):
     """SSA 도구 등록"""
 
     @mcp.tool
-    def aggregate_spatial_pixels(image_path: str, detail: str = "auto") -> str:
+    def aggregate_spatial_pixels(image_path: str, detail: str = "auto",
+                                  ocr: bool = True, ocr_lang: str = "auto") -> str:
         """Statistical Spatial Aggregator v3 — 이미지를 공간 통계 매트릭스로 압축합니다.
-        OCR 없이 순수 OpenCV 수학 연산으로 색상/질감/객체/텍스트/대칭성/현저성 분석.
+        선택적으로 OCR 텍스트 추출을 포함합니다.
 
         Args:
             image_path: 분석할 이미지 파일 경로
             detail: 분석 상세도 ("auto", "quick", "full")
+            ocr: OCR 텍스트 추출 여부 (기본 True, 미설치 시 조용히 스킵)
+            ocr_lang: OCR 언어 ("auto", "eng", "kor", "chi_sim", "jpn")
 
         Returns:
-            마크다운 형식의 이미지 분석 보고서
+            마크다운 형식의 이미지 분석 보고서 (SSA + OCR 통합)
         """
         if not _CV2_AVAILABLE:
             return (_markdown_header("SSA Error", "❌")
@@ -703,7 +706,46 @@ def register(mcp):
             if summary:
                 report = summary + "\n" + report
 
-            try_crow_ingest(f"SSA v3 analyze: {fname} ({orig_w}x{orig_h}, detail={detail})",
+            # ── OCR 통합 ─────────────────────────────────
+            ocr_section = ""
+            ocr_blocks_count = 0
+            ocr_engine_name = "none"
+            if ocr:
+                try:
+                    from bridge.ocr_engine import OcrEngine
+                    ocr_engine = OcrEngine()
+                    if ocr_engine.is_available():
+                        ocr_result = ocr_engine.ocr(image_path, lang=ocr_lang, detail=detail)
+                        ocr_engine_name = ocr_result.get("engine", "none")
+                        if ocr_result.get("text", "").strip():
+                            ocr_section = _format_ocr_section(ocr_result, img.shape)
+                            ocr_blocks_count = len(ocr_result.get("blocks", [])) or ocr_result.get("stats", {}).get("word_count", 0)
+                            # SSA 자연어 요약에 OCR 정보 추가
+                            summary_line = f"📝 OCR: {ocr_result['stats']['word_count']} words detected ({ocr_engine_name})"
+                            if summary:
+                                summary += " · " + summary_line
+                            else:
+                                summary = "### SSA Quick Summary\n" + summary_line + "\n"
+                                report = summary + "\n" + report
+                        # OCR 결과가 있어도 섹션은 항상 추가 (빈 결과도 표시)
+                        if not ocr_section:
+                            ocr_section = _format_ocr_section(ocr_result, img.shape)
+                    else:
+                        ocr_section = ("\n### OCR\n"
+                                       "- ⚠️ OCR not available. Install Tesseract: "
+                                       "`pip install pytesseract` + system package, "
+                                       "or `pip install paddleocr`\n")
+                except ImportError:
+                    ocr_section = ("\n### OCR\n"
+                                   "- ⚠️ OCR module not loaded. Run `vibezoo_setup()` to install.\n")
+                except Exception:
+                    # OCR 실패 시 조용히 스킵 (에러 아님)
+                    pass
+
+            if ocr_section:
+                report += ocr_section
+
+            try_crow_ingest(f"SSA v3 analyze: {fname} ({orig_w}x{orig_h}, detail={detail}, ocr={ocr_engine_name}, text_blocks={ocr_blocks_count})",
                             register="context")
             return report
 
@@ -713,46 +755,70 @@ def register(mcp):
 
     @mcp.tool
     def open_image_dropzone() -> str:
-        """VS Code Webview에서 이미지 드래그앤드롭 업로드 페이지를 엽니다.
+        """(Deprecated) VS Code Webview에서 이미지 드래그앤드롭 업로드 페이지를 엽니다.
         업로드된 이미지는 ~/.vibezoo-cache/dropped_image.png에 저장됩니다.
-        이후 aggregate_spatial_pixels()로 분석할 수 있습니다.
 
-        (웹뷰 통합: 외부 브라우저 대신 VS Code Webview 내에서 동작)
+        ⚠️ **참고**: 이 도구는 `capture_screen(source="dropzone")`에 통합되었습니다.
+        내부적으로 capture_screen(source="dropzone")을 호출합니다.
         """
-        try:
-            # Webview 액션 파일에 드롭존 HTML 전달
-            from base64 import b64encode
+        from bridge.tools.whiteboard import capture_screen
+        return capture_screen(source="dropzone")
 
-            html_b64 = b64encode(_DROPZONE_HTML.encode('utf-8')).decode('utf-8')
 
-            data = {
-                "action": "open_dropzone",
-                "html_b64": html_b64,
-                "title": "VibeZoo Image Drop Zone",
-                "timestamp": time.time(),
-            }
-            _atomic_write_json(WHITEBOARD_ACTION_FILE, data, indent=2)
+# ── OCR 결과 포맷팅 ──────────────────────────────────
 
-            return (_markdown_header("Image Drop Zone", "📸")
-                    + "Drop zone opened in VS Code Webview.\n\n"
-                    + "1. Drag & drop an image into the Webview\n"
-                    + "2. Image will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
-                    + "3. Then call `aggregate_spatial_pixels()` with that path\n\n"
-                    + "Alternatively, use `capture_screen()` to capture the screen directly.\n"
-                    + _markdown_footer())
 
-        except Exception as e:
-            # Fallback: 브라우저 열기
-            try:
-                import webbrowser
-                port = 9027
-                url = f"http://localhost:{port}/upload"
-                webbrowser.open(url)
-                return (_markdown_header("Image Drop Zone", "📸")
-                        + f"Browser opened at `{url}`\n\n"
-                        + "1. Drag & drop image\n"
-                        + f"2. Then call `aggregate_spatial_pixels()`\n"
-                        + _markdown_footer())
-            except Exception:
-                return (_markdown_header("Drop Zone Error", "❌")
-                        + f"**Error**: {e}\n" + _markdown_footer())
+def _format_ocr_section(ocr_result: dict, img_shape: tuple) -> str:
+    """OCR 결과를 마크다운 섹션으로 포맷팅.
+
+    Args:
+        ocr_result: ``OcrEngine.ocr()`` 반환값
+        img_shape: OpenCV 이미지 shape (h, w, ...)
+
+    Returns:
+        "### OCR Text Extraction" 섹션 마크다운
+    """
+    lines = []
+    engine = ocr_result.get("engine", "none")
+
+    lines.append(f"\n### OCR Text Extraction")
+
+    if ocr_result.get("text", "").strip():
+        text = ocr_result["text"]
+        lines.append(f"- **Engine**: {engine}")
+        lines.append(f"- **Language**: {ocr_result.get('language', 'auto')}")
+
+        stats = ocr_result.get("stats", {})
+        lines.append(f"- **Words**: {stats.get('word_count', 0)}")
+        lines.append(f"- **Lines**: {stats.get('line_count', 0)}")
+
+        blocks = ocr_result.get("blocks", [])
+        if blocks:
+            avg_conf = sum(b.get("confidence", 0) for b in blocks) / max(len(blocks), 1)
+            lines.append(f"- **Blocks**: {len(blocks)}")
+            lines.append(f"- **Avg Confidence**: {avg_conf:.0f}%")
+
+            # 상위 블록 테이블
+            top_blocks = sorted(blocks, key=lambda b: -b.get("confidence", 0))[:10]
+            h, w = img_shape[:2]
+            lines.append("\n| # | Text | Conf | Position | Size |")
+            lines.append("|---|------|------|----------|------|")
+            for i, b in enumerate(top_blocks, 1):
+                t = b.get("text", "")[:50]
+                if len(b.get("text", "")) > 50:
+                    t += "…"
+                lines.append(
+                    f"| {i} | {t} | {b.get('confidence', 0):.0f}% "
+                    f"| {b.get('position', '?')} | {b.get('size', '?')} |"
+                )
+
+        # 전체 텍스트 (접을 수 있게)
+        lines.append(f"\n<details>\n<summary>Full extracted text ({len(text)} chars)</summary>\n\n```\n{text[:2000]}\n```\n</details>")
+    else:
+        lines.append(f"- **Engine**: {engine}")
+        if ocr_result.get("text") is not None:
+            lines.append("- No text detected in image.")
+        else:
+            lines.append("- OCR not performed.")
+
+    return "\n".join(lines)

@@ -23,6 +23,49 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest
 
+# ── 드롭존 HTML (Webview 내장) ──────────────────────
+
+_DROPZONE_HTML = """<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>VibeZoo Image Drop Zone</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#1e1e1e;color:#ccc;font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+  #dropzone{width:90%;max-width:500px;height:300px;border:3px dashed #4ec9ff;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:.3s;cursor:pointer;text-align:center;padding:20px}
+  #dropzone.dragover{border-color:#6acb6a;background:rgba(106,203,106,.1)}
+  #dropzone.has-image{border-style:solid;border-color:#6acb6a}
+  #dropzone .icon{font-size:64px;margin-bottom:16px;opacity:.6}
+  #dropzone p{font-size:14px;line-height:1.6}
+  #dropzone .hint{font-size:12px;color:#888;margin-top:8px}
+  #preview{max-width:100%;max-height:200px;display:none;margin-bottom:12px;border-radius:8px}
+  #status{font-size:13px;margin-top:12px;padding:8px 16px;border-radius:8px;display:none}
+  #status.success{background:#1a3a1a;color:#6acb6a;display:block}
+  #status.error{background:#3a1a1a;color:#ff6b6b;display:block}
+  input[type=file]{display:none}
+</style></head>
+<body>
+<div id="dropzone" onclick="document.getElementById('fileInput').click()">
+  <div class="icon">📸</div>
+  <p>Drag & drop an image here<br>or <strong>click to browse</strong></p>
+  <p class="hint">Supports: PNG, JPG, GIF, BMP, WEBP</p>
+  <img id="preview" alt="Preview"/>
+  <div id="status"></div>
+</div>
+<input type="file" id="fileInput" accept="image/*" onchange="handleFile(this.files[0])"/>
+<script>
+const dz=document.getElementById('dropzone');
+const preview=document.getElementById('preview');
+const status=document.getElementById('status');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');handleFile(e.dataTransfer.files[0])});
+async function handleFile(file){if(!file)return;if(!file.type.startsWith('image/')){showStatus('Not an image file','error');return}
+const form=new FormData();form.append('image',file);
+try{const r=await fetch('/upload',{method:'POST',body:form});const t=await r.text();showStatus('Uploaded! Use aggregate_spatial_pixels() to analyze.','success');preview.src=URL.createObjectURL(file);preview.style.display='block';dz.classList.add('has-image')}
+catch(e){showStatus('Upload failed. Save manually to ~/.vibezoo-cache/dropped_image.png','error')}}
+function showStatus(msg,type){status.textContent=msg;status.className=type}
+</script></body></html>"""
+
 
 # ── WhiteboardDataConverter ──────────────────────────────────────────
 
@@ -654,33 +697,30 @@ class WhiteboardDataConverter:
 _converter = WhiteboardDataConverter()
 
 
-# ── 도구 등록 ────────────────────────────────────────
+# ── 내부 구현 함수 ──────────────────────────────────
 
-def register(mcp):
-    """Whiteboard 도구 등록"""
 
-    @mcp.tool
-    def capture_screen() -> str:
-        """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다."""
-        img = None
-        width = 0
-        height = 0
+def _capture_screen_impl() -> str:
+    """화면 캡처 실제 구현 (3단계 fallback)"""
+    img = None
+    width = 0
+    height = 0
 
-        # 방법 1: PIL ImageGrab (가장 안정적)
+    # 방법 1: PIL ImageGrab (가장 안정적)
+    try:
+        from PIL import ImageGrab
+        img = ImageGrab.grab()
+        width, height = img.size
+    except ImportError:
+        pass
+
+    # 방법 2: Windows PowerShell fallback
+    if img is None and os.name == 'nt':
         try:
-            from PIL import ImageGrab
-            img = ImageGrab.grab()
-            width, height = img.size
-        except ImportError:
-            pass
+            import subprocess
+            import base64
 
-        # 방법 2: Windows PowerShell fallback
-        if img is None and os.name == 'nt':
-            try:
-                import subprocess
-                import base64
-
-                ps_script = """
+            ps_script = """
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -693,65 +733,127 @@ $bitmap.Dispose()
 $graphics.Dispose()
 [System.Convert]::ToBase64String($ms.ToArray())
 """
-                result = subprocess.run(
-                    ['powershell', '-NoProfile', '-Command', ps_script],
-                    capture_output=True, text=True, timeout=15
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    b64_data = result.stdout.strip()
-                    from PIL import Image
-                    import io
-                    img_bytes = base64.b64decode(b64_data)
-                    img = Image.open(io.BytesIO(img_bytes))
-                    width, height = img.size
-            except Exception:
-                pass
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-Command', ps_script],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                b64_data = result.stdout.strip()
+                from PIL import Image
+                import io
+                img_bytes = base64.b64decode(b64_data)
+                img = Image.open(io.BytesIO(img_bytes))
+                width, height = img.size
+        except Exception:
+            pass
 
-        # 방법 3: mss 라이브러리 (PIL 대체)
-        if img is None:
-            try:
-                import mss
-                with mss.mss() as sct:
-                    monitor = sct.monitors[0]
-                    sct_img = sct.grab(monitor)
-                    from PIL import Image
-                    img = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
-                    width, height = img.size
-            except ImportError:
-                pass
-
-        if img is None:
-            return (_markdown_header("Screen Capture Error", "❌")
-                    + "**No screen capture method available.**\n\n"
-                    + "Install Pillow: `pip install Pillow`\n"
-                    + "Or on Windows: ensure PowerShell 5+ is available.\n"
-                    + _markdown_footer())
-
+    # 방법 3: mss 라이브러리 (PIL 대체)
+    if img is None:
         try:
-            import base64
-            buf = BytesIO()
-            img.save(buf, format='PNG')
-            img_b64 = base64.b64encode(buf.getvalue()).decode()
+            import mss
+            with mss.mss() as sct:
+                monitor = sct.monitors[0]
+                sct_img = sct.grab(monitor)
+                from PIL import Image
+                img = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
+                width, height = img.size
+        except ImportError:
+            pass
 
-            data = {
-                "timestamp": time.time(),
-                "type": "screenshot",
-                "image": f"data:image/png;base64,{img_b64}",
-                "width": width,
-                "height": height,
-            }
-            _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
+    if img is None:
+        return (_markdown_header("Screen Capture Error", "❌")
+                + "**No screen capture method available.**\n\n"
+                + "Install Pillow: `pip install Pillow`\n"
+                + "Or on Windows: ensure PowerShell 5+ is available.\n"
+                + _markdown_footer())
 
-            output = (_markdown_header("Screen Capture")
-                      + f"Screen captured ({width}x{height}). Image saved to whiteboard.\n\n"
-                      + f"Use `get_whiteboard_state()` to view the captured content.\n")
-            try_crow_ingest(f"Screen captured: {width}x{height}", register="context")
-            output += _markdown_footer()
-            return output
-        except Exception as e:
-            return (_markdown_header("Screen Capture Error", "❌")
-                    + f"**Capture failed:** `{e}`\n"
-                    + _markdown_footer())
+    try:
+        import base64
+        buf = BytesIO()
+        img.save(buf, format='PNG')
+        img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+        data = {
+            "timestamp": time.time(),
+            "type": "screenshot",
+            "image": f"data:image/png;base64,{img_b64}",
+            "width": width,
+            "height": height,
+        }
+        _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
+
+        output = (_markdown_header("Screen Capture")
+                  + f"Screen captured ({width}x{height}). Image saved to whiteboard.\n\n"
+                  + f"Use `get_whiteboard_state()` to view the captured content.\n")
+        try_crow_ingest(f"Screen captured: {width}x{height}", register="context")
+        output += _markdown_footer()
+        return output
+    except Exception as e:
+        return (_markdown_header("Screen Capture Error", "❌")
+                + f"**Capture failed:** `{e}`\n"
+                + _markdown_footer())
+
+
+def _open_dropzone_in_webview() -> str:
+    """VS Code Webview 내장 드롭존 열기 (open_image_dropzone 통합)"""
+    from base64 import b64encode
+
+    html_b64 = b64encode(_DROPZONE_HTML.encode('utf-8')).decode('utf-8')
+
+    data = {
+        "action": "open_dropzone",
+        "html_b64": html_b64,
+        "title": "VibeZoo Image Drop Zone",
+        "timestamp": time.time(),
+    }
+    _atomic_write_json(WHITEBOARD_ACTION_FILE, data, indent=2)
+
+    return (_markdown_header("Image Drop Zone", "📸")
+            + "Drop zone opened in VS Code Webview.\n\n"
+            + "1. Drag & drop an image into the Webview\n"
+            + "2. Image will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
+            + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n\n"
+            + "💡 **Tip**: Use `capture_screen()` (without arguments) to capture your screen directly.\n"
+            + _markdown_footer())
+
+
+def _open_file_picker() -> str:
+    """파일 선택 다이얼로그 열기"""
+    data = {
+        "action": "open_file_picker",
+        "title": "VibeZoo Image File Picker",
+        "timestamp": time.time(),
+    }
+    _atomic_write_json(WHITEBOARD_ACTION_FILE, data, indent=2)
+
+    return (_markdown_header("File Picker", "📁")
+            + "File picker opened in VS Code Webview.\n\n"
+            + "1. Select an image file from the file picker\n"
+            + "2. Image will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
+            + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n"
+            + _markdown_footer())
+
+
+# ── 도구 등록 ────────────────────────────────────────
+
+def register(mcp):
+    """Whiteboard 도구 등록"""
+
+    @mcp.tool
+    def capture_screen(source: str = "screen") -> str:
+        """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다.
+        source="dropzone" 시 VS Code Webview 드롭존을 열어 이미지를 업로드할 수 있습니다.
+
+        Args:
+            source: "screen" (화면 캡처) | "dropzone" (드롭존 열기) | "file" (파일 선택)
+        """
+        if source == "dropzone":
+            return _open_dropzone_in_webview()
+        elif source == "file":
+            return _open_file_picker()
+
+        # 기본: 화면 캡처
+        return _capture_screen_impl()
 
     @mcp.tool
     def draw_on_whiteboard(commands: str) -> str:

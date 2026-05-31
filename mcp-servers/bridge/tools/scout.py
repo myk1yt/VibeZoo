@@ -1,5 +1,6 @@
 # VibeZoo Bridge — Scout 도구 그룹
 # search_codebase + find_references + summarize_architecture
+# 점진적 스트리밍 지원 (summarize_architecture)
 
 import json
 import os
@@ -26,6 +27,7 @@ from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.search_engine import SearchEngine
 from bridge.ast_engine import AstEngine
 from bridge.file_cache import FileCache
+from bridge.tools._base import BaseTool
 
 # ── 싱글톤 인스턴스 ──────────────────────────────────
 
@@ -316,19 +318,22 @@ def register(mcp):
         return output
 
     @mcp.tool
-    def summarize_architecture(target_path: Optional[str] = None) -> str:
+    def summarize_architecture(target_path: Optional[str] = None, streaming: bool = True) -> str:
         """프로젝트 아키텍처를 분석하여 요약합니다.
         내부적으로 map_dependencies + analyze_call_graph를 호출하여
         실제 모듈 의존성, 진입점, 레이어 구조를 분석합니다.
+        streaming=True 시 기본 정보를 먼저 반환하고, 의존성 분석 및 git 트렌드를 별도 섹션으로 추가합니다.
 
         Args:
             target_path: 분석 대상 디렉토리 경로
+            streaming: True면 기본 정보 → 의존성 분석 → git 트렌드 순으로 점진적 결과 (기본: True)
         """
         from bridge.tools.deep_analyzer import _run_map_dependencies
 
         root = Path(get_project_root(target_path))
         root_str = str(root)
 
+        # ── 공통 데이터 수집 ──
         techs = {
             "package.json": "Node.js/TypeScript",
             "go.mod": "Go",
@@ -358,6 +363,15 @@ def register(mcp):
         output += f"**Project**: `{root.name}`\n"
         output += f"**Tech Stack**: {', '.join(found_techs) if found_techs else 'Auto-detect failed'}\n\n"
 
+        # ── 모든 파일 수집 (레이어 분석, 확장자 분포 등에 사용) ──
+        all_files = []
+        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+            all_files.append(p)
+
+        total_files = len(all_files)
+
+        # ── Stage 1: 기본 정보 (즉시 반환 가능) ──
+
         # 진입점 식별
         entry_patterns = ["main.py", "index.ts", "index.js", "app.ts", "main.go", "__init__.py",
                           "extension.ts", "server.ts", "server.js"]
@@ -374,12 +388,42 @@ def register(mcp):
                 output += f"- `{e}`\n"
             output += "\n"
 
+        # 파일 타입 분포
+        ext_count = defaultdict(int)
+        for p in all_files:
+            ext_count[p.suffix] += 1
+        output += "## Code Metrics\n\n"
+        output += "### File Type Distribution\n"
+        for ext, count in sorted(ext_count.items(), key=lambda x: -x[1]):
+            output += f"- `{ext}`: {count} files\n"
+
+        # 기본 통계
+        total_lines = 0
+        for p in all_files:
+            try:
+                total_lines += len(p.read_text(encoding="utf-8", errors="ignore").split("\n"))
+            except Exception:
+                pass
+        output += "\n### Basic Stats\n"
+        output += f"- Source files: {total_files}\n"
+        output += f"- Total lines: ~{total_lines}\n"
+        if found_techs:
+            output += f"- Primary language: {found_techs[0]}\n"
+        output += "\n"
+
+        # ── 스트리밍 분기점: Stage 1 완료 ──
+        if streaming:
+            output += BaseTool.progress_chunk(
+                "1/2", 50,
+                "🏗️ 기본 정보 확인 완료 — 의존성 분석 및 git 트렌드는 아래에 계속됩니다..."
+            )
+            output += "> **의존성 분석 및 git 트렌드는 아래에 계속됩니다...**\n\n"
+
+        # ── Stage 2: 의존성 분석 + git 트렌드 ──
+
         # Import 기반 레이어 자동 발견
         output += "## Auto-Discovered Layers (import-based)\n\n"
         dir_import_count = defaultdict(int)
-        all_files = []
-        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
-            all_files.append(p)
         for p in all_files:
             content = _read_file_content(p)
             if content is None:
@@ -415,7 +459,6 @@ def register(mcp):
         if high_dep_files:
             for f, c in high_dep_files[:3]:
                 debt_items.append(f"⚠️ `{f}` has {c} imports — too many responsibilities?")
-        total_files = len(all_files)
         if total_files > 100:
             debt_items.append(f"📏 Large project ({total_files} source files) — consider modularization")
         if len(found_techs) > 2:
@@ -427,6 +470,7 @@ def register(mcp):
             output += "- ✅ No significant technical debt detected.\n"
         output += "\n"
 
+        # Dependency Metrics
         output += "## Dependency Metrics\n"
         if highest_deps:
             output += f"- **Most imported files** (hub modules):\n"
@@ -434,16 +478,8 @@ def register(mcp):
                 output += f"  - `{fpath}` ← {count} dependents\n"
         output += f"- **Circular dependencies**: {'⚠️ Detected' if has_cycles else '✅ None'}\n\n"
 
-        # 파일 타입 분포 + 변경 트렌드
-        output += "## Code Metrics\n\n"
-        ext_count = defaultdict(int)
-        for p in all_files:
-            ext_count[p.suffix] += 1
-        output += "### File Type Distribution\n"
-        for ext, count in sorted(ext_count.items(), key=lambda x: -x[1]):
-            output += f"- `{ext}`: {count} files\n"
-
-        output += "\n### Change Trend (git log)\n"
+        # Git 활동 트렌드
+        output += "### Change Trend (git log)\n"
         try:
             git_result = subprocess.run(
                 ["git", "log", "--oneline", "--since=30.days", "--format=%ad", "--date=short"],
@@ -497,18 +533,23 @@ def register(mcp):
                         output += f"  - ... +{len(files)-5} more\n"
             output += "\n"
 
-        total_lines = 0
-        for p in all_files:
-            try:
-                total_lines += len(p.read_text(encoding="utf-8", errors="ignore").split("\n"))
-            except Exception:
-                pass
-        output += f"## Stats\n"
-        output += f"- Source files: {total_files}\n"
-        output += f"- Total lines: ~{total_lines}\n"
-        if found_techs:
-            output += f"- Primary language: {found_techs[0]}\n"
+        # ── 스트리밍 분기점: Stage 2 완료 ──
+        if streaming:
+            output += BaseTool.progress_chunk(
+                "2/2", 100,
+                "✅ 아키텍처 분석 완료"
+            )
 
-        try_crow_ingest(json.dumps({"action": "arch_summary", "files": total_files, "tech": found_techs, "layers": len(layers)}), register="arch")
+        # Crow ingest
+        try_crow_ingest(
+            json.dumps({
+                "action": "arch_summary",
+                "files": total_files,
+                "tech": found_techs,
+                "layers": len(layers),
+                "streaming": streaming,
+            }),
+            register="arch"
+        )
         output += _markdown_footer()
         return output
