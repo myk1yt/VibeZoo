@@ -351,10 +351,12 @@ def _extract_patterns_ast(target_path: str, min_occurrences: int = 3) -> str:
     AST 서브트리 매칭으로 구조적 패턴 탐지.
 
     기존 키워드 카운팅(content.count("async ")) → tree-sitter AST 노드 타입 매칭 + regex 폴백.
+    각 패턴의 발생 위치(list[dict])를 LLM이 활용 가능한 형태로 반환.
     """
     ast_engine = _get_ast_engine()
     root = Path(get_project_root(target_path))
-    results = defaultdict(lambda: {"count": 0, "files": [], "examples": []})
+    # 위치 정보 포함: 각 패턴의 occurrence에 file/line/column 정보 저장
+    results = defaultdict(lambda: {"count": 0, "files": [], "examples": [], "locations": []})
 
     for p in _iter_project_files_cached(root, SOURCE_EXTS, DEFAULT_EXCLUDE_DIRS):
         ext = p.suffix.lower()
@@ -472,6 +474,12 @@ def _extract_patterns_ast(target_path: str, min_occurrences: int = 3) -> str:
                     results[pattern_name]["files"].append(str(p))
                 if len(results[pattern_name]["examples"]) < 3:
                     results[pattern_name]["examples"].append(example)
+                # 위치 정보 저장 (LLM 활용 가능 형태)
+                loc = {"file": str(p), "line": 0, "col": 0}
+                ex_line_match = re.search(r':(\d+)', example)
+                if ex_line_match:
+                    loc["line"] = int(ex_line_match.group(1))
+                results[pattern_name]["locations"].append(loc)
 
     # 결과 포맷팅
     lines = []
@@ -488,6 +496,16 @@ def _extract_patterns_ast(target_path: str, min_occurrences: int = 3) -> str:
             lines.append(f"- **Examples**:")
             for ex in data["examples"]:
                 lines.append(f"  - `{ex}`")
+        # 위치 정보 (접힘)
+        if data["locations"]:
+            lines.append(f"- **Locations**: {len(data['locations'])} occurrence(s)")
+            # 상위 5개 location을 JSON 형태로 표시
+            loc_summary = []
+            for loc in data["locations"][:5]:
+                loc_summary.append(f"`{loc['file']}:{loc['line']}`")
+            lines.append(f"  - " + ", ".join(loc_summary))
+            if len(data["locations"]) > 5:
+                lines.append(f"  - ... +{len(data['locations'])-5} more")
         lines.append("")
 
     if len(lines) <= 2:

@@ -482,7 +482,10 @@ def register(mcp):
 
     @mcp.tool
     def check_quality(target_path: Optional[str] = None) -> str:
-        """프로젝트의 코드 품질을 검사합니다.
+        """💀 (Deprecated) 프로젝트의 코드 품질을 검사합니다.
+
+        💀 `review_project(mode="quality")` 사용 권장.
+        이 도구는 내부적으로 `review_project(mode="quality")`으로 위임됩니다.
 
         Args:
             target_path: 검사 대상 경로

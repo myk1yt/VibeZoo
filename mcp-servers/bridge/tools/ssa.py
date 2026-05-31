@@ -755,10 +755,10 @@ def register(mcp):
 
     @mcp.tool
     def open_image_dropzone() -> str:
-        """(Deprecated) VS Code Webview에서 이미지 드래그앤드롭 업로드 페이지를 엽니다.
+        """💀 (Deprecated) VS Code Webview에서 이미지 드래그앤드롭 업로드 페이지를 엽니다.
         업로드된 이미지는 ~/.vibezoo-cache/dropped_image.png에 저장됩니다.
 
-        ⚠️ **참고**: 이 도구는 `capture_screen(source="dropzone")`에 통합되었습니다.
+        💀 `capture_screen(source="dropzone")` 사용 권장.
         내부적으로 capture_screen(source="dropzone")을 호출합니다.
         """
         from bridge.tools.whiteboard import capture_screen

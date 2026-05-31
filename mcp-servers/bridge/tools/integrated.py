@@ -79,6 +79,17 @@ def register(mcp):
         "get_preferences": None,
     }
 
+    # ── FileCache 워밍 (첫 번째 도구 호출 시 미리 스캔) ──
+    try:
+        from bridge.file_cache import FileCache
+        from bridge.config import DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS
+        from pathlib import Path
+        cache = FileCache()
+        root = Path(os.getcwd())
+        cache.warm(root=root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS)
+    except Exception:
+        pass  # 워밍 실패는 치명적이지 않음
+
     # register가 호출될 때 다른 모듈의 도구를 참조할 수 있도록 지연 바인딩
     def _lazy_tool(name):
         if _tool_registry.get(name) is None:
@@ -143,7 +154,8 @@ def register(mcp):
     # ── 도구 등록 ──
 
     @mcp.tool
-    def review_project(target_path: str, streaming: bool = True) -> str:
+    def review_project(target_path: str, streaming: bool = True,
+                       mode: str = "summary", max_tokens: int = 500) -> str:
         """search_codebase + review_code + check_quality + extract_patterns 통합.
         프로젝트 전체를 종합 리뷰하여 하나의 마크다운 보고서로 반환합니다.
         streaming=True 시 각 단계별 진행 청크를 포함하여 LLM이 빠르게 첫 결과를 볼 수 있습니다.
@@ -151,6 +163,9 @@ def register(mcp):
         Args:
             target_path: 분석 대상 디렉토리 경로
             streaming: True면 각 단계별 진행 청크 포함 (기본: True)
+            mode: "summary" (기본) — 핵심 요약만 (파일 수, 주요 발견, 등급) 1000자 이내
+                  "full" — 전체 상세 보고서 (기존 동작)
+            max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
         err = _validate_string(target_path, "target_path")
         if err:
@@ -158,75 +173,113 @@ def register(mcp):
 
         sections = []
         sections.append(_markdown_header("Project Review Report"))
-        sections.append(f"> Target: `{target_path}`\n")
+        sections.append(f"> Target: `{target_path}`  \n> Mode: `{mode}`  \n> Max tokens: `{max_tokens if max_tokens > 0 else 'unlimited'}`\n")
 
-        # ── Stage 1/4: search_codebase (25%) ──
-        if streaming:
-            sections.append(BaseTool.progress_chunk("1/4", 25, "🔍 Searching codebase for TODO/FIXME/HACK/BUG patterns..."))
-        sections.append("## 🔍 Code Search\n")
-        search_terms = ["TODO", "FIXME", "HACK", "BUG"]
-        for term in search_terms:
-            fn = _get_search_codebase()
-            term_result, ok = _run_tool("search_codebase", query=term, max_results=10)
-            if ok:
-                if "No results found" not in term_result and "Found 0" not in term_result:
-                    sections.append(term_result)
-            else:
-                sections.append(f"⚠️ Partial failure: {term_result}")
+        if mode == "summary":
+            # ── Summary 모드: 핵심 요약만 (1000자 이내) ──
+            root = Path(get_project_root(target_path))
+            total_files = 0
+            todo_count = 0
+            func_count = 0
+            class_count = 0
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+                total_files += 1
+                content = _read_file_content(p)
+                if content:
+                    todo_count += len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
+                    func_count += len(re.findall(r'(?:function|async function|def\s+)', content))
+                    class_count += len(re.findall(r'\bclass\s+\w+', content))
 
-        # ── Stage 2/4: review_code (50%) ──
-        if streaming:
-            sections.append(BaseTool.progress_chunk("2/4", 50, "📝 Reviewing source files (top 5)..."))
-        sections.append("## 📝 Code Review\n")
-        root = Path(get_project_root(target_path))
-        reviewed = 0
-        total_files = 0
-        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
-            total_files += 1
-        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
-            if reviewed >= 5:
-                sections.append(f"\n> ... and more files (reviewed top 5 of {total_files} total)\n")
-                break
-            fn = _get_review_code()
-            review, ok = _run_tool("review_code", file_path=str(p))
-            if ok:
-                sections.append(review)
-            else:
-                sections.append(f"⚠️ Partial failure: {review}")
-            reviewed += 1
+            from bridge.tools.reviewer import _review_project_core
+            quality_result = _review_project_core(target_path, mode="quality")
+            grade_match = re.search(r'Grade\s*:\s*`([^`]+)`', quality_result)
+            grade = grade_match.group(1) if grade_match else "N/A"
+            score_match = re.search(r'Score\s*:\s*([\d.]+)/100', quality_result)
+            score = score_match.group(1) if score_match else "N/A"
 
-        if reviewed == 0:
-            sections.append("- No source files found to review.\n")
+            sections.append("## Summary\n\n")
+            sections.append(f"- **Source files**: {total_files}\n")
+            sections.append(f"- **Functions**: {func_count}\n")
+            sections.append(f"- **Classes**: {class_count}\n")
+            sections.append(f"- **TODO/FIXME markers**: {todo_count}\n")
+            sections.append(f"- **Quality grade**: `{grade}` (score: {score}/100)\n\n")
 
-        # ── Stage 3/4: check_quality (75%) ──
-        if streaming:
-            sections.append(BaseTool.progress_chunk("3/4", 75, "📊 Analyzing project quality metrics..."))
-        sections.append("## ✅ Quality Check\n")
-        fn = _get_check_quality()
-        quality, ok = _run_tool("check_quality", target_path=target_path)
-        if ok:
-            sections.append(quality)
+            # 캐시 통계 포함
+            from bridge.file_cache import FileCache
+            cache = FileCache()
+            cache_stats = cache.stats()
+            sections.append(f"<details>\n<summary>📊 Cache Statistics</summary>\n\n")
+            sections.append(f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n")
+            sections.append(f"- L2 path: {cache_stats.get('l2_path', 'N/A')}\n")
+            sections.append(f"</details>\n\n")
         else:
-            sections.append(f"⚠️ Partial failure: {quality}")
+            # ── Full 모드: 기존 상세 보고서 ──
+            # ── Stage 1/4: search_codebase (25%) ──
+            if streaming:
+                sections.append(BaseTool.progress_chunk("1/4", 25, "🔍 Searching codebase for TODO/FIXME/HACK/BUG patterns..."))
+            sections.append("## 🔍 Code Search\n")
+            search_terms = ["TODO", "FIXME", "HACK", "BUG"]
+            for term in search_terms:
+                term_result, ok = _run_tool("search_codebase", query=term, max_results=10)
+                if ok:
+                    if "No results found" not in term_result and "Found 0" not in term_result:
+                        sections.append(term_result)
+                else:
+                    sections.append(f"⚠️ Partial failure: {term_result}")
 
-        # ── Stage 4/4: extract_patterns (100%) ──
-        if streaming:
-            sections.append(BaseTool.progress_chunk("4/4", 100, "🔬 Extracting recurring code patterns..."))
-        sections.append("## 📊 Pattern Analysis\n")
-        fn = _get_extract_patterns()
-        patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=3)
-        if ok:
-            sections.append(patterns)
-        else:
-            sections.append(f"⚠️ Partial failure: {patterns}")
+            # ── Stage 2/4: review_code (50%) ──
+            if streaming:
+                sections.append(BaseTool.progress_chunk("2/4", 50, "📝 Reviewing source files (top 5)..."))
+            sections.append("## 📝 Code Review\n")
+            root = Path(get_project_root(target_path))
+            reviewed = 0
+            total_files = 0
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+                total_files += 1
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+                if reviewed >= 5:
+                    sections.append(f"\n> ... and more files (reviewed top 5 of {total_files} total)\n")
+                    break
+                fn = _get_review_code()
+                review, ok = _run_tool("review_code", file_path=str(p))
+                if ok:
+                    sections.append(review)
+                else:
+                    sections.append(f"⚠️ Partial failure: {review}")
+                reviewed += 1
+
+            if reviewed == 0:
+                sections.append("- No source files found to review.\n")
+
+            # ── Stage 3/4: check_quality (75%) ──
+            if streaming:
+                sections.append(BaseTool.progress_chunk("3/4", 75, "📊 Analyzing project quality metrics..."))
+            sections.append("## ✅ Quality Check\n")
+            fn = _get_check_quality()
+            quality, ok = _run_tool("check_quality", target_path=target_path)
+            if ok:
+                sections.append(quality)
+            else:
+                sections.append(f"⚠️ Partial failure: {quality}")
+
+            # ── Stage 4/4: extract_patterns (100%) ──
+            if streaming:
+                sections.append(BaseTool.progress_chunk("4/4", 100, "🔬 Extracting recurring code patterns..."))
+            sections.append("## 📊 Pattern Analysis\n")
+            fn = _get_extract_patterns()
+            patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=3)
+            if ok:
+                sections.append(patterns)
+            else:
+                sections.append(f"⚠️ Partial failure: {patterns}")
 
         # Crow ingest
         try_crow_ingest(
             json.dumps({
                 "action": "review_project",
                 "target": target_path,
-                "files_reviewed": reviewed,
-                "total_files": total_files,
+                "mode": mode,
+                "max_tokens": max_tokens,
                 "streaming": streaming,
                 "timestamp": time.time(),
             }),
@@ -236,19 +289,23 @@ def register(mcp):
         result = "\n\n---\n\n".join(sections)
         result += _markdown_footer()
 
-        if streaming:
+        if streaming and mode == "full":
             stats = {"files_reviewed": reviewed, "total_files": total_files}
             result = BaseTool.final_result(result, stats)
 
         return result
 
     @mcp.tool
-    def find_bugs(target_path: str) -> str:
+    def find_bugs(target_path: str, mode: str = "summary", max_tokens: int = 500) -> str:
         """extract_patterns + search_codebase(console.log|debugger|any) + Crow recall 통합.
         프로젝트에서 잠재적 버그를 찾아 마크다운으로 반환합니다.
+        ESLint/tsc 결과를 LLM 분석용 데이터 구조로 변환하여 포함합니다.
 
         Args:
             target_path: 분석 대상 디렉토리 경로
+            mode: "summary" (기본) — 핵심 발견만 1000자 이내
+                  "full" — 전체 상세 보고서
+            max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
         err = _validate_string(target_path, "target_path")
         if err:
@@ -256,55 +313,146 @@ def register(mcp):
 
         sections = []
         sections.append(_markdown_header("Bug Finder Report"))
-        sections.append(f"> Target: `{target_path}`\n")
+        sections.append(f"> Target: `{target_path}`  \n> Mode: `{mode}`  \n> Max tokens: `{max_tokens if max_tokens > 0 else 'unlimited'}`\n")
 
-        # 1. extract_patterns
-        sections.append("## 📊 Pattern Analysis\n")
-        fn = _get_extract_patterns()
-        patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=1)
-        if ok:
-            sections.append(patterns)
-        else:
-            sections.append(f"⚠️ Partial failure: {patterns}")
+        from bridge.tool_context import make_find_bugs_context
 
-        # 2. search_codebase
-        sections.append("## ⚠️ Suspicious Patterns\n")
+        # 캐시 워밍 + 통계
+        from bridge.file_cache import FileCache
+        cache = FileCache()
+        cache_stats = cache.stats()
+
         suspicious_queries = [
             "console.log", "debugger", ".only(", "fit(", "fdescribe",
             "TODO", "FIXME", "HACK", "XXX", "any", "as any",
             "@ts-ignore", "@ts-nocheck", "eslint-disable"
         ]
         found_suspicious = 0
-        fn = _get_search_codebase()
-        for query in suspicious_queries:
-            result, ok = _run_tool("search_codebase", query=query, max_results=10)
-            if ok:
-                if "No results found" not in result and "Found 0" not in result:
-                    sections.append(result)
-                    found_suspicious += 1
+        suspicious_results = []
+
+        if mode == "summary":
+            # ── Summary 모드: 핵심 발견만 ──
+            fn = _get_search_codebase()
+            for query in suspicious_queries:
+                result, ok = _run_tool("search_codebase", query=query, max_results=5)
+                if ok:
+                    line_count = len([l for l in result.split("\n") if l.strip().startswith("- `")])
+                    if line_count > 0:
+                        suspicious_results.append({"pattern": query, "count": line_count})
+                        found_suspicious += 1
+            sections.append("## ⚠️ Suspicious Patterns\n\n")
+            if suspicious_results:
+                for sr in suspicious_results:
+                    sections.append(f"- `{sr['pattern']}`: {sr['count']} occurrence(s)\n")
             else:
-                sections.append(f"⚠️ Partial failure: {result}")
-                found_suspicious += 1
+                sections.append("- No suspicious patterns found.\n")
 
-        if found_suspicious == 0:
-            sections.append("- No suspicious patterns found.\n")
+            sections.append("\n## 🧠 Crow Memory\n\n")
+            crow_results = try_crow_recall(query="bug pattern error in project", register="bug", limit=5)
+            if crow_results:
+                for item in crow_results[:2]:
+                    content = item.get("content", item.get("value", str(item)))
+                    sections.append(f"- {_truncate(content, 200)}\n")
+            else:
+                sections.append("- No relevant bug patterns found.\n")
 
-        # 3. Crow recall
-        sections.append("## 🧠 Crow Memory Recall\n")
-        crow_results = try_crow_recall(query="bug pattern error in project", register="bug", limit=10)
-        if crow_results:
-            sections.append("### Previous bug patterns from Crow memory:\n")
-            for item in crow_results:
-                content = item.get("content", item.get("value", str(item)))
-                sections.append(f"- {_truncate(content, 300)}\n")
+            # 캐시 통계
+            sections.append(f"\n<details>\n<summary>📊 Cache Statistics</summary>\n\n")
+            sections.append(f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n")
+            sections.append(f"- File list cache: {cache_stats.get('file_list_cache_size', 0)} entries\n")
+            sections.append(f"</details>\n\n")
+
         else:
-            sections.append("- No relevant bug patterns found in Crow memory.\n")
+            # ── Full 모드: 기존 상세 보고서 ──
+            # 1. extract_patterns
+            sections.append("## 📊 Pattern Analysis\n")
+            fn = _get_extract_patterns()
+            patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=1)
+            if ok:
+                sections.append(patterns)
+            else:
+                sections.append(f"⚠️ Partial failure: {patterns}")
+
+            # 2. search_codebase
+            sections.append("## ⚠️ Suspicious Patterns\n")
+            fn = _get_search_codebase()
+            for query in suspicious_queries:
+                result, ok = _run_tool("search_codebase", query=query, max_results=10)
+                if ok:
+                    if "No results found" not in result and "Found 0" not in result:
+                        sections.append(result)
+                        found_suspicious += 1
+                else:
+                    sections.append(f"⚠️ Partial failure: {result}")
+                    found_suspicious += 1
+
+            if found_suspicious == 0:
+                sections.append("- No suspicious patterns found.\n")
+
+            # 3. Crow recall
+            sections.append("## 🧠 Crow Memory Recall\n")
+            crow_results = try_crow_recall(query="bug pattern error in project", register="bug", limit=10)
+            if crow_results:
+                sections.append("### Previous bug patterns from Crow memory:\n")
+                for item in crow_results:
+                    content = item.get("content", item.get("value", str(item)))
+                    sections.append(f"- {_truncate(content, 300)}\n")
+            else:
+                sections.append("- No relevant bug patterns found in Crow memory.\n")
+
+            # 4. ESLint/tsc 결과 수집 (LLM 분석용 데이터)
+            root = Path(get_project_root(target_path))
+            eslint_data = None
+            try:
+                if (root / "package.json").exists():
+                    result = subprocess.run(
+                        ["npx", "eslint", ".", "--format", "json", "--quiet"],
+                        cwd=str(root), capture_output=True, text=True, timeout=30
+                    )
+                    if result.stdout.strip():
+                        eslint_data = json.loads(result.stdout)
+            except Exception:
+                pass
+
+            if eslint_data:
+                sections.append("\n## 🔬 ESLint Analysis (LLM-ready data)\n\n")
+                sections.append("<!-- LLM_TASK\n")
+                sections.append("도구: find_bugs\n")
+                sections.append("버전: 1.0\n")
+                sections.append("설명: ESLint 결과 + 코드 패턴 + Crow Memory 통합 분석\n")
+                sections.append("LLM 지시사항: 각 발견을 심각도(P0/P1/P2)로 분류하고, 위치/원인/수정 제안 포함\n")
+                sections.append("-->\n\n")
+                total_issues = sum(len(f.get("messages", [])) for f in eslint_data if isinstance(f, dict))
+                sections.append(f"- **Total ESLint issues**: {total_issues}\n")
+                sections.append(f"- **Files with issues**: {len([f for f in eslint_data if isinstance(f, dict) and f.get('messages')])}\n\n")
+                # 상위 10개 이슈
+                all_msgs = []
+                for f in eslint_data:
+                    if isinstance(f, dict):
+                        for msg in f.get("messages", []):
+                            all_msgs.append({
+                                "file": f.get("filePath", ""),
+                                "line": msg.get("line", 0),
+                                "rule": msg.get("ruleId", "unknown"),
+                                "severity": msg.get("severity", 0),
+                                "message": msg.get("message", ""),
+                            })
+                for msg in all_msgs[:10]:
+                    sections.append(f"- `{os.path.relpath(msg['file'], root)}:{msg['line']}` — [{msg['rule']}] {msg['message'][:120]}\n")
+
+            # 캐시 통계
+            sections.append(f"\n<details>\n<summary>📊 Cache Statistics</summary>\n\n")
+            sections.append(f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n")
+            sections.append(f"- File list cache: {cache_stats.get('file_list_cache_size', 0)} entries\n")
+            sections.append(f"</details>\n\n")
 
         bug_summary = {
             "action": "find_bugs",
             "target": target_path,
+            "mode": mode,
+            "max_tokens": max_tokens,
             "suspicious_count": found_suspicious,
-            "crow_recall_count": len(crow_results),
+            "crow_recall_count": len(try_crow_recall(query="bug pattern error in project", register="bug", limit=1)) if mode == "full" else 0,
             "timestamp": time.time(),
         }
         try_crow_ingest(json.dumps(bug_summary), register="bug")
@@ -381,7 +529,8 @@ def register(mcp):
         return result
 
     @mcp.tool
-    def generate_docs(target_path: str, output_format: str = "markdown") -> str:
+    def generate_docs(target_path: str, output_format: str = "markdown",
+                      mode: str = "summary", max_tokens: int = 500) -> str:
         """reverse_engineer + summarize_architecture + draw_on_whiteboard(architecture diagram) 통합.
         프로젝트 문서를 자동 생성하고 아키텍처 다이어그램을 화이트보드에 그립니다.
         format='mermaid' 시 ERD 다이어그램을 함께 생성합니다.
@@ -389,6 +538,9 @@ def register(mcp):
         Args:
             target_path: 분석 대상 디렉토리 경로
             output_format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
+            mode: "summary" (기본) — 핵심 요약만
+                  "full" — 전체 상세 보고서 (기존 동작)
+            max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
         err = _validate_string(target_path, "target_path")
         if err:
@@ -402,85 +554,128 @@ def register(mcp):
 
         sections = []
         sections.append(_markdown_header("Auto-Generated Documentation"))
-        sections.append(f"> Target: `{target_path}`  \n> Format: `{output_format}`\n")
+        sections.append(f"> Target: `{target_path}`  \n> Format: `{output_format}`  \n> Mode: `{mode}`\n")
 
-        # 1. summarize_architecture
-        sections.append("## 🏗️ Architecture Summary\n")
-        fn = _get_summarize_architecture()
-        arch, ok = _run_tool("summarize_architecture", target_path=target_path)
-        if ok:
-            sections.append(arch)
-        else:
-            sections.append(f"⚠️ Partial failure: {arch}")
+        from bridge.file_cache import FileCache
+        cache = FileCache()
 
-        # 2. reverse_engineer
-        sections.append("## 🔄 Reverse Engineering\n")
-        fn = _get_reverse_engineer()
-        rev, ok = _run_tool("reverse_engineer", target_path=target_path, output_format=output_format)
-        if ok:
-            sections.append(rev)
-        else:
-            sections.append(f"⚠️ Partial failure: {rev}")
-
-        # 3. draw_on_whiteboard
-        sections.append("## 🎨 Architecture Diagram (Whiteboard)\n")
-        try:
+        if mode == "summary":
+            # ── Summary 모드: 핵심 요약만 ──
             root = Path(get_project_root(target_path))
-            commands = []
-            entries = []
+            techs = {
+                "package.json": "Node.js/TypeScript",
+                "go.mod": "Go",
+                "Cargo.toml": "Rust",
+                "pyproject.toml": "Python",
+                "requirements.txt": "Python (pip)",
+                "pom.xml": "Java/Maven",
+                "Gemfile": "Ruby",
+            }
+            found_techs = [tech for file, tech in techs.items() if (root / file).exists()]
 
-            def collect(p, depth=0):
-                if depth > 2:
-                    return
-                try:
-                    for child in sorted(p.iterdir()):
-                        if child.name.startswith(".") or child.name in DEFAULT_EXCLUDE_DIRS:
-                            continue
-                        entries.append((child, depth))
-                        if child.is_dir():
-                            collect(child, depth + 1)
-                except (PermissionError, OSError):
-                    pass
-            collect(root)
+            total_files = 0
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+                total_files += 1
 
-            y = 50
-            x_offset = 80
-            colors = ["#4ec9ff", "#6acb6a", "#d4a0ff", "#ffd700"]
-            for i, (entry, depth) in enumerate(entries[:15]):
-                indent = depth * 25
-                color = colors[depth % len(colors)]
-                icon = "📁" if entry.is_dir() else "📄"
-                commands.append({
-                    "type": "rect",
-                    "props": {
-                        "left": x_offset + indent, "top": y + i * 42,
-                        "width": 200 - indent, "height": 34,
-                        "fill": "transparent", "stroke": color, "rx": 4
-                    }
-                })
-                commands.append({
-                    "type": "text",
-                    "props": {
-                        "left": x_offset + indent + 8, "top": y + i * 42 + 8,
-                        "text": f"{icon} {entry.name}",
-                        "fontSize": 12, "fill": "#ffffff"
-                    }
-                })
+            output = f"- **Project**: `{root.name}`\n"
+            output += f"- **Tech Stack**: {', '.join(found_techs) if found_techs else 'Auto-detect'}\n"
+            output += f"- **Source files**: {total_files}\n"
+            output += f"- **Format**: {output_format}\n\n"
 
-            if commands:
-                fn = _get_draw_on_whiteboard()
-                draw_result, ok = _run_tool("draw_on_whiteboard", commands=json.dumps(commands))
-                if ok:
-                    sections.append(f"- {draw_result}")
-                else:
-                    sections.append(f"⚠️ Partial failure (whiteboard): {draw_result}")
+            # 캐시 통계
+            cache_stats = cache.stats()
+            output += f"<details>\n<summary>📊 Cache Statistics</summary>\n\n"
+            output += f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n"
+            output += f"- File list cache: {cache_stats.get('file_list_cache_size', 0)} entries\n"
+            output += f"</details>\n\n"
+
+            sections.append(output)
+        else:
+            # ── Full 모드: 기존 상세 보고서 ──
+            # 1. summarize_architecture
+            sections.append("## 🏗️ Architecture Summary\n")
+            fn = _get_summarize_architecture()
+            arch, ok = _run_tool("summarize_architecture", target_path=target_path, mode="full")
+            if ok:
+                sections.append(arch)
             else:
-                sections.append("- No directory structure to visualize.\n")
+                sections.append(f"⚠️ Partial failure: {arch}")
 
-        except Exception as e:
-            sections.append(f"- Could not draw diagram: `{e}`\n")
+            # 2. reverse_engineer
+            sections.append("## 🔄 Reverse Engineering\n")
+            fn = _get_reverse_engineer()
+            rev, ok = _run_tool("reverse_engineer", target_path=target_path, output_format=output_format)
+            if ok:
+                sections.append(rev)
+            else:
+                sections.append(f"⚠️ Partial failure: {rev}")
 
-        try_crow_ingest(f"generate_docs completed for {target_path} (format={output_format})", register="arch")
+            # 3. draw_on_whiteboard
+            sections.append("## 🎨 Architecture Diagram (Whiteboard)\n")
+            try:
+                root = Path(get_project_root(target_path))
+                commands = []
+                entries = []
+
+                def collect(p, depth=0):
+                    if depth > 2:
+                        return
+                    try:
+                        for child in sorted(p.iterdir()):
+                            if child.name.startswith(".") or child.name in DEFAULT_EXCLUDE_DIRS:
+                                continue
+                            entries.append((child, depth))
+                            if child.is_dir():
+                                collect(child, depth + 1)
+                    except (PermissionError, OSError):
+                        pass
+                collect(root)
+
+                y = 50
+                x_offset = 80
+                colors = ["#4ec9ff", "#6acb6a", "#d4a0ff", "#ffd700"]
+                for i, (entry, depth) in enumerate(entries[:15]):
+                    indent = depth * 25
+                    color = colors[depth % len(colors)]
+                    icon = "📁" if entry.is_dir() else "📄"
+                    commands.append({
+                        "type": "rect",
+                        "props": {
+                            "left": x_offset + indent, "top": y + i * 42,
+                            "width": 200 - indent, "height": 34,
+                            "fill": "transparent", "stroke": color, "rx": 4
+                        }
+                    })
+                    commands.append({
+                        "type": "text",
+                        "props": {
+                            "left": x_offset + indent + 8, "top": y + i * 42 + 8,
+                            "text": f"{icon} {entry.name}",
+                            "fontSize": 12, "fill": "#ffffff"
+                        }
+                    })
+
+                if commands:
+                    fn = _get_draw_on_whiteboard()
+                    draw_result, ok = _run_tool("draw_on_whiteboard", commands=json.dumps(commands))
+                    if ok:
+                        sections.append(f"- {draw_result}")
+                    else:
+                        sections.append(f"⚠️ Partial failure (whiteboard): {draw_result}")
+                else:
+                    sections.append("- No directory structure to visualize.\n")
+
+            except Exception as e:
+                sections.append(f"- Could not draw diagram: `{e}`\n")
+
+            # 캐시 통계
+            cache_stats = cache.stats()
+            sections.append(f"\n<details>\n<summary>📊 Cache Statistics</summary>\n\n")
+            sections.append(f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n")
+            sections.append(f"- File list cache: {cache_stats.get('file_list_cache_size', 0)} entries\n")
+            sections.append(f"</details>\n\n")
+
+        try_crow_ingest(f"generate_docs completed for {target_path} (format={output_format}, mode={mode})", register="arch")
 
         result = "\n\n---\n\n".join(sections)
         result += _markdown_footer()

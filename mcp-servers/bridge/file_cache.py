@@ -218,6 +218,42 @@ class FileCache:
                 self._l2_write({})
                 self._file_list_cache.clear()
 
+    def warm(self, root: Path = None, extensions: Set[str] = None,
+             exclude_dirs: Set[str] = None) -> dict:
+        """파일 목록 캐시를 미리 스캔하여 워밍합니다.
+        첫 번째 도구 호출 시 실행하면 이후 도구가 캐시를 활용할 수 있습니다.
+
+        Args:
+            root: 프로젝트 루트 경로 (기본: 현재 작업 디렉토리)
+            extensions: 스캔할 확장자 (기본: .ts/.tsx/.js/.jsx/.py/.go/.rs)
+            exclude_dirs: 제외할 디렉토리 (기본: node_modules, .git 등)
+
+        Returns:
+            워밍 결과 통계
+        """
+        if root is None:
+            root = Path(os.getcwd())
+        if extensions is None:
+            from bridge.config import SOURCE_EXTS
+            extensions = SOURCE_EXTS
+        if exclude_dirs is None:
+            from bridge.config import DEFAULT_EXCLUDE_DIRS
+            exclude_dirs = DEFAULT_EXCLUDE_DIRS
+
+        start = time.time()
+        # 파일 목록 스캔 (FileCache.get_files에 캐시됨)
+        files = self.get_files(root, extensions, exclude_dirs)
+        # 각 파일의 내용을 L1에 프리로드 (선택적)
+        for p in files[:50]:  # 최대 50개 파일
+            self.get_content(p)
+
+        elapsed = time.time() - start
+        return {
+            "files_scanned": len(files),
+            "preloaded": min(len(files), 50),
+            "elapsed_seconds": round(elapsed, 3),
+        }
+
     def stats(self) -> dict:
         """캐시 히트율, 크기 등 통계"""
         with self._lock:

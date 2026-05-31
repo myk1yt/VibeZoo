@@ -19,14 +19,67 @@ from bridge.crow_client import try_crow_ingest
 
 
 class WebSearchEngine:
-    """다중 검색 엔진 폴백 체인 — DuckDuckGo 우선"""
+    """다중 검색 엔진 폴백 체인 — DuckDuckGo 우선, SearXNG 차선, Google/Bing API 키"""
 
-    ENGINES = ["duckduckgo", "google", "bing"]
+    ENGINES = ["auto", "duckduckgo", "searxng", "google", "bing"]
+    SEARXNG_INSTANCES = [
+        "https://searx.be",
+        "https://search.sapti.me",
+        "https://search.nerdvpn.de",
+        "https://search.mdosch.de",
+        "https://searx.work",
+    ]
 
     def search(self, query: str, max_results: int = 5,
                preferred_engine: str = "auto") -> list:
-        """검색 엔진 폴백 체인"""
-        return self._search_duckduckgo(query, max_results)
+        """검색 엔진 폴백 체인
+
+        Args:
+            query: 검색어
+            max_results: 최대 결과 수
+            preferred_engine: "auto" | "duckduckgo" | "searxng" | "google" | "bing"
+
+        Returns:
+            검색 결과 목록 (실패 시 빈 리스트)
+        """
+        if preferred_engine == "auto" or preferred_engine == "duckduckgo":
+            results = self._search_duckduckgo(query, max_results)
+            if results:
+                return results
+        elif preferred_engine == "searxng":
+            results = self._search_searxng(query, max_results)
+            if results:
+                return results
+        elif preferred_engine == "google":
+            return self._search_google_api(query, max_results)
+        elif preferred_engine == "bing":
+            return self._search_bing_api(query, max_results)
+
+        # ── Auto fallback chain ──
+        # 1. DuckDuckGo
+        results = self._search_duckduckgo(query, max_results)
+        if results:
+            return results
+
+        # 2. SearXNG 공개 인스턴스
+        results = self._search_searxng(query, max_results)
+        if results:
+            return results
+
+        # 3. Google API (환경변수 키 있으면)
+        if os.environ.get("GOOGLE_API_KEY"):
+            results = self._search_google_api(query, max_results)
+            if results:
+                return results
+
+        # 4. Bing API (환경변수 키 있으면)
+        if os.environ.get("BING_API_KEY"):
+            results = self._search_bing_api(query, max_results)
+            if results:
+                return results
+
+        # 모두 실패
+        return []
 
     def _search_duckduckgo(self, query: str, max_results: int) -> list:
         """DuckDuckGo HTML 검색"""
@@ -75,6 +128,91 @@ class WebSearchEngine:
                 })
 
         return results
+
+    def _search_searxng(self, query: str, max_results: int) -> list:
+        """SearXNG 공개 인스턴스 검색"""
+        for instance in self.SEARXNG_INSTANCES:
+            try:
+                search_url = f"{instance}/search"
+                data = urllib.parse.urlencode({"q": query, "format": "json", "language": "ko-KR"}).encode()
+                req = urllib.request.Request(
+                    search_url,
+                    data=data,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    json_data = json.loads(response.read().decode('utf-8', errors='replace'))
+
+                results = []
+                for r in json_data.get("results", [])[:max_results]:
+                    results.append({
+                        "title": r.get("title", "No title"),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("content", r.get("snippet", "No description available.")),
+                    })
+                if results:
+                    return results
+            except Exception:
+                continue
+        return []
+
+    def _search_google_api(self, query: str, max_results: int) -> list:
+        """Google Custom Search API 검색 (환경변수: GOOGLE_API_KEY, GOOGLE_CX)"""
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        cx = os.environ.get("GOOGLE_CX", "")
+        if not api_key or not cx:
+            return []
+
+        try:
+            params = urllib.parse.urlencode({
+                "key": api_key,
+                "cx": cx,
+                "q": query,
+                "num": min(max_results, 10),
+            })
+            url = f"https://www.googleapis.com/customsearch/v1?{params}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+
+            results = []
+            for item in data.get("items", [])[:max_results]:
+                results.append({
+                    "title": item.get("title", ""),
+                    "url": item.get("link", ""),
+                    "snippet": item.get("snippet", ""),
+                })
+            return results
+        except Exception:
+            return []
+
+    def _search_bing_api(self, query: str, max_results: int) -> list:
+        """Bing Web Search API 검색 (환경변수: BING_API_KEY)"""
+        api_key = os.environ.get("BING_API_KEY", "")
+        if not api_key:
+            return []
+
+        try:
+            params = urllib.parse.urlencode({"q": query, "count": min(max_results, 10)})
+            url = f"https://api.bing.microsoft.com/v7.0/search?{params}"
+            req = urllib.request.Request(url, headers={"Ocp-Apim-Subscription-Key": api_key})
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+
+            results = []
+            for item in data.get("webPages", {}).get("value", [])[:max_results]:
+                results.append({
+                    "title": item.get("name", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("snippet", ""),
+                })
+            return results
+        except Exception:
+            return []
 
 
 def register(mcp):
@@ -148,13 +286,12 @@ def register(mcp):
 
     @mcp.tool
     def web_search(query: str, max_results: int = 5, engine: str = "auto") -> str:
-        """웹 검색을 수행합니다. 차단이 적은 DuckDuckGo HTML 엔진을 사용해
-        노이즈 없이 정제된 결과만 반환합니다.
+        """웹 검색을 수행합니다. DuckDuckGo 우선, SearXNG 차선, Google/Bing API 키 fallback.
 
         Args:
             query: 검색어
             max_results: 최대 결과 수 (기본: 5)
-            engine: 검색 엔진 ("auto", "duckduckgo", "google", "bing"). 기본: "auto"
+            engine: 검색 엔진 ("auto" (기본), "duckduckgo", "searxng", "google", "bing")
 
         Returns:
             검색 결과 목록 (제목, URL, 요약)
@@ -167,17 +304,33 @@ def register(mcp):
         results = web_engine.search(query, max_results, engine)
 
         if not results:
+            # 모든 엔진 실패 시 명확한 에러 메시지
+            error_details = []
+            if engine == "auto":
+                error_details.append("DuckDuckGo 차단됨")
+                error_details.append("SearXNG 공개 인스턴스 사용 불가")
+                if os.environ.get("GOOGLE_API_KEY"):
+                    error_details.append("Google API 키 오류")
+                else:
+                    error_details.append("Google API 키 설정 필요 (GOOGLE_API_KEY + GOOGLE_CX)")
+                if os.environ.get("BING_API_KEY"):
+                    error_details.append("Bing API 키 오류")
+                else:
+                    error_details.append("Bing API 키 설정 필요 (BING_API_KEY)")
             return (_markdown_header(f"Search: {query}", "⚠️")
-                    + "검색 결과를 가져오지 못했습니다. 쿼리를 단순화해보세요.\n"
+                    + "**검색 결과를 가져오지 못했습니다.**\n\n"
+                    + "".join(f"- {e}\n" for e in error_details)
+                    + "\n> 환경변수 설정: `GOOGLE_API_KEY` + `GOOGLE_CX` (Google), `BING_API_KEY` (Bing)\n"
                     + _markdown_footer())
 
         output = _markdown_header(f"Search Results: {query}", "🌐")
-        output += f"**Query**: `{query}`\n\n"
+        output += f"**Query**: `{query}`\n"
+        output += f"**Engine**: `{engine}`\n\n"
         for r in results:
             output += f"### 🔗 [{r['title']}]({r['url']})\n"
             output += f"- **URL**: {r['url']}\n"
             output += f"- **Summary**: {r['snippet']}\n\n"
 
-        try_crow_ingest(f"Web search success: {query}", register="life_context")
+        try_crow_ingest(f"Web search success: {query} (engine={engine})", register="life_context")
         output += _markdown_footer()
         return output

@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,10 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
+from bridge.tool_context import (
+    make_explain_code_context,
+    format_manifest_markdown,
+)
 
 _ast_engine = None
 
@@ -32,6 +37,59 @@ def _get_ast_engine() -> AstEngine:
     if _ast_engine is None:
         _ast_engine = AstEngine()
     return _ast_engine
+
+
+def _get_git_blame(target: Path, line_number: int) -> dict:
+    """git blame 정보 조회 (author, date, commit_message, commit_hash)"""
+    try:
+        result = subprocess.run(
+            ["git", "blame", "-L", f"{line_number},{line_number}", "--porcelain", str(target)],
+            cwd=str(target.parent),
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            return {}
+        
+        blame_info = {}
+        for line in result.stdout.split("\n"):
+            if line.startswith("author "):
+                blame_info["author"] = line[7:].strip()
+            elif line.startswith("author-time "):
+                ts = int(line[12:].strip())
+                blame_info["date"] = time.strftime("%Y-%m-%d", time.localtime(ts))
+            elif line.startswith("summary "):
+                blame_info["commit_message"] = line[8:].strip()
+            elif " " not in line and line.strip():
+                blame_info["commit_hash"] = line.split(" ")[0] if " " in line else line[:10]
+        
+        if not blame_info.get("commit_hash"):
+            # fallback: extract hash from first line
+            first_line = result.stdout.split("\n")[0] if result.stdout else ""
+            if first_line:
+                blame_info["commit_hash"] = first_line.split(" ")[0][:10]
+        
+        return blame_info
+    except Exception:
+        return {}
+
+
+def _find_related_tests(target: Path) -> list[dict]:
+    """관련 테스트 파일 검색"""
+    root = Path(os.getcwd())
+    stem = target.stem
+    related = []
+    test_patterns = [
+        f"**/test_{stem}.*", f"**/{stem}.test.*", f"**/{stem}.spec.*",
+        f"**/test_*{stem}*", f"**/test*{stem}*",
+    ]
+    for pattern in test_patterns:
+        for p in root.glob(pattern):
+            if p.is_file() and p != target:
+                related.append({
+                    "file": str(p.relative_to(root)),
+                    "name": p.name,
+                })
+    return related
 
 
 def register(mcp):
@@ -79,8 +137,29 @@ def register(mcp):
         ast_engine._init_legacy_tree_sitter()
 
         ext = target.suffix.lower()
-        output = _markdown_header(f'Code Explanation: `{_normalize_path(file_path)}:{line_number}`')
+
+        # ── TOOL_CONTEXT 마커 출력 ──
+        output = "<!-- TOOL_CONTEXT: 설명에 필요한 데이터 수집 완료. LLM은 이 데이터로 종합 설명 생성 -->\n\n"
+
+        output += _markdown_header(f'Code Explanation: `{_normalize_path(file_path)}:{line_number}`')
         output += f"> `{line_content}`\n\n"
+
+        # ── git blame 정보 수집 ──
+        blame_info = _get_git_blame(target, line_number)
+        related_tests = _find_related_tests(target)
+
+        if blame_info:
+            output += "## Git Blame\n\n"
+            output += f"- **Author**: {blame_info.get('author', 'N/A')}\n"
+            output += f"- **Date**: {blame_info.get('date', 'N/A')}\n"
+            output += f"- **Commit**: `{blame_info.get('commit_hash', 'N/A')[:10]}`\n"
+            output += f"- **Message**: {blame_info.get('commit_message', 'N/A')}\n\n"
+
+        if related_tests:
+            output += "## Related Tests\n\n"
+            for t in related_tests:
+                output += f"- `{t['file']}`\n"
+            output += "\n"
 
         if ext in TS_JS_EXTS and ast_engine.is_available():
             ast = ast_engine.parse(content, ext)
@@ -441,17 +520,19 @@ def register(mcp):
         return output
 
     @mcp.tool
-    def refactor_across_files(pattern: str, new_pattern: str, file_patterns: Optional[str] = None) -> str:
+    def refactor_across_files(pattern: str, new_pattern: str, file_patterns: Optional[str] = None,
+                               dry_run: bool = True) -> str:
         """search_codebase로 패턴을 찾고, 모든 발생 위치에 대해 일괄 수정 제안을 생성합니다.
-        실제 파일 수정 없이 변경 제안서를 마크다운으로 반환합니다.
+        dry_run=True면 변경 제안서만, dry_run=False면 yocto 백업 후 실제 파일 수정을 수행합니다.
 
         Args:
             pattern: 찾을 코드 패턴 (검색어)
             new_pattern: 대체할 새 패턴 (변경 제안)
             file_patterns: 검색 대상 파일 패턴 (예: *.ts,*.tsx). 쉼표로 구분.
+            dry_run: True면 제안만 (기본값: True), False면 실제 파일 수정
 
         Returns:
-            Markdown 리팩토링 제안서: 각 발생 위치와 제안된 변경 사항
+            Markdown 리팩토링 제안서: 각 발생 위치와 제안된 변경 사항 (diff 블록 포함)
         """
         err = _validate_string(pattern, "pattern")
         if err:
@@ -465,9 +546,10 @@ def register(mcp):
         output = _markdown_header("Multi-File Refactoring Proposal")
         output += f"> **Search**: `{pattern}`\n"
         output += f"> **Replace with**: `{new_pattern}`\n"
-        output += f"> **File patterns**: `{file_patterns or '*.ts,*.tsx,*.js,*.jsx,*.py'}`\n\n"
+        output += f"> **File patterns**: `{file_patterns or '*.ts,*.tsx,*.js,*.jsx,*.py'}`\n"
+        output += f"> **Mode**: {'🔍 Dry run (proposal only)' if dry_run else '🚀 Apply changes'}\n\n"
 
-        search_result = search_codebase(query=pattern, file_patterns=file_patterns, max_results=50)
+        search_result = search_codebase(query=pattern, file_patterns=file_patterns, max_results=100)
         occurrences = []
         for line in search_result.split("\n"):
             m = re.match(r'^- `(.+?:\d+):', line)
@@ -527,9 +609,48 @@ def register(mcp):
             output += "- **Risk**: 🟢 **Low** — limited changes\n"
         if len(by_file) > 5:
             output += "- **Dependency impact**: Changes span multiple files — ensure imports are updated\n"
-        output += "\n> Note: This is a **proposal only**. No files have been modified.\n"
-        output += "> To apply changes, use your editor's find-and-replace or manual editing.\n"
 
-        try_crow_ingest(json.dumps({"action": "refactor_across_files", "pattern": pattern, "new_pattern": new_pattern, "occurrences": len(occurrences), "files_affected": len(by_file)}), register="style")
+        # ── Apply changes (dry_run=False) ──
+        if not dry_run:
+            output += "\n## Applied Changes\n\n"
+            applied_count = 0
+            failed_count = 0
+            for file_path, lines in sorted(by_file.items()):
+                actual_path = Path(os.getcwd()) / file_path
+                if not actual_path.exists():
+                    failed_count += 1
+                    continue
+                try:
+                    content = _read_file_content(actual_path)
+                    if content is None:
+                        failed_count += 1
+                        continue
+                    file_lines = content.split("\n")
+                    new_lines = list(file_lines)
+                    modified = False
+                    for line_num_str in lines:
+                        idx = int(line_num_str) - 1
+                        if 0 <= idx < len(new_lines) and pattern in new_lines[idx]:
+                            new_lines[idx] = new_lines[idx].replace(pattern, new_pattern)
+                            modified = True
+                    if modified:
+                        # yocto 백업: create .bak file
+                        bak_path = actual_path.with_suffix(actual_path.suffix + ".bak")
+                        if not bak_path.exists():
+                            import shutil
+                            shutil.copy2(str(actual_path), str(bak_path))
+                        actual_path.write_text("\n".join(new_lines), encoding="utf-8")
+                        applied_count += 1
+                        output += f"- ✅ `{_normalize_path(file_path)}` — {len(lines)} change(s) applied\n"
+                except Exception:
+                    failed_count += 1
+            output += f"\n**Result**: {applied_count} files modified, {failed_count} failed\n"
+            if applied_count > 0:
+                output += "\n> ⚠️ Backup files (.bak) created in the same directory. Restore by renaming `.bak` to original.\n"
+        else:
+            output += "\n> Note: This is a **proposal only**. No files have been modified.\n"
+            output += "> To apply changes, call with `dry_run=False` or use your editor's find-and-replace.\n"
+
+        try_crow_ingest(json.dumps({"action": "refactor_across_files", "pattern": pattern, "new_pattern": new_pattern, "occurrences": len(occurrences), "files_affected": len(by_file), "dry_run": dry_run}), register="style")
         output += _markdown_footer()
         return output

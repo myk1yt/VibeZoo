@@ -85,51 +85,62 @@ class AstEngine:
         2. tree-sitter-{lang_name} (개별 언어 패키지)
 
         실패 시 False 반환 (에러 아님, 조용한 폴백).
+
+        Python/Go/Rust 언어팩 지원:
+        - python: tree_sitter_python
+        - go:     tree_sitter_go
+        - rust:   tree_sitter_rust
+        - typescript/javascript: tree_sitter_typescript / tree_sitter_javascript
         """
+        # 빠른 경로: 이미 초기화됨 (락 없이 읽기)
+        if lang_name in self._initialized:
+            return True
+
+        # 락 획득 후 재확인 (DCLP 패턴)
         with self._thread_lock:
             if lang_name in self._initialized:
                 return True
 
-        # 방법 1: tree_sitter_languages 통합 패키지
-        try:
-            from tree_sitter_languages import get_language, get_parser  # type: ignore[import]
-            language = get_language(lang_name)
-            parser = get_parser(lang_name)
-            self._parsers[lang_name] = parser
-            self._languages[lang_name] = language
-            self._initialized.add(lang_name)
-            return True
-        except ImportError:
-            pass
-        except Exception as exc:
+            # 방법 1: tree_sitter_languages 통합 패키지
+            try:
+                from tree_sitter_languages import get_language, get_parser  # type: ignore[import]
+                language = get_language(lang_name)
+                parser = get_parser(lang_name)
+                self._parsers[lang_name] = parser
+                self._languages[lang_name] = language
+                self._initialized.add(lang_name)
+                return True
+            except ImportError:
+                pass
+            except Exception as exc:
+                self._init_errors.append(
+                    f"[{lang_name}] tree_sitter_languages get_language failed: {exc}"
+                )
+
+            # 방법 2: 개별 tree-sitter-{lang} 패키지
+            try:
+                import importlib
+                from tree_sitter import Language, Parser
+
+                lang_module = importlib.import_module(f"tree_sitter_{lang_name}")
+                lang_obj = Language(lang_module.language())
+                parser = Parser()
+                parser.set_language(lang_obj)
+                self._parsers[lang_name] = parser
+                self._languages[lang_name] = lang_obj
+                self._initialized.add(lang_name)
+                return True
+            except ImportError:
+                pass
+            except Exception as exc:
+                self._init_errors.append(
+                    f"[{lang_name}] tree_sitter_{lang_name} failed: {exc}"
+                )
+
             self._init_errors.append(
-                f"[{lang_name}] tree_sitter_languages get_language failed: {exc}"
+                f"[{lang_name}] not available (no tree-sitter package found)"
             )
-
-        # 방법 2: 개별 tree-sitter-{lang} 패키지
-        try:
-            import importlib
-            from tree_sitter import Language, Parser
-
-            lang_module = importlib.import_module(f"tree_sitter_{lang_name}")
-            lang_obj = Language(lang_module.language())
-            parser = Parser()
-            parser.set_language(lang_obj)
-            self._parsers[lang_name] = parser
-            self._languages[lang_name] = lang_obj
-            self._initialized.add(lang_name)
-            return True
-        except ImportError:
-            pass
-        except Exception as exc:
-            self._init_errors.append(
-                f"[{lang_name}] tree_sitter_{lang_name} failed: {exc}"
-            )
-
-        self._init_errors.append(
-            f"[{lang_name}] not available (no tree-sitter package found)"
-        )
-        return False  # 모든 방법 실패
+            return False  # 모든 방법 실패
 
     def get_init_errors(self) -> list[str]:
         """초기화 시도 결과 진단 정보 반환."""

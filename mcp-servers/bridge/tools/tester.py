@@ -22,6 +22,11 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
+from bridge.tool_context import (
+    make_generate_tests_context,
+    format_manifest_markdown,
+    MANIFEST_GENERATE_TESTS,
+)
 
 _ast_engine = None
 
@@ -77,10 +82,40 @@ def register(mcp):
             function_names = [fn["name"] for fn in functions[:20]]
             function_details = functions
         else:
-            for line in lines:
-                if re.search(r'(?:export\s+)?(?:function|async function|const\s+\w+\s*=\s*(?:async\s*)?\(|def\s+\w+\s*\()', line):
-                    func_count += 1
+            # Python/Go/Rust: AST or regex
+            ast = ast_engine.parse(content, ext)
+            if ast.get("functions"):
+                functions = ast["functions"]
+                func_count = len(functions)
+                function_names = [fn["name"] for fn in functions[:20]]
+                function_details = functions
+            else:
+                for line in lines:
+                    if re.search(r'(?:export\s+)?(?:function|async function|const\s+\w+\s*=\s*(?:async\s*)?\(|def\s+\w+\s*\()', line):
+                        func_count += 1
 
+        # ── 데이터 수집 (함수 시그니처 + 타입 + 의존성) ──
+        imports = []
+        if ext in TS_JS_EXTS:
+            ast_imports = ast_engine.extract_imports(content, ext)
+            imports = [{"module": i["module"], "type": i.get("type", "import"), "line": i.get("line", 0)} for i in ast_imports]
+        else:
+            from bridge.utils import _extract_regex_imports
+            raw_imports = _extract_regex_imports(str(target))
+            imports = [{"module": i, "type": "import", "line": 0} for i in raw_imports]
+
+        language = "python" if ext == ".py" else "go" if ext == ".go" else "rust" if ext == ".rs" else "typescript" if ext in (".ts", ".tsx") else "javascript"
+
+        # ── ToolContext 생성 ──
+        ctx = make_generate_tests_context(
+            source_path=str(target),
+            language=language,
+            functions=function_details,
+            imports=imports,
+            existing_tests=[],  # 향후: 기존 테스트 파일 스캔
+        )
+
+        # ── 기존 템플릿 출력 ──
         output = _markdown_header(f"Test Generation: {target.name}")
         output += f"- **Framework**: {framework or 'auto-detect'}\n"
         output += f"- **Functions detected**: {func_count}\n"
@@ -203,6 +238,20 @@ def register(mcp):
         elif ext == ".go":
             output += "\n## Go Test Structure\n\n"
             output += '```go\npackage main\n\nimport "testing"\n\nfunc Test_(t *testing.T) {\n\t// TODO: write test\n}\n```\n'
+
+        # ── LLM_TASK 섹션 추가 ──
+        output += "\n<!-- LLM_TASK\n"
+        output += "도구: generate_tests\n"
+        output += "버전: 1.0\n"
+        output += "설명: 함수 시그니처를 기반으로 단위 테스트 케이스 생성\n"
+        output += f"대상 파일: {source_path}\n"
+        output += f"언어: {language}\n"
+        output += f"감지된 함수 수: {func_count}\n"
+        output += f"LLM 지시사항: LLM은 이 데이터로 실제 동작하는 테스트 케이스를 생성하세요.\n"
+        output += "-->\n\n"
+
+        # ── ToolContext 마크다운 추가 ──
+        output += ctx.to_markdown() + "\n\n"
 
         try_crow_ingest(f"Generated tests for {target.name}: {func_count} functions, {branch_count} branches", register="context")
         output += _markdown_footer()
