@@ -1,0 +1,320 @@
+# VibeZoo Bridge — Reviewer 도구 그룹
+# review_code + check_quality (어댑터)
+
+import json
+import os
+import re
+import subprocess
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Optional
+
+from bridge.config import (
+    VERSION, DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS, TS_JS_EXTS,
+)
+from bridge.utils import (
+    _markdown_header, _markdown_footer,
+    _validate_string, _validate_file_path,
+    _read_file_content, _truncate, _normalize_path,
+    _iter_project_files, _iter_project_files_cached,
+    _npx_cmd, get_project_root,
+)
+from bridge.crow_client import try_crow_ingest, try_crow_recall
+from bridge.ast_engine import AstEngine
+
+# ── 싱글톤 ──────────────────────────────────────────
+
+_ast_engine = None
+
+
+def _get_ast_engine() -> AstEngine:
+    global _ast_engine
+    if _ast_engine is None:
+        _ast_engine = AstEngine()
+    return _ast_engine
+
+
+def register(mcp):
+    """Reviewer 도구 등록"""
+
+    @mcp.tool
+    def review_code(file_path: str, severity: str = "all") -> str:
+        """지정된 파일의 코드 리뷰를 수행합니다.
+        tree-sitter AST로 함수/클래스 구조와 실제 코드 품질 이슈를 탐지합니다.
+
+        Args:
+            file_path: 리뷰할 파일 경로
+            severity: 심각도 필터 ("all", "error", "warning", "info"). 기본: "all"
+        """
+        err = _validate_file_path(file_path)
+        if err:
+            return _markdown_header("Code Review Error", "❌") + f"**{err}**\n" + _markdown_footer()
+
+        p = Path(file_path)
+        if not p.exists():
+            p = Path(os.getcwd()) / file_path
+        if not p.exists() or not p.is_file():
+            return _markdown_header("Code Review Error", "❌") + f"**File not found: {file_path}**\n" + _markdown_footer()
+
+        content = _read_file_content(p)
+        if content is None:
+            return _markdown_header("Code Review Error", "❌") + f"**Cannot read file: {file_path}**\n" + _markdown_footer()
+
+        lines = content.split("\n")
+        ext = p.suffix.lower()
+        rel = _normalize_path(str(p))
+
+        output = _markdown_header(f"Review: `{rel}`")
+        output += f"{len(lines)} lines, {len(content)} bytes, `{ext}`\n\n"
+
+        issues = []
+        stats = {"functions": 0, "classes": 0, "interfaces": 0, "max_depth": 0}
+
+        # AST 분석 (TS/JS)
+        if ext in TS_JS_EXTS:
+            ast_engine = _get_ast_engine()
+            ast_engine._init_legacy_tree_sitter()
+            ast = ast_engine.parse(content, ext)
+            functions = ast.get("functions", [])
+            classes = ast.get("classes", [])
+            interfaces = ast.get("interfaces", [])
+            stats["functions"] = len(functions)
+            stats["classes"] = len(classes)
+            stats["interfaces"] = len(interfaces)
+
+            # AST 기반 이슈 탐지
+            any_count = len(re.findall(r':\s*any\b', content))
+            if any_count > 0:
+                issues.append(("⚠️", f"`any` type used {any_count} time(s) — consider using specific types"))
+
+            ts_ignore = len(re.findall(r'@ts-ignore', content))
+            ts_nocheck = len(re.findall(r'@ts-nocheck', content))
+            if ts_ignore > 0:
+                issues.append(("⚠️", f"`@ts-ignore` found {ts_ignore} time(s)"))
+            if ts_nocheck > 0:
+                issues.append(("⚠️", f"`@ts-nocheck` found — entire file skips type checking"))
+
+            eslint_disable = len(re.findall(r'eslint-disable', content))
+            if eslint_disable > 0:
+                issues.append(("📝", f"`eslint-disable` found {eslint_disable} time(s)"))
+
+            console_logs = len(re.findall(r'console\.(log|warn|error|debug)', content))
+            if console_logs > 0:
+                issues.append(("⚠️", f"`console.*` found {console_logs} time(s) — remove before production"))
+
+            if 'debugger' in content:
+                issues.append(("⚠️", "`debugger` statement found"))
+
+            empty_catches = len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', content))
+            if empty_catches > 0:
+                issues.append(("❌", f"Empty catch block(s): {empty_catches} — silently swallows errors"))
+
+            todos = len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
+            if todos > 0:
+                issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+
+        elif ext == ".py":
+            console_logs = len(re.findall(r'\bprint\(', content))
+            if console_logs > 0:
+                issues.append(("⚠️", f"`print()` found {console_logs} time(s) — use logging instead"))
+            todos = len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
+            if todos > 0:
+                issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+            empty_excepts = len(re.findall(r'except\s*:', content))
+            if empty_excepts > 0:
+                issues.append(("⚠️", f"Bare `except:` found {empty_excepts} time(s) — specify exception type"))
+        else:
+            todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
+            if todos > 0:
+                issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+
+        # 기본 검사 (모든 언어)
+        long_lines = sum(1 for l in lines if len(l) > 120)
+        if long_lines > 0:
+            issues.append(("📏", f"{long_lines} line(s) exceed 120 chars"))
+
+        # 심각도 필터
+        severity_map = {"❌": "error", "⚠️": "warning", "📝": "info", "📏": "info"}
+        if severity != "all":
+            filtered_issues = []
+            for level, msg in issues:
+                sev = severity_map.get(level, "info")
+                if sev == severity or (severity == "warning" and sev in ("error", "warning")):
+                    filtered_issues.append((level, msg))
+            issues = filtered_issues
+
+        # 출력
+        output += "## Structure\n"
+        if stats["functions"] > 0:
+            output += f"- Functions/Methods: {stats['functions']}\n"
+        if stats["classes"] > 0:
+            output += f"- Classes: {stats['classes']}\n"
+        if stats["interfaces"] > 0:
+            output += f"- Interfaces/Types: {stats['interfaces']}\n"
+
+        output += "\n## Issues\n"
+        if issues:
+            for level, msg in issues:
+                output += f"- {level} {msg}\n"
+            output += f"\n**{len(issues)} issue(s) found.**\n"
+        else:
+            output += "✅ No issues found.\n"
+
+        try_crow_ingest(f"Reviewed {p.name}: {len(issues)} issues, {stats['functions']} functions", register="style")
+        output += _markdown_footer()
+        return output
+
+    @mcp.tool
+    def check_quality(target_path: Optional[str] = None) -> str:
+        """프로젝트의 코드 품질을 검사합니다.
+
+        Args:
+            target_path: 검사 대상 경로
+        """
+        root = Path(get_project_root(target_path))
+        output = _markdown_header("Code Quality Check")
+
+        source_files = list(_iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS))
+        total_files = len(source_files)
+        total_lines = 0
+        long_lines = 0
+        todo_count = 0
+        empty_catch_count = 0
+        console_log_count = 0
+        debugger_count = 0
+        any_type_count = 0
+        ts_ignore_count = 0
+        empty_except_count = 0
+        func_count_total = 0
+        class_count_total = 0
+
+        for p in source_files:
+            content = _read_file_content(p)
+            if content is None:
+                continue
+            lines = content.split("\n")
+            total_lines += len(lines)
+            long_lines += sum(1 for l in lines if len(l) > 120)
+            todo_count += len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
+            empty_catch_count += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', content))
+            console_log_count += len(re.findall(r'console\.(log|warn|error|debug)', content))
+            debugger_count += len(re.findall(r'\bdebugger\b', content))
+            any_type_count += len(re.findall(r':\s*any\b', content))
+            ts_ignore_count += len(re.findall(r'@ts-ignore|@ts-nocheck', content))
+            empty_except_count += len(re.findall(r'except\s*:', content))
+            func_count_total += len(re.findall(r'(?:function|async function|def\s+)', content))
+            class_count_total += len(re.findall(r'\bclass\s+\w+', content))
+
+        output += "## Quality Metrics\n\n"
+        output += f"- Source files: {total_files}\n"
+        output += f"- Total lines: {total_lines}\n"
+        output += f"- Functions: {func_count_total}\n"
+        output += f"- Classes: {class_count_total}\n\n"
+
+        issues_found = 0
+        severity_scores = []
+
+        if long_lines > 0:
+            ratio = long_lines / max(total_lines, 1) * 100
+            w = "⚠️" if ratio > 1 else "📏"
+            output += f"- {w} Lines >120 chars: {long_lines} ({ratio:.1f}%)\n"
+            severity_scores.append(("long_lines", ratio))
+            issues_found += 1
+        if todo_count > 0:
+            ratio = todo_count / max(total_files, 1)
+            w = "⚠️" if ratio > 0.5 else "📝"
+            output += f"- {w} TODO/FIXME markers: {todo_count}\n"
+            severity_scores.append(("todos", ratio))
+            issues_found += 1
+        if console_log_count > 0:
+            output += f"- ⚠️ console.* calls: {console_log_count}\n"
+            severity_scores.append(("console_log", console_log_count))
+            issues_found += 1
+        if debugger_count > 0:
+            output += f"- ❌ debugger statements: {debugger_count}\n"
+            severity_scores.append(("debugger", debugger_count))
+            issues_found += 1
+        if any_type_count > 0:
+            output += f"- ⚠️ `any` type usage: {any_type_count}\n"
+            severity_scores.append(("any_type", any_type_count))
+            issues_found += 1
+        if ts_ignore_count > 0:
+            output += f"- ⚠️ @ts-ignore/@ts-nocheck: {ts_ignore_count}\n"
+            severity_scores.append(("ts_ignore", ts_ignore_count))
+            issues_found += 1
+        if empty_catch_count > 0:
+            output += f"- ❌ Empty catch blocks: {empty_catch_count}\n"
+            severity_scores.append(("empty_catch", empty_catch_count))
+            issues_found += 1
+        if empty_except_count > 0:
+            output += f"- ⚠️ Bare except:: {empty_except_count}\n"
+            severity_scores.append(("bare_except", empty_except_count))
+            issues_found += 1
+
+        # 품질 등급 산정 (A-F)
+        score = 100.0
+        for name, val in severity_scores:
+            if name == "long_lines":
+                score -= val * 5
+            elif name == "todos":
+                score -= val * 2
+            elif name == "console_log":
+                score -= val * 2
+            elif name == "debugger":
+                score -= val * 10
+            elif name == "any_type":
+                score -= val * 1.5
+            elif name == "ts_ignore":
+                score -= val * 3
+            elif name == "empty_catch":
+                score -= val * 8
+            elif name == "bare_except":
+                score -= val * 5
+        score = max(0, min(100, score))
+
+        if score >= 90:
+            grade = "A"
+            grade_desc = "Excellent"
+        elif score >= 80:
+            grade = "B"
+            grade_desc = "Good"
+        elif score >= 70:
+            grade = "C"
+            grade_desc = "Fair"
+        elif score >= 60:
+            grade = "D"
+            grade_desc = "Poor"
+        elif score >= 40:
+            grade = "E"
+            grade_desc = "Bad"
+        else:
+            grade = "F"
+            grade_desc = "Critical"
+        if issues_found == 0:
+            grade = "A+"
+            grade_desc = "Perfect"
+
+        output += f"\n## Quality Grade\n\n"
+        output += f"- **Grade**: `{grade}` ({grade_desc})\n"
+        output += f"- **Score**: {score:.1f}/100\n"
+        output += f"- **Issues found**: {issues_found}\n\n"
+
+        # ESLint
+        if (root / "package.json").exists():
+            try:
+                result = subprocess.run([_npx_cmd(), "eslint", ".", "--ext", ".ts,.tsx,.js,.jsx", "--format", "compact", "--quiet"],
+                                       cwd=str(root), capture_output=True, text=True, timeout=30)
+                if result.stdout:
+                    output += f"## ESLint\n\n```\n{_truncate(result.stdout, 2000)}\n```\n"
+                else:
+                    output += "## ESLint\n\n✅ No issues found.\n"
+            except FileNotFoundError:
+                output += "## ESLint\n\n⚠️ ESLint not installed.\n"
+            except subprocess.TimeoutExpired:
+                output += "## ESLint\n\n⚠️ ESLint timed out (30s).\n"
+            except Exception as e:
+                output += f"## ESLint\n\n❌ Error: {e}\n"
+
+        try_crow_ingest(f"Quality check on {root.name}: grade={grade} score={score:.1f}", register="style")
+        output += _markdown_footer()
+        return output
