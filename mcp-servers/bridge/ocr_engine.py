@@ -88,7 +88,7 @@ class OcrEngine:
             return self._tesseract_available
 
         try:
-            import pytesseract  # noqa: F401
+            import pytesseract  # type: ignore[import]
 
             # tesseract 실행 파일 확인
             tess_path = _find_tesseract()
@@ -120,7 +120,7 @@ class OcrEngine:
             return self._paddle_available
 
         try:
-            from paddleocr import PaddleOCR  # noqa: F401
+            from paddleocr import PaddleOCR  # type: ignore[import]
             self._paddle_available = True
             if not self._active_engine:
                 self._active_engine = "paddle"
@@ -218,7 +218,7 @@ class OcrEngine:
 
     def _ocr_tesseract(self, image_path: str, lang: str, detail: str) -> dict:
         """Tesseract OCR 실행"""
-        import pytesseract
+        import pytesseract  # type: ignore[import]
         from PIL import Image
         import numpy as np
 
@@ -334,7 +334,7 @@ class OcrEngine:
 
     def _ocr_paddle(self, image_path: str, lang: str, detail: str) -> dict:
         """PaddleOCR 실행 (fallback)"""
-        from paddleocr import PaddleOCR
+        from paddleocr import PaddleOCR  # type: ignore[import]
 
         paddle_lang = self._map_paddle_lang(lang)
         ocr = PaddleOCR(use_angle_cls=True, lang=paddle_lang, show_log=False)

@@ -25,8 +25,8 @@ from bridge.crow_client import try_crow_ingest
 # ── OpenCV 상태 ─────────────────────────────────────
 
 try:
-    import cv2
-    import numpy as np
+    import cv2  # type: ignore[import]
+    import numpy as np  # type: ignore[import]
     _CV2_AVAILABLE = True
 except ImportError:
     _CV2_AVAILABLE = False

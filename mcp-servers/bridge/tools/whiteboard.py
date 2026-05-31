@@ -708,7 +708,7 @@ def _capture_screen_impl() -> str:
 
     # 방법 1: PIL ImageGrab (가장 안정적)
     try:
-        from PIL import ImageGrab
+        from PIL import ImageGrab  # type: ignore[import]
         img = ImageGrab.grab()
         width, height = img.size
     except ImportError:
@@ -750,11 +750,11 @@ $graphics.Dispose()
     # 방법 3: mss 라이브러리 (PIL 대체)
     if img is None:
         try:
-            import mss
+            import mss  # type: ignore[import]
             with mss.mss() as sct:
                 monitor = sct.monitors[0]
                 sct_img = sct.grab(monitor)
-                from PIL import Image
+                from PIL import Image  # type: ignore[import]
                 img = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
                 width, height = img.size
         except ImportError:

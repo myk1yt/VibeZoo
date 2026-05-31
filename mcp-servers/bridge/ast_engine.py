@@ -92,7 +92,7 @@ class AstEngine:
 
         # 방법 1: tree_sitter_languages 통합 패키지
         try:
-            from tree_sitter_languages import get_language, get_parser
+            from tree_sitter_languages import get_language, get_parser  # type: ignore[import]
             language = get_language(lang_name)
             parser = get_parser(lang_name)
             self._parsers[lang_name] = parser
@@ -157,7 +157,7 @@ class AstEngine:
                 self._legacy_ts_parser = ts.Parser()
 
                 try:
-                    from tree_sitter_languages import get_language
+                    from tree_sitter_languages import get_language  # type: ignore[import]
                     self._legacy_ts_lang = get_language("typescript")
                     self._legacy_ts_lang_js = get_language("javascript")
                 except ImportError:
