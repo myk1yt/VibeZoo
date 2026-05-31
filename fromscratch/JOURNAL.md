@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-05-31 - v0.14.0 SOTA: 3 Cycle Evolution + bridge/ 모듈화 완료](#2026-05-31---v0140-sota-3-cycle-evolution--bridge-모듈화-완료)
 - [2026-05-30 - v0.14.0: SOTA MCP Tool Upgrade Phase 1-3](#2026-05-30---v0140-sota-mcp-tool-upgrade-phase-1-3)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
@@ -14,6 +15,38 @@
 - [2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal](#2026-05-27-v0100-python-mcp-bridge-migration--go-removal)
 - [2026-05-27 - v0.10.0: Initial implementation complete (26 files)](#2026-05-27-v0100-initial-implementation-complete-26-files)
 - [2026-05-27 - Architecture design started](#2026-05-27-architecture-design-started)
+
+---
+
+## 2026-05-31 - v0.14.0 SOTA: 3 Cycle Evolution + bridge/ 모듈화 완료
+
+### 변경 요약
+- **대규모 리팩토링**: 4,627줄 단일 파일 → `bridge/` 24개 모듈로 분할 (v0.13.0→v0.14.0)
+- **SearchEngine**: ripgrep→git grep→walk 3단계 폴백 검색
+- **FileCache**: L1(LRU)+L2(디스크)+L3(mtime) 3계층 캐시
+- **AstEngine**: TS/JS/Python/Go/Rust 멀티랭귀지 tree-sitter 동적 로딩
+- **WhiteboardDataConverter**: Fabric.js JSON→텍스트/Mermaid/공간데이터 변환 (Deepseek 호환)
+- **OcrEngine**: Tesseract+PaddleOCR fallback, SSA 통합
+- **ToolContext + LLMToolPipeline**: LLM-도구 체인 (데이터 수집→LLM 분석→Crow 저장)
+- **vibezoo_setup**: 통합 설치 도구 (pip+시스템 도구+MCP/Zoo 설정)
+
+### 3 Cycle Evolution
+- **Cycle 1**: LLM-도구 체인 + 컨텍스트 최적화(mode=summary) + AST 확장 + WebSearch SearXNG + FileCache.warm() + 폐기
+- **Cycle 2**: suggest_refactor summary + LLM체인심화(dependencies/mock) + AST 활용 확대 + 병렬 WebSearch + retry_build 에러추출 + ESLint/tsc 통합
+- **Cycle 3**: AST 멀티랭귀지 완전활용(analyze_call_graph/find_references/explain_code) + AST-aware rename(변수섀도잉) + Knowledge 자동연계(auto_learn_project)
+
+### 보고서
+- **260531VibeZooReport.md** — 35개 도구 최종 평가 (⭐⭐⭐ 18개, ⭐⭐ 12개, ⭐ 4개, 💀 1개)
+- plans/major-refactor-plan.md — 모듈화 아키텍처 설계
+- plans/sota-upgrade-plan.md — Phase A~F SOTA 업그레이드 설계
+
+### Git 커밋
+- `4ef0310` v0.13.0 bridge/ 모듈화
+- `a58723f` Pylance 경고 해결
+- `57c7e29` Cycle 1-2 리팩토링
+- `d310c5f` Cycle 2-2 리팩토링
+- `f4f257f` Cycle 3-2 리팩토링
+- `95d294e` FINAL 최종 보고서
 
 ---
 
