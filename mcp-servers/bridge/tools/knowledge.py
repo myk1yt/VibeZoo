@@ -108,8 +108,8 @@ def register(mcp):
     """Knowledge 도구 등록 (자동 learn_project 스케줄 포함)"""
     
     # ── 자동 learn_project 스케줄 (지연 초기화, 1회만) ──
+    global _auto_learn_scheduled
     if not _auto_learn_scheduled:
-        global _auto_learn_scheduled
         _auto_learn_scheduled = True
         def _deferred_learn():
             """서버 시작 후 3초 지연 → 자동 learn_project 실행"""

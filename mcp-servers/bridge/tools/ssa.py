@@ -1,5 +1,5 @@
 # VibeZoo Bridge — SSA 도구 그룹
-# aggregate_spatial_pixels + open_image_dropzone
+# aggregate_spatial_pixels
 # Statistical Spatial Aggregator v3 — 이미지를 공간 통계 매트릭스로 압축
 
 import json
@@ -752,18 +752,6 @@ def register(mcp):
         except Exception as e:
             return (_markdown_header("SSA Error", "❌")
                     + f"**Analysis failed:** {e}\n" + _markdown_footer())
-
-    @mcp.tool
-    def open_image_dropzone() -> str:
-        """💀 (Deprecated) VS Code Webview에서 이미지 드래그앤드롭 업로드 페이지를 엽니다.
-        업로드된 이미지는 ~/.vibezoo-cache/dropped_image.png에 저장됩니다.
-
-        💀 `capture_screen(source="dropzone")` 사용 권장.
-        내부적으로 capture_screen(source="dropzone")을 호출합니다.
-        """
-        from bridge.tools.whiteboard import capture_screen
-        return capture_screen(source="dropzone")
-
 
 # ── OCR 결과 포맷팅 ──────────────────────────────────
 

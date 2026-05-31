@@ -1,6 +1,7 @@
 # VibeZoo Bridge — Whiteboard 도구 그룹
-# draw_on_whiteboard + get_whiteboard_state + open_whiteboard + capture_screen + open_ui_preview
+# draw_on_whiteboard + get_whiteboard_state + capture_screen
 # + WhiteboardDataConverter (Fabric.js JSON → LLM-readable text)
+# open_whiteboard / open_ui_preview 는 MCP 도구에서 제거됨 (Extension 자동 처리)
 
 import json
 import os
@@ -947,33 +948,3 @@ def register(mcp):
                     + f"**Failed:** `{e}`\n"
                     + _markdown_footer())
 
-    @mcp.tool
-    def open_whiteboard(message: str = "") -> str:
-        """VibeZoo 화이트보드를 엽니다. AI가 시각적 설명이 필요할 때 호출합니다."""
-        try:
-            data = {"action": "open", "message": message, "timestamp": time.time()}
-            _atomic_write_json(WHITEBOARD_ACTION_FILE, data, indent=2)
-            try_crow_ingest(f"Whiteboard opened: {message[:100]}" if message else "Whiteboard opened",
-                            register="context")
-            return (_markdown_header("Whiteboard")
-                    + f"Whiteboard opened. {message}\n"
-                    + _markdown_footer())
-        except Exception as e:
-            return (_markdown_header("Whiteboard Error", "❌")
-                    + f"**Failed:** `{e}`\n"
-                    + _markdown_footer())
-
-    @mcp.tool
-    def open_ui_preview(code: str = "", framework: str = "react") -> str:
-        """UI Preview 패널을 열고 코드를 렌더링합니다."""
-        try:
-            data = {"action": "open_ui", "code": code, "framework": framework, "timestamp": time.time()}
-            _atomic_write_json(UI_ACTION_FILE, data, indent=2)
-            try_crow_ingest(f"UI Preview opened: {framework}", register="context")
-            return (_markdown_header("UI Preview")
-                    + f"UI Preview opened. Rendering {framework} component.\n"
-                    + _markdown_footer())
-        except Exception as e:
-            return (_markdown_header("UI Preview Error", "❌")
-                    + f"**Failed:** `{e}`\n"
-                    + _markdown_footer())

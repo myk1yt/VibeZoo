@@ -1,5 +1,6 @@
 # VibeZoo Bridge — Reviewer 도구 그룹
-# review_code + check_quality (→ _review_project_core 위임)
+# review_code (→ _review_project_core 위임)
+# check_quality 함수는 내부용으로 유지 (더 이상 MCP 도구 아님)
 
 import json
 import os
@@ -597,15 +598,3 @@ def register(mcp):
         output += _markdown_footer()
         return output
 
-    @mcp.tool
-    def check_quality(target_path: Optional[str] = None) -> str:
-        """💀 (Deprecated) 프로젝트의 코드 품질을 검사합니다.
-
-        💀 `review_project(mode="quality")` 사용 권장.
-        이 도구는 내부적으로 `review_project(mode="quality")`으로 위임됩니다.
-
-        Args:
-            target_path: 검사 대상 경로
-        """
-        # _review_project_core로 완전 위임 (시그니처 100% 호환)
-        return _review_project_core(target_path or ".", mode="quality")
