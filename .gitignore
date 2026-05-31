@@ -53,3 +53,12 @@ extension/package/
 extension/vsce/
 $null
 "test_output.png"  
+
+# Temp/debug files from VibeZoo session
+*.bak
+*.bak3
+*.v2bak
+*_result.txt
+line*.txt
+global_*.txt
+check_*.txt
