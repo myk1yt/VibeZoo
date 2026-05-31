@@ -18,6 +18,17 @@
 
 ---
 
+## 2026-05-31 - 도구 정리: 4개 도구 제거 + 보고서→설명서 전환
+
+### 변경 요약
+- **제거된 MCP 도구**: `check_quality`(→review_project), `open_image_dropzone`(→capture_screen), `open_whiteboard`(자동), `open_ui_preview`(LLM직접)
+- **31개 도구**로 간소화 (35→31)
+- **260531VibeZooReport.md**: 평가 보고서 → **설명서 형식**으로 전환. 각 도구의 역할/파라미터/사용예시/LLM힌트 중심
+- **knowledge.py**: `global _auto_learn_scheduled` 선언 순서 버그 수정
+- **커밋**: `dc40ba0`
+
+---
+
 ## 2026-05-31 - v0.14.0 SOTA: 3 Cycle Evolution + bridge/ 모듈화 완료
 
 ### 변경 요약
