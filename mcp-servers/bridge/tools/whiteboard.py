@@ -113,15 +113,17 @@ class WhiteboardDataConverter:
 
         for idx, obj in enumerate(raw_objects):
             obj_type = obj.get('type', 'unknown')
-            left = obj.get('left', 0) or 0
-            top = obj.get('top', 0) or 0
-            scale_x = obj.get('scaleX', 1) or 1
-            scale_y = obj.get('scaleY', 1) or 1
-            width = (obj.get('width', 0) or 0) * scale_x
-            height = (obj.get('height', 0) or 0) * scale_y
-            fill = obj.get('fill', obj.get('stroke', '#000000')) or '#000000'
-            opacity = obj.get('opacity', 1.0) or 1.0
-            z_index = obj.get('zIndex', idx)
+            # props 서브객체 지원 (draw_on_whiteboard의 {"type":"rect","props":{...}} 형식)
+            p = obj.get('props', obj)
+            left = p.get('left', 0) or 0
+            top = p.get('top', 0) or 0
+            scale_x = p.get('scaleX', 1) or 1
+            scale_y = p.get('scaleY', 1) or 1
+            width = (p.get('width', 0) or 0) * scale_x
+            height = (p.get('height', 0) or 0) * scale_y
+            fill = p.get('fill', p.get('stroke', '#000000')) or '#000000'
+            opacity = p.get('opacity', 1.0) or 1.0
+            z_index = p.get('zIndex', idx)
 
             entry = {
                 'id': idx,
@@ -139,9 +141,10 @@ class WhiteboardDataConverter:
                 'children': None,
             }
 
-            # 레이블 추출
+            # 레이블 추출 (props 서브객체 지원)
+            p = obj.get('props', obj)
             if obj_type in ('text', 'i-text', 'textbox'):
-                entry['label'] = obj.get('text', '')
+                entry['label'] = p.get('text', obj.get('text', ''))
             elif obj_type == 'group' and 'objects' in obj:
                 children = self.extract_objects({'objects': obj['objects']})
                 entry['children'] = children
@@ -882,6 +885,8 @@ def register(mcp):
         try:
             data = {"timestamp": time.time(), "commands": parsed}
             _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
+            # 자동으로 화이트보드 패널 열기 (Extension이 WHITEBOARD_ACTION_FILE watch)
+            _atomic_write_json(WHITEBOARD_ACTION_FILE, {"action": "open", "message": f"Drew {len(parsed)} shapes", "timestamp": time.time()}, indent=2)
             try_crow_ingest(f"Whiteboard: {len(parsed)} drawing commands", register="context")
             return (_markdown_header("Whiteboard Drawing")
                     + f"Drew {len(parsed)} shapes on whiteboard.\n"
