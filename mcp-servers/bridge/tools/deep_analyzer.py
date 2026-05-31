@@ -538,18 +538,24 @@ def register(mcp):
         ast_engine = _get_ast_engine()
         ast_engine._init_legacy_tree_sitter()
 
-        # 함수 정의 맵 구축
+        # 함수 정의 맵 구축 (멀티랭귀지: TS/JS/Python/Go/Rust)
         output += "## Function Definition Map\n\n"
         func_defs = {}
-        for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
             content = _read_file_content(p)
             if content is None:
                 continue
             rel = _normalize_path(str(p.relative_to(root)))
-            ast = ast_engine.parse(content, p.suffix)
+            ext = p.suffix.lower()
+            ast = ast_engine.parse(content, ext)
             for fn in ast.get("functions", []):
                 key = f"{rel}::{fn['name']}"
                 func_defs[key] = {"file": rel, "name": fn["name"], "line": fn["line"], "end_line": fn.get("end_line", fn["line"])}
+            # Python/Go/Rust: classes/structs/enums도 정의 맵에 추가 (메서드 호출 추적용)
+            for cls in ast.get("classes", []):
+                cls_key = f"{rel}::{cls['name']}"
+                if cls_key not in func_defs:
+                    func_defs[cls_key] = {"file": rel, "name": cls["name"], "line": cls["line"], "end_line": cls.get("end_line", cls["line"]), "is_class": True}
 
         if func_defs:
             output += f"- Total function definitions: {len(func_defs)}\n"
@@ -562,17 +568,18 @@ def register(mcp):
             output += "- No function definitions found.\n"
         output += "\n"
 
-        # Fan-in / Fan-out 메트릭
+        # Fan-in / Fan-out 메트릭 (멀티랭귀지)
         output += "## Fan-in / Fan-out Metrics\n\n"
         all_calls = defaultdict(list)
         all_callees = defaultdict(list)
 
-        for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
             content = _read_file_content(p)
             if content is None:
                 continue
             rel = _normalize_path(str(p.relative_to(root)))
-            calls = ast_engine.extract_calls(content, p.suffix)
+            ext = p.suffix.lower()
+            calls = ast_engine.extract_calls(content, ext)
             for c in calls:
                 caller_key = f"{rel}::{c['name']}"
                 matched = False
@@ -619,17 +626,18 @@ def register(mcp):
             output += "✅ No dead code detected (or all functions have callers).\n"
         output += "\n"
 
-        # Per-File Call Analysis
+        # Per-File Call Analysis (멀티랭귀지)
         output += "## Per-File Call Analysis\n\n"
         total_calls = 0
         processed_files = 0
-        for p in _iter_project_files_cached(root, extensions=TS_JS_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+        for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
             content = _read_file_content(p)
             if content is None:
                 continue
             processed_files += 1
             rel = _normalize_path(str(p.relative_to(root)))
-            calls = ast_engine.extract_calls(content, p.suffix)
+            ext = p.suffix.lower()
+            calls = ast_engine.extract_calls(content, ext)
             if calls:
                 call_counts = Counter(c["name"] for c in calls)
                 top_calls = call_counts.most_common(10)
@@ -643,7 +651,7 @@ def register(mcp):
 
         if total_calls == 0:
             if processed_files == 0:
-                output += "- No TypeScript/JavaScript files found.\n"
+                output += "- No supported source files found (TS/JS/Python/Go/Rust).\n"
             else:
                 output += "- No function calls detected via AST.\n"
 

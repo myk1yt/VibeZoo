@@ -860,4 +860,11 @@ def register(mcp):
             configure_zoo=configure_zoo,
         )
 
+        # 설치 완료 시 자동 learn_project (지연, 1회만)
+        try:
+            from bridge.tools.knowledge import _auto_learn_project
+            _auto_learn_project()
+        except Exception:
+            pass  # 학습 실패는 무시
+
         return manager.generate_report(report)

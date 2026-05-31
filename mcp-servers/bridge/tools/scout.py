@@ -308,18 +308,29 @@ def register(mcp):
             ext = p.suffix.lower()
             file_lines = content.split("\n")
 
-            # AST로 함수/클래스 정의 찾기
-            if ext in TS_JS_EXTS and ast_engine.is_available():
-                ast = ast_engine.parse(content, ext)
+            # AST로 함수/클래스/구조체/인터페이스 정의 찾기 (멀티랭귀지)
+            ast = ast_engine.parse(content, ext)
+            if ast:
+                # 모든 언어: 함수 정의
                 for fn in ast.get("functions", []):
                     if fn["name"] == symbol:
-                        definitions.append({"file": rel, "line": fn["line"], "desc": f"`{fn['type']} {fn['name']}()`", "type": "definition"})
+                        fn_type = fn.get("type", "function")
+                        definitions.append({"file": rel, "line": fn["line"], "desc": f"`{fn_type} {fn['name']}()`", "type": "definition"})
+                # 모든 언어: 클래스/구조체/인터페이스
                 for cls in ast.get("classes", []):
                     if cls["name"] == symbol:
-                        definitions.append({"file": rel, "line": cls["line"], "desc": f"`class {cls['name']}`", "type": "definition"})
+                        cls_label = "class"
+                        if ext in (".go", ".rs"):
+                            cls_label = "struct" if ext == ".rs" else "type"
+                        definitions.append({"file": rel, "line": cls["line"], "desc": f"`{cls_label} {cls['name']}`", "type": "definition"})
+                # TS/JS: interfaces, type aliases
                 for iface in ast.get("interfaces", []):
                     if iface["name"] == symbol:
-                        definitions.append({"file": rel, "line": iface["line"], "desc": f"`{iface['type']} {iface['name']}`", "type": "definition"})
+                        definitions.append({"file": rel, "line": iface["line"], "desc": f"`{iface.get('type', 'interface')} {iface['name']}`", "type": "definition"})
+                # Rust: enums
+                for enm in ast.get("enums", []):
+                    if enm["name"] == symbol:
+                        definitions.append({"file": rel, "line": enm["line"], "desc": f"`enum {enm['name']}`", "type": "definition"})
 
             # 사용 위치 찾기 + 타입 분류
             for i, line in enumerate(file_lines, 1):

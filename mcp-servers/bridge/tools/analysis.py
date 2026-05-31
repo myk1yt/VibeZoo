@@ -92,6 +92,102 @@ def _find_related_tests(target: Path) -> list[dict]:
     return related
 
 
+# ── AST-aware rename ──────────────────────────────────
+
+
+def _ast_aware_rename(pattern: str, new_pattern: str, file_content: str, ext: str) -> str:
+    """AST 기반 rename — 심볼 정의부만 정확히 치환.
+    
+    Args:
+        pattern: 찾을 심볼 이름 (예: 'User')
+        new_pattern: 대체할 새 이름 (예: 'AppUser')
+        file_content: 파일 전체 내용
+        ext: 파일 확장자 (예: '.ts', '.py', '.go', '.rs')
+    
+    Returns:
+        치환된 파일 내용 (AST 실패 시 기존 regex 방식으로 폴백)
+    """
+    from bridge.ast_engine import AstEngine
+    
+    ast_engine = AstEngine()
+    ast_engine._init_legacy_tree_sitter()
+    
+    # 1. AST로 심볼 정의 위치 찾기
+    ast = ast_engine.parse(file_content, ext)
+    definitions = []
+    
+    if ast:
+        # 함수 정의
+        for fn in ast.get("functions", []):
+            if fn["name"] == pattern:
+                definitions.append(fn)
+        # 클래스/구조체 정의
+        for cls in ast.get("classes", []):
+            if cls["name"] == pattern:
+                definitions.append(cls)
+        # 인터페이스 정의 (TS/JS)
+        for iface in ast.get("interfaces", []):
+            if iface["name"] == pattern:
+                definitions.append(iface)
+        # enum 정의 (Rust)
+        for enm in ast.get("enums", []):
+            if enm["name"] == pattern:
+                definitions.append(enm)
+    
+    if not definitions:
+        # AST 실패 시 기존 regex 방식으로 폴백 (안전)
+        return file_content.replace(pattern, new_pattern)
+    
+    # 2. 정의 위치 기준 스코프 내 참조에만 치환 적용
+    lines = file_content.split("\n")
+    new_lines = list(lines)
+    replaced_lines = set()
+    
+    for defn in definitions:
+        def_line = defn.get("line", 1) - 1  # 0-based
+        end_line = defn.get("end_line", len(lines))
+        
+        # 정의 라인 자체는 항상 치환 (함수/클래스 이름)
+        if def_line < len(new_lines) and def_line not in replaced_lines:
+            old = new_lines[def_line]
+            # 정의 라인에서는 정확한 심볼 이름만 치환 (e.g., 'def User():' → 'def AppUser():')
+            # 단, import 문이나 다른 컨텍스트에서 실수로 치환되지 않도록 패턴 매칭
+            if pattern in old:
+                # 함수/클래스 정의 라인에서 심볼 이름 치환
+                new_lines[def_line] = old.replace(pattern, new_pattern)
+                replaced_lines.add(def_line)
+        
+        # 3. 변수遮蔽(variable shadowing) 고려
+        # 스코프 내에서 pattern과 동일한 이름의 로컬 변수 선언이 있으면,
+        # 그 로컬 변수 선언 이후의 참조는 치환하지 않음
+        shadowed_lines = set()
+        for i in range(def_line + 1, min(end_line, len(lines))):
+            line = lines[i]
+            stripped = line.strip()
+            # Python: 로컬 변수 선언 (e.g., 'User = ...')
+            if ext == ".py" and re.match(rf'\s*{pattern}\s*=', stripped) and not stripped.startswith('def ') and not stripped.startswith('class '):
+                shadowed_lines.add(i)
+            # TS/JS: const/let/var 선언 (e.g., 'const User = ...')
+            if ext in (".ts", ".tsx", ".js", ".jsx") and re.match(rf'\s*(?:const|let|var)\s+{pattern}\s*[=:]', stripped):
+                shadowed_lines.add(i)
+            # Go: ':=' or 'var' (e.g., 'User := ...')
+            if ext == ".go" and re.match(rf'\s*(?:var\s+)?{pattern}\s*(?::=|=)', stripped):
+                shadowed_lines.add(i)
+            # Rust: 'let' (e.g., 'let User = ...')
+            if ext == ".rs" and re.match(rf'\s*let\s+(?:mut\s+)?{pattern}\s*=', stripped):
+                shadowed_lines.add(i)
+        
+        # 스코프 내 참조 라인 치환
+        for i in range(def_line + 1, min(end_line, len(lines))):
+            if i in replaced_lines or i in shadowed_lines:
+                continue
+            if pattern in new_lines[i]:
+                new_lines[i] = new_lines[i].replace(pattern, new_pattern)
+                replaced_lines.add(i)
+    
+    return "\n".join(new_lines)
+
+
 def register(mcp):
     """Analysis 도구 등록"""
 
@@ -161,12 +257,15 @@ def register(mcp):
                 output += f"- `{t['file']}`\n"
             output += "\n"
 
-        if ext in TS_JS_EXTS and ast_engine.is_available():
-            ast = ast_engine.parse(content, ext)
+        # ── AST 파싱 시도 (멀티랭귀지: TS/JS/Python/Go/Rust) ──
+        ast = ast_engine.parse(content, ext)
+        ast_available = bool(ast and (ast.get("functions") or ast.get("classes") or ast.get("interfaces") or ast.get("enums")))
 
+        if ast_available:
             enclosing_func = None
             enclosing_class = None
             enclosing_iface = None
+            enclosing_enum = None
 
             for fn in ast.get("functions", []):
                 if fn["line"] <= line_number <= fn.get("end_line", fn["line"]):
@@ -180,24 +279,32 @@ def register(mcp):
                 if iface["line"] <= line_number <= iface.get("end_line", iface["line"]):
                     enclosing_iface = iface
 
+            for enm in ast.get("enums", []):
+                if enm["line"] <= line_number <= enm.get("end_line", enm["line"]):
+                    enclosing_enum = enm
+
             output += "## Context\n\n"
             if enclosing_func:
-                output += f"- **Function**: `{enclosing_func['name']}` ({enclosing_func['type']}, lines {enclosing_func['line']}-{enclosing_func['end_line']})\n"
+                output += f"- **Function**: `{enclosing_func['name']}` ({enclosing_func.get('type', 'function')}, lines {enclosing_func['line']}-{enclosing_func.get('end_line', enclosing_func['line'])})\n"
             if enclosing_class:
-                output += f"- **Class**: `{enclosing_class['name']}` (line {enclosing_class['line']})\n"
+                cls_label = "Class"
+                if ext in (".go", ".rs"):
+                    cls_label = "Struct" if ext == ".rs" else "Type"
+                output += f"- **{cls_label}**: `{enclosing_class['name']}` (line {enclosing_class['line']})\n"
             if enclosing_iface:
-                output += f"- **Interface/Type**: `{enclosing_iface['name']}` ({enclosing_iface['type']}, line {enclosing_iface['line']})\n"
-            if not enclosing_func and not enclosing_class and not enclosing_iface:
+                output += f"- **Interface/Type**: `{enclosing_iface['name']}` ({enclosing_iface.get('type', 'interface')}, line {enclosing_iface['line']})\n"
+            if enclosing_enum:
+                output += f"- **Enum**: `{enclosing_enum['name']}` (line {enclosing_enum['line']})\n"
+            if not enclosing_func and not enclosing_class and not enclosing_iface and not enclosing_enum:
                 output += "- Top-level code (no enclosing function or class)\n"
 
             output += "\n## Line Analysis\n\n"
-            line_lower = line_content.lower()
 
             if line_content.startswith("import ") or line_content.startswith("from ") or line_content.startswith("require("):
                 output += "- **Import statement**: imports external module or dependency.\n"
             elif line_content.startswith("export ") or line_content.startswith("module.exports"):
                 output += "- **Export statement**: exposes symbols to other modules.\n"
-            elif line_content.startswith("function ") or line_content.startswith("async function"):
+            elif line_content.startswith("function ") or line_content.startswith("async function") or line_content.startswith("def "):
                 output += "- **Function declaration**: defines a named function.\n"
             elif line_content.startswith("const ") or line_content.startswith("let ") or line_content.startswith("var "):
                 output += "- **Variable declaration**: declares a new variable.\n"
@@ -227,19 +334,30 @@ def register(mcp):
                 output += "- **Assignment/call**: variable assignment with function call.\n"
             elif "(" in line_content and ")" in line_content:
                 output += "- **Function/method call**: invokes a function or method.\n"
+            elif line_content.startswith("func ") or line_content.startswith("fn "):
+                output += "- **Function declaration**: defines a function (Go/Rust style).\n"
+            elif line_content.startswith("struct ") or line_content.startswith("enum "):
+                output += "- **Type declaration**: defines a struct or enum.\n"
+            elif line_content.startswith("impl "):
+                output += "- **Implementation block**: implements methods for a type.\n"
+            elif line_content.startswith("package ") or line_content.startswith("mod "):
+                output += "- **Module declaration**: declares a package/module.\n"
+            elif line_content.startswith("use ") or line_content.startswith("pub "):
+                output += "- **Visibility/import**: imports or declares visibility.\n"
             else:
                 output += "- Expression or statement.\n"
         else:
             output += "## Line Content\n\n"
             output += f"```\n{line_content}\n```\n"
-            output += "\n> Note: tree-sitter AST analysis is only available for TypeScript/JavaScript files.\n"
+            output += "\n> Note: tree-sitter AST analysis not available for this file type. Consider installing tree-sitter language packs (see vibezoo_setup).\n"
 
-        # ── 의존성 그래프 (호출하는 함수 / 호출되는 함수) ──
-        if ext in TS_JS_EXTS and ast_engine.is_available():
-            output += "\n## Dependency Graph\n\n"
-            try:
-                calls = ast_engine.extract_calls(content, ext)
-                # 현재 라인을 포함하는 함수 찾기
+        # ── 의존성 그래프 (호출하는 함수 / 호출되는 함수) — 멀티랭귀지 AST 우선 ──
+        output += "\n## Dependency Graph\n\n"
+        try:
+            # AST 기반 call extraction (모든 언어 시도)
+            calls = ast_engine.extract_calls(content, ext)
+            if calls and ast_available:
+                # 현재 라인을 포함하는 함수 찾기 (멀티랭귀지)
                 enclosing_fn = None
                 for fn in ast.get("functions", []):
                     if fn["line"] <= line_number <= fn.get("end_line", fn["line"]):
@@ -273,12 +391,8 @@ def register(mcp):
                         output += f"\n- `{enclosing_fn['name']}()` is not called internally.\n"
                 else:
                     output += "- Line is at top level (not inside a function).\n"
-            except Exception:
-                output += "- Could not extract dependency graph.\n"
-        else:
-            # Python/Go/Rust — regex 기반 간단 추출
-            output += "\n## Dependency Graph\n\n"
-            try:
+            else:
+                # Regex 폴백 (AST 실패 시)
                 func_defs = re.findall(r'(?:def |func |fn |function |async function )(\w+)', content)
                 current_fn = None
                 for fn in reversed(lines[:line_number]):
@@ -287,7 +401,6 @@ def register(mcp):
                         current_fn = m.group(1)
                         break
                 if current_fn:
-                    # 이 함수가 호출하는 함수들
                     fn_start_line = max(0, line_number - 10)
                     fn_block = "\n".join(lines[fn_start_line:min(len(lines), fn_start_line + 30)])
                     called = [f for f in func_defs if f != current_fn and f in fn_block]
@@ -299,8 +412,8 @@ def register(mcp):
                         output += f"- `{current_fn}()` likely calls no internal functions.\n"
                 else:
                     output += "- Could not determine enclosing function.\n"
-            except Exception:
-                output += "- Could not extract dependency graph.\n"
+        except Exception:
+            output += "- Could not extract dependency graph.\n"
 
         output += "\n## Surrounding Context\n\n"
         start = max(0, line_number - 4)
@@ -645,7 +758,7 @@ def register(mcp):
             suffix = f" ... and {len(lines)-10} more" if len(lines) > 10 else ""
             output += f"- `{_normalize_path(file_path)}` — lines {line_list}{suffix}\n"
 
-        output += "\n## Suggested Changes\n\n"
+        output += "\n## Suggested Changes (AST-aware rename)\n\n"
         for file_path, lines in sorted(by_file.items())[:10]:
             actual_path = Path(os.getcwd()) / file_path
             if not actual_path.exists():
@@ -653,16 +766,24 @@ def register(mcp):
             content = _read_file_content(actual_path)
             if content is None:
                 continue
+            ext = actual_path.suffix.lower()
             file_lines = content.split("\n")
             output += f"### `{_normalize_path(file_path)}`\n\n"
             output += f"```diff\n"
+            # AST-aware rename 적용
+            new_content = _ast_aware_rename(pattern, new_pattern, content, ext)
+            new_lines = new_content.split("\n")
             for line_num_str in lines[:5]:
                 idx = int(line_num_str) - 1
-                if 0 <= idx < len(file_lines):
+                if 0 <= idx < len(file_lines) and 0 <= idx < len(new_lines):
                     original = file_lines[idx]
-                    output += f"-{original}\n"
-                    suggested = original.replace(pattern, new_pattern)
-                    output += f"+{suggested}\n"
+                    suggested = new_lines[idx]
+                    if original != suggested:
+                        output += f"-{original}\n"
+                        output += f"+{suggested}\n"
+                    else:
+                        # AST-aware rename이 해당 라인을 변경하지 않은 경우 (예: shadowing)
+                        output += f" {original}\n"
             output += f"```\n\n"
 
         output += "## 📊 Impact Analysis\n\n"
@@ -678,9 +799,9 @@ def register(mcp):
         if len(by_file) > 5:
             output += "- **Dependency impact**: Changes span multiple files — ensure imports are updated\n"
 
-        # ── Apply changes (dry_run=False) ──
+        # ── Apply changes (dry_run=False, AST-aware rename) ──
         if not dry_run:
-            output += "\n## Applied Changes\n\n"
+            output += "\n## Applied Changes (AST-aware rename)\n\n"
             applied_count = 0
             failed_count = 0
             for file_path, lines in sorted(by_file.items()):
@@ -693,23 +814,18 @@ def register(mcp):
                     if content is None:
                         failed_count += 1
                         continue
-                    file_lines = content.split("\n")
-                    new_lines = list(file_lines)
-                    modified = False
-                    for line_num_str in lines:
-                        idx = int(line_num_str) - 1
-                        if 0 <= idx < len(new_lines) and pattern in new_lines[idx]:
-                            new_lines[idx] = new_lines[idx].replace(pattern, new_pattern)
-                            modified = True
-                    if modified:
+                    ext = actual_path.suffix.lower()
+                    # AST-aware rename 적용
+                    new_content = _ast_aware_rename(pattern, new_pattern, content, ext)
+                    if new_content != content:
                         # yocto 백업: create .bak file
                         bak_path = actual_path.with_suffix(actual_path.suffix + ".bak")
                         if not bak_path.exists():
                             import shutil
                             shutil.copy2(str(actual_path), str(bak_path))
-                        actual_path.write_text("\n".join(new_lines), encoding="utf-8")
+                        actual_path.write_text(new_content, encoding="utf-8")
                         applied_count += 1
-                        output += f"- ✅ `{_normalize_path(file_path)}` — {len(lines)} change(s) applied\n"
+                        output += f"- ✅ `{_normalize_path(file_path)}` — AST-aware rename applied\n"
                 except Exception:
                     failed_count += 1
             output += f"\n**Result**: {applied_count} files modified, {failed_count} failed\n"

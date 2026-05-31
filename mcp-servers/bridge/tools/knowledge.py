@@ -1,9 +1,11 @@
 # VibeZoo Bridge — Knowledge 도구 그룹
 # learn_project + recall_project + learn_preference + get_preferences
+# 자동 learn_project (register 시 지연 초기화, 1회만)
 
 import hashlib
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -19,9 +21,103 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 
+# ── 자동 learn_project 관리 ──────────────────────────
+
+_learned_projects: set[str] = set()
+_learning_lock = threading.Lock()
+_auto_learn_scheduled = False
+
+
+def _auto_learn_project(target_path: Optional[str] = None) -> None:
+    """등록 시 자동 learn_project (지연 초기화, 최초 1회만).
+    
+    Args:
+        target_path: 분석 대상 경로 (기본: 현재 작업 디렉토리)
+    
+    Thread-safe하며, 이미 학습된 프로젝트는 건너뜁니다.
+    learn_project 실패 시에도 예외를 삼키고 조용히 진행합니다.
+    """
+    root = str(Path(get_project_root(target_path)).resolve())
+    
+    with _learning_lock:
+        if root in _learned_projects:
+            return
+        _learned_projects.add(root)
+    
+    try:
+        # learn_project 내부 로직을 직접 호출 (async-safe)
+        from bridge.tools.scout import summarize_architecture
+        from bridge.tools.deep_analyzer import extract_patterns, map_dependencies
+        
+        # 1. Architecture → arch register
+        arch_summary = summarize_architecture(target_path=root)
+        try_crow_ingest(
+            json.dumps({
+                "action": "auto_learn_project",
+                "type": "architecture",
+                "target": root,
+                "summary": arch_summary[:500],
+                "timestamp": time.time(),
+            }),
+            register="arch"
+        )
+        
+        # 2. Patterns → style register
+        patterns = extract_patterns(target_path=root, min_occurrences=3)
+        try_crow_ingest(
+            json.dumps({
+                "action": "auto_learn_project",
+                "type": "patterns",
+                "target": root,
+                "patterns": patterns[:500],
+                "timestamp": time.time(),
+            }),
+            register="style"
+        )
+        
+        # 3. Dependencies → arch register
+        deps = map_dependencies(target_path=root)
+        try_crow_ingest(
+            json.dumps({
+                "action": "auto_learn_project",
+                "type": "dependencies",
+                "target": root,
+                "deps": deps[:500],
+                "timestamp": time.time(),
+            }),
+            register="arch"
+        )
+        
+        # 4. Project identity → life_context
+        project_key = f"project:{hashlib.md5(root.encode()).hexdigest()[:8]}"
+        try_crow_ingest(
+            json.dumps({
+                "action": "auto_learn_project",
+                "type": "identity",
+                "project_key": project_key,
+                "target": root,
+                "timestamp": time.time(),
+            }),
+            register="life_context"
+        )
+    except Exception:
+        pass  # 자동 학습 실패는 무시 (조용한 폴백)
+
 
 def register(mcp):
-    """Knowledge 도구 등록"""
+    """Knowledge 도구 등록 (자동 learn_project 스케줄 포함)"""
+    
+    # ── 자동 learn_project 스케줄 (지연 초기화, 1회만) ──
+    if not _auto_learn_scheduled:
+        global _auto_learn_scheduled
+        _auto_learn_scheduled = True
+        def _deferred_learn():
+            """서버 시작 후 3초 지연 → 자동 learn_project 실행"""
+            import time as _time
+            _time.sleep(3.0)
+            _auto_learn_project()
+        t = threading.Thread(target=_deferred_learn, daemon=True)
+        t.start()
 
     @mcp.tool
     def learn_project(target_path: Optional[str] = None) -> str:
