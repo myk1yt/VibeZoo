@@ -164,6 +164,12 @@ class ToolContext:
     llm_instructions: str = ""
     suggested_steps: list[str] = field(default_factory=list)
 
+    # 의존성 그래프 — 분석 대상 함수가 호출하는 내부 함수/모듈 목록
+    dependencies: list[dict] = field(default_factory=list)
+
+    # 모킹 제안 — 모킹이 필요한 의존성 목록과 템플릿
+    mock_suggestions: list[str] = field(default_factory=list)
+
     def __post_init__(self):
         """manifest가 비어있으면 레지스트리에서 자동 로드"""
         if not self.manifest:
@@ -194,6 +200,23 @@ class ToolContext:
             lines.append("\n### Suggested Analysis Steps")
             for i, step in enumerate(self.suggested_steps, 1):
                 lines.append(f"{i}. {step}")
+
+        if self.dependencies:
+            lines.append(f"\n### Dependency Graph ({len(self.dependencies)} deps)")
+            for dep in self.dependencies[:10]:
+                name = dep.get("name", "?")
+                dep_type = dep.get("type", "unknown")
+                line = dep.get("line", 0)
+                lines.append(f"- `{name}` ({dep_type}, line {line})")
+            if len(self.dependencies) > 10:
+                lines.append(f"- ... +{len(self.dependencies)-10} more")
+
+        if self.mock_suggestions:
+            lines.append(f"\n### Mock Suggestions ({len(self.mock_suggestions)} suggestions)")
+            for s in self.mock_suggestions[:8]:
+                lines.append(f"- {s}")
+            if len(self.mock_suggestions) > 8:
+                lines.append(f"- ... +{len(self.mock_suggestions)-8} more")
 
         if self.data:
             lines.append("\n### Collected Data")

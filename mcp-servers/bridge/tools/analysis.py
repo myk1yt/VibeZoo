@@ -234,6 +234,74 @@ def register(mcp):
             output += f"```\n{line_content}\n```\n"
             output += "\n> Note: tree-sitter AST analysis is only available for TypeScript/JavaScript files.\n"
 
+        # ── 의존성 그래프 (호출하는 함수 / 호출되는 함수) ──
+        if ext in TS_JS_EXTS and ast_engine.is_available():
+            output += "\n## Dependency Graph\n\n"
+            try:
+                calls = ast_engine.extract_calls(content, ext)
+                # 현재 라인을 포함하는 함수 찾기
+                enclosing_fn = None
+                for fn in ast.get("functions", []):
+                    if fn["line"] <= line_number <= fn.get("end_line", fn["line"]):
+                        enclosing_fn = fn
+                        break
+                if enclosing_fn:
+                    fn_start = enclosing_fn["line"]
+                    fn_end = enclosing_fn.get("end_line", fn_start)
+                    # 이 함수가 호출하는 함수들
+                    calls_from_fn = [c for c in calls if fn_start <= c.get("line", 0) <= fn_end and c.get("name") != enclosing_fn["name"]]
+                    if calls_from_fn:
+                        output += f"**`{enclosing_fn['name']}()` calls:**\n"
+                        for c in calls_from_fn[:8]:
+                            output += f"- `{c['name']}()` (line {c['line']})\n"
+                    else:
+                        output += f"- `{enclosing_fn['name']}()` calls no internal functions.\n"
+
+                    # 이 함수를 호출하는 함수들
+                    callers = [c for c in calls if c.get("name") == enclosing_fn["name"] and c.get("line") != line_number]
+                    if callers:
+                        caller_lines = {}
+                        for c in callers:
+                            for fn in ast.get("functions", []):
+                                if fn["line"] <= c["line"] <= fn.get("end_line", fn["line"]):
+                                    caller_lines[fn["name"]] = caller_lines.get(fn["name"], 0) + 1
+                        if caller_lines:
+                            output += f"\n**Called by:**\n"
+                            for caller_name, count in sorted(caller_lines.items(), key=lambda x: -x[1])[:5]:
+                                output += f"- `{caller_name}()` ({count} call(s))\n"
+                    else:
+                        output += f"\n- `{enclosing_fn['name']}()` is not called internally.\n"
+                else:
+                    output += "- Line is at top level (not inside a function).\n"
+            except Exception:
+                output += "- Could not extract dependency graph.\n"
+        else:
+            # Python/Go/Rust — regex 기반 간단 추출
+            output += "\n## Dependency Graph\n\n"
+            try:
+                func_defs = re.findall(r'(?:def |func |fn |function |async function )(\w+)', content)
+                current_fn = None
+                for fn in reversed(lines[:line_number]):
+                    m = re.match(r'\s*(?:def |func |fn |function |async function )(\w+)', fn)
+                    if m:
+                        current_fn = m.group(1)
+                        break
+                if current_fn:
+                    # 이 함수가 호출하는 함수들
+                    fn_start_line = max(0, line_number - 10)
+                    fn_block = "\n".join(lines[fn_start_line:min(len(lines), fn_start_line + 30)])
+                    called = [f for f in func_defs if f != current_fn and f in fn_block]
+                    if called:
+                        output += f"**`{current_fn}()` likely calls:**\n"
+                        for c in called[:8]:
+                            output += f"- `{c}()`\n"
+                    else:
+                        output += f"- `{current_fn}()` likely calls no internal functions.\n"
+                else:
+                    output += "- Could not determine enclosing function.\n"
+            except Exception:
+                output += "- Could not extract dependency graph.\n"
+
         output += "\n## Surrounding Context\n\n"
         start = max(0, line_number - 4)
         end = min(len(lines), line_number + 3)

@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -16,6 +17,113 @@ from bridge.utils import (
     _truncate, _atomic_write_json, _npx_cmd,
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
+
+
+def _extract_build_errors(build_output: str) -> list[dict]:
+    """빌드 출력에서 에러/경고 부분만 추출.
+
+    지원 패턴:
+    - TS/JS: "error TS2322: ..."
+    - Python: "SyntaxError:", "ImportError:", "  File ..., line N"
+    - Go: "undefined:", "cannot use", "expected"
+    - Generic: "Error:", "ERROR:", "Warning:", "WARNING:"
+
+    Returns:
+        list[{"type": "error"|"warning", "file": "...", "line": N, "message": "..."}]
+    """
+    results = []
+    lines = build_output.split("\n")
+
+    # TS/JS: "error TS2322: ..."
+    ts_pattern = re.compile(
+        r'^(?:.*?\.(?:ts|tsx|js|jsx))\(\s*(\d+)\s*,\s*\d+\s*\)\s*:\s*(error|warning)\s+(TS\d+)\s*:\s*(.+)$'
+    )
+    # Python: "  File ..., line N"
+    py_file_pattern = re.compile(r'^\s*File\s+"([^"]+)",\s+line\s+(\d+)')
+    # Go: "undefined:", "cannot use"
+    go_pattern = re.compile(
+        r'^(?:.*?\.go):(\d+):\s*(undefined|cannot use|expected|not used)\b(.+)$'
+    )
+    # Generic: "Error:", "ERROR:", "Warning:", "WARNING:"
+    generic_error = re.compile(r'^(.*?):\s*(Error|ERROR|error)\s*:\s*(.+)$')
+    generic_warning = re.compile(r'^(.*?):\s*(Warning|WARNING|warning)\s*:\s*(.+)$')
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        entry = None
+
+        # TS/JS
+        m = ts_pattern.match(line)
+        if m:
+            entry = {
+                "type": "error" if m.group(2) == "error" else "warning",
+                "file": m.group(1),
+                "line": int(m.group(1)),
+                "message": f"{m.group(3)}: {m.group(4).strip()}",
+            }
+
+        # Python syntax errors: "SyntaxError:", "ImportError:" on its own line
+        if not entry:
+            py_err_match = re.match(
+                r'^\s*(SyntaxError|ImportError|IndentationError|NameError|TypeError|ValueError|KeyError|AttributeError|ModuleNotFoundError|FileNotFoundError|OSError|RuntimeError|ZeroDivisionError|StopIteration|FloatingPointError)(.*)$',
+                line
+            )
+            if py_err_match:
+                err_type = py_err_match.group(1)
+                err_detail = py_err_match.group(2).strip()
+                # Look backwards for File line
+                file_info = ""
+                line_num = 0
+                for j in range(i - 1, max(-1, i - 3), -1):
+                    fm = py_file_pattern.match(lines[j])
+                    if fm:
+                        file_info = fm.group(1)
+                        line_num = int(fm.group(2))
+                        break
+                entry = {
+                    "type": "error",
+                    "file": file_info,
+                    "line": line_num,
+                    "message": f"{err_type}: {err_detail}",
+                }
+
+        # Go
+        if not entry:
+            m = go_pattern.match(line)
+            if m:
+                entry = {
+                    "type": "error",
+                    "file": m.group(1),
+                    "line": int(m.group(2)),
+                    "message": f"{m.group(3)}{m.group(4).strip()}",
+                }
+
+        # Generic
+        if not entry:
+            m = generic_error.match(line)
+            if m:
+                entry = {
+                    "type": "error",
+                    "file": m.group(1),
+                    "line": 0,
+                    "message": m.group(3).strip(),
+                }
+        if not entry:
+            m = generic_warning.match(line)
+            if m:
+                entry = {
+                    "type": "warning",
+                    "file": m.group(1),
+                    "line": 0,
+                    "message": m.group(3).strip(),
+                }
+
+        if entry:
+            results.append(entry)
+        i += 1
+
+    return results
 
 
 def register(mcp):
@@ -136,11 +244,40 @@ def register(mcp):
                 except Exception:
                     pass
 
+            # ── 에러/경고 추출 ──
+            combined = result.stdout + "\n" + result.stderr
+            errors = _extract_build_errors(combined)
+            error_items = [e for e in errors if e["type"] == "error"]
+            warning_items = [e for e in errors if e["type"] == "warning"]
+
+            # 출력에 에러/경고 섹션 추가
+            extracted_section = ""
+            if error_items:
+                extracted_section += "### Errors\n\n"
+                for e in error_items[:15]:
+                    file_part = f" `{e['file']}:{e['line']}`" if e.get("file") else ""
+                    extracted_section += f"-{file_part}: {e['message'][:200]}\n"
+                if len(error_items) > 15:
+                    extracted_section += f"- ... +{len(error_items)-15} more\n"
+
+            if warning_items:
+                extracted_section += "\n### Warnings\n\n"
+                for w in warning_items[:10]:
+                    file_part = f" `{w['file']}:{w['line']}`" if w.get("file") else ""
+                    extracted_section += f"-{file_part}: {w['message'][:200]}\n"
+                if len(warning_items) > 10:
+                    extracted_section += f"- ... +{len(warning_items)-10} more\n"
+
             return json.dumps({
                 "exitCode": result.returncode,
                 "stdout": _truncate(result.stdout, 2000),
                 "stderr": _truncate(result.stderr, 2000),
                 "success": result.returncode == 0,
+                "errors": error_items[:20],
+                "warnings": warning_items[:20],
+                "extracted": extracted_section.strip(),
+                "error_count": len(error_items),
+                "warning_count": len(warning_items),
                 "timestamp": time.time(),
             }, indent=2, ensure_ascii=False)
 

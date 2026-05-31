@@ -173,22 +173,69 @@ def register(mcp):
                         except Exception:
                             continue
                         ext = p.suffix.lower()
-                        if ext in TS_JS_EXTS and ast_engine.is_available():
-                            ast = ast_engine.parse(content, ext)
-                            for fn in ast.get("functions", []):
-                                if query.lower() in fn["name"].lower():
-                                    ast_results.append(
-                                        f"`{_normalize_path(rel)}:{fn['line']}` — `{fn['type']} {fn['name']}()` (L{fn['line']}-{fn.get('end_line', fn['line'])})"
-                                    )
-                            for cls in ast.get("classes", []):
-                                if query.lower() in cls["name"].lower():
-                                    ast_results.append(
-                                        f"`{_normalize_path(rel)}:{cls['line']}` — `class {cls['name']}`"
-                                    )
+                        ast = ast_engine.parse(content, ext)
+                        if not ast:
+                            continue
+                        # 함수/메서드 검색
+                        for fn in ast.get("functions", []):
+                            if query.lower() in fn["name"].lower():
+                                ast_results.append(
+                                    f"`{_normalize_path(rel)}:{fn['line']}` — `{fn['type']} {fn['name']}()` (L{fn['line']}-{fn.get('end_line', fn['line'])})"
+                                )
+                        # 클래스/구조체 검색
+                        for cls in ast.get("classes", []):
+                            if query.lower() in cls["name"].lower():
+                                cls_type = "class"
+                                if ext in (".go", ".rs"):
+                                    cls_type = "struct" if ext == ".rs" else "type"
+                                ast_results.append(
+                                    f"`{_normalize_path(rel)}:{cls['line']}` — `{cls_type} {cls['name']}`"
+                                )
+                        # 인터페이스/타입 검색 (TS/TSX)
+                        if ext in (".ts", ".tsx"):
                             for iface in ast.get("interfaces", []):
                                 if query.lower() in iface["name"].lower():
                                     ast_results.append(
                                         f"`{_normalize_path(rel)}:{iface['line']}` — `{iface['type']} {iface['name']}`"
+                                    )
+                        # Python: import_from_statement 검색
+                        if ext == ".py":
+                            py_imports = re.findall(r'from\s+(\S+)\s+import\s+(\S+)', content)
+                            for module, name in py_imports:
+                                if query.lower() in name.lower() or query.lower() in module.lower():
+                                    line_num = 0
+                                    for i, l in enumerate(content.split("\n"), 1):
+                                        if f"from {module} import {name}" in l:
+                                            line_num = i
+                                            break
+                                    ast_results.append(
+                                        f"`{_normalize_path(rel)}:{line_num}` — `from {module} import {name}`"
+                                    )
+                        # Go: type_declaration 추가 검색
+                        if ext == ".go":
+                            go_types = re.findall(r'type\s+(\w+)\s+(struct|interface)\s*\{', content)
+                            for tname, tkind in go_types:
+                                if query.lower() in tname.lower():
+                                    line_num = 0
+                                    for i, l in enumerate(content.split("\n"), 1):
+                                        if f"type {tname}" in l:
+                                            line_num = i
+                                            break
+                                    ast_results.append(
+                                        f"`{_normalize_path(rel)}:{line_num}` — `type {tname} {tkind}`"
+                                    )
+                        # Rust: struct_item 검색
+                        if ext == ".rs":
+                            rust_structs = re.findall(r'struct\s+(\w+)', content)
+                            for sname in rust_structs:
+                                if query.lower() in sname.lower():
+                                    line_num = 0
+                                    for i, l in enumerate(content.split("\n"), 1):
+                                        if f"struct {sname}" in l:
+                                            line_num = i
+                                            break
+                                    ast_results.append(
+                                        f"`{_normalize_path(rel)}:{line_num}` — `struct {sname}`"
                                     )
                 except (PermissionError, OSError):
                     continue

@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import re
+import subprocess
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -51,6 +52,46 @@ def _run_tool(name: str, timeout: float = 30.0, **kwargs):
             f"- Parameters: {json.dumps(filtered, default=str, ensure_ascii=False)[:500]}\n"
         )
         return (error_msg, False)
+
+
+# ── ESLint / tsc 헬퍼 ───────────────────────────────
+
+
+def _run_eslint(root: Path) -> Optional[list]:
+    """ESLint 실행 (--format json), 결과 반환.
+    실패 시 None 반환 (조용한 폴백).
+    """
+    try:
+        if not (root / "package.json").exists():
+            return None
+        result = subprocess.run(
+            ["npx", "eslint", ".", "--format", "json", "--quiet"],
+            cwd=str(root), capture_output=True, text=True, timeout=30
+        )
+        if result.stdout.strip():
+            return json.loads(result.stdout)
+    except Exception:
+        pass
+    return None
+
+
+def _run_tsc(root: Path) -> Optional[str]:
+    """tsc --noEmit 실행, 출력 반환.
+    실패 시 None 반환 (조용한 폴백).
+    """
+    try:
+        if not (root / "package.json").exists():
+            return None
+        result = subprocess.run(
+            ["npx", "tsc", "--noEmit"],
+            cwd=str(root), capture_output=True, text=True, timeout=60
+        )
+        combined = (result.stdout or "") + "\n" + (result.stderr or "")
+        if combined.strip():
+            return combined
+    except Exception:
+        pass
+    return None
 
 
 def register(mcp):
@@ -347,6 +388,25 @@ def register(mcp):
             else:
                 sections.append("- No suspicious patterns found.\n")
 
+            # ESLint/tsc 빠른 체크 (요약)
+            root = Path(get_project_root(target_path))
+            eslint_data = _run_eslint(root)
+            tsc_output = _run_tsc(root)
+
+            if eslint_data:
+                total_issues = sum(len(f.get("messages", [])) for f in eslint_data if isinstance(f, dict))
+                files_with_issues = len([f for f in eslint_data if isinstance(f, dict) and f.get('messages')])
+                if total_issues > 0:
+                    sections.append(f"\n## 🔬 ESLint\n\n")
+                    sections.append(f"- **Issues**: {total_issues} in {files_with_issues} file(s)\n")
+
+            if tsc_output:
+                ts_errors = len(re.findall(r'error TS\d+', tsc_output))
+                ts_warnings = len(re.findall(r'warning TS\d+', tsc_output))
+                if ts_errors > 0 or ts_warnings > 0:
+                    sections.append(f"\n## 🔷 tsc\n\n")
+                    sections.append(f"- **Errors**: {ts_errors}, **Warnings**: {ts_warnings}\n")
+
             sections.append("\n## 🧠 Crow Memory\n\n")
             crow_results = try_crow_recall(query="bug pattern error in project", register="bug", limit=5)
             if crow_results:
@@ -400,19 +460,10 @@ def register(mcp):
             else:
                 sections.append("- No relevant bug patterns found in Crow memory.\n")
 
-            # 4. ESLint/tsc 결과 수집 (LLM 분석용 데이터)
+            # 4. ESLint/tsc 실행 (조용한 폴백)
             root = Path(get_project_root(target_path))
-            eslint_data = None
-            try:
-                if (root / "package.json").exists():
-                    result = subprocess.run(
-                        ["npx", "eslint", ".", "--format", "json", "--quiet"],
-                        cwd=str(root), capture_output=True, text=True, timeout=30
-                    )
-                    if result.stdout.strip():
-                        eslint_data = json.loads(result.stdout)
-            except Exception:
-                pass
+            eslint_data = _run_eslint(root)
+            tsc_output = _run_tsc(root)
 
             if eslint_data:
                 sections.append("\n## 🔬 ESLint Analysis (LLM-ready data)\n\n")
@@ -440,6 +491,17 @@ def register(mcp):
                 for msg in all_msgs[:10]:
                     sections.append(f"- `{os.path.relpath(msg['file'], root)}:{msg['line']}` — [{msg['rule']}] {msg['message'][:120]}\n")
 
+            if tsc_output:
+                sections.append("\n## 🔷 TypeScript Compiler Output\n\n")
+                sections.append("```\n")
+                sections.append(_truncate(tsc_output, 2000))
+                sections.append("\n```\n")
+                # 에러 카운트
+                ts_errors = len(re.findall(r'error TS\d+', tsc_output))
+                ts_warnings = len(re.findall(r'warning TS\d+', tsc_output))
+                sections.append(f"\n- **tsc errors**: {ts_errors}\n")
+                sections.append(f"- **tsc warnings**: {ts_warnings}\n")
+
             # 캐시 통계
             sections.append(f"\n<details>\n<summary>📊 Cache Statistics</summary>\n\n")
             sections.append(f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n")
@@ -462,12 +524,15 @@ def register(mcp):
         return result
 
     @mcp.tool
-    def suggest_refactor(target_path: str) -> str:
+    def suggest_refactor(target_path: str, mode: str = "summary", max_tokens: int = 500) -> str:
         """map_dependencies + extract_patterns + analyze_call_graph 통합.
         프로젝트의 리팩터링 제안을 마크다운으로 반환합니다.
 
         Args:
             target_path: 분석 대상 디렉토리 경로
+            mode: "summary" (기본) — 핵심 제안 3~5개만 (각 50자 내외) + 등급
+                  "full" — 전체 상세 보고서 (기존 동작)
+            max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
         err = _validate_string(target_path, "target_path")
         if err:
@@ -475,50 +540,107 @@ def register(mcp):
 
         sections = []
         sections.append(_markdown_header("Refactoring Suggestions"))
-        sections.append(f"> Target: `{target_path}`\n")
+        sections.append(f"> Target: `{target_path}`  \n> Mode: `{mode}`  \n> Max tokens: `{max_tokens if max_tokens > 0 else 'unlimited'}`\n")
 
-        # 1. map_dependencies
-        sections.append("## 🔗 Dependency Map\n")
-        fn = _get_map_dependencies()
-        deps, ok = _run_tool("map_dependencies", target_path=target_path)
-        if ok:
-            sections.append(deps)
+        if mode == "summary":
+            # ── Summary 모드: 핵심 제안 3~5개만 (각 50자 내외) + 등급 ──
+            root = Path(get_project_root(target_path))
+
+            # map_dependencies 간략 정보
+            deps, ok = _run_tool("map_dependencies", target_path=target_path)
+            has_cycles = "✅ No circular dependencies" not in deps if ok else False
+            hub_count = len(re.findall(r'`(.+?)`:\s*\*{0,2}(\d+)\*{0,2}\s*imports?', deps)) if ok else 0
+
+            # extract_patterns 간략 정보
+            patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=3)
+            pattern_count = len(re.findall(r'###\s+\d+\.', patterns)) if ok else 0
+
+            # File stats
+            total_files = 0
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+                total_files += 1
+
+            sections.append("## Refactoring Suggestions (Summary)\n\n")
+            grade = "A"
+            suggestions = []
+
+            if has_cycles:
+                suggestions.append("순환 의존성 감지 — 분해 전략 필요")
+                grade = "C"
+            if hub_count > 5:
+                suggestions.append(f"허브 모듈 {hub_count}개 — 과도한 의존성 분산 필요")
+                if grade == "A":
+                    grade = "B"
+            if pattern_count > 3:
+                suggestions.append(f"중복 패턴 {pattern_count}개 — 공통 추출 권장")
+                if grade == "A":
+                    grade = "B"
+            if total_files > 50:
+                suggestions.append(f"대규모 프로젝트 ({total_files} 파일) — 모듈화 고려")
+            else:
+                suggestions.append("프로젝트 규모 양호 — 현재 구조 유지 가능")
+
+            sections.append(f"- **Grade**: `{grade}`\n")
+            sections.append(f"- **Source files**: {total_files}\n")
+            sections.append(f"- **Circular deps**: {'⚠️ Yes' if has_cycles else '✅ No'}\n")
+            sections.append(f"- **Hub modules**: {hub_count}\n")
+            sections.append(f"- **Duplicated patterns**: {pattern_count}\n\n")
+            sections.append("### Key Suggestions\n")
+            for s in suggestions[:5]:
+                sections.append(f"- {s}\n")
+
+            # Cache stats
+            from bridge.file_cache import FileCache
+            cache = FileCache()
+            cache_stats = cache.stats()
+            sections.append(f"\n<details>\n<summary>📊 Cache Statistics</summary>\n\n")
+            sections.append(f"- L1 size: {cache_stats.get('l1_size', 0)}/{cache_stats.get('l1_max', 50)}\n")
+            sections.append(f"- File list cache: {cache_stats.get('file_list_cache_size', 0)} entries\n")
+            sections.append(f"</details>\n\n")
+
         else:
-            sections.append(f"⚠️ Partial failure: {deps}")
+            # ── Full 모드: 기존 상세 보고서 ──
+            # 1. map_dependencies
+            sections.append("## 🔗 Dependency Map\n")
+            deps, ok = _run_tool("map_dependencies", target_path=target_path)
+            if ok:
+                sections.append(deps)
+            else:
+                sections.append(f"⚠️ Partial failure: {deps}")
 
-        # 2. extract_patterns
-        sections.append("## 📊 Pattern Duplication\n")
-        fn = _get_extract_patterns()
-        patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=5)
-        if ok:
-            sections.append(patterns)
-        else:
-            sections.append(f"⚠️ Partial failure: {patterns}")
+            # 2. extract_patterns
+            sections.append("## 📊 Pattern Duplication\n")
+            patterns, ok = _run_tool("extract_patterns", target_path=target_path, min_occurrences=5)
+            if ok:
+                sections.append(patterns)
+            else:
+                sections.append(f"⚠️ Partial failure: {patterns}")
 
-        # 3. analyze_call_graph
-        sections.append("## 📞 Call Graph\n")
-        fn = _get_analyze_call_graph()
-        callgraph, ok = _run_tool("analyze_call_graph", file_path=target_path, depth=3)
-        if ok:
-            sections.append(callgraph)
-        else:
-            sections.append(f"⚠️ Partial failure: {callgraph}")
+            # 3. analyze_call_graph
+            sections.append("## 📞 Call Graph\n")
+            callgraph, ok = _run_tool("analyze_call_graph", file_path=target_path, depth=3)
+            if ok:
+                sections.append(callgraph)
+            else:
+                sections.append(f"⚠️ Partial failure: {callgraph}")
 
-        # 4. Crow recall
-        style_rules = try_crow_recall(query="coding style rules patterns", register="style", limit=5)
-        if style_rules:
-            sections.append("\n\n## 🎨 Crow Style Rules\n")
-            sections.append("### Previous coding style rules from Crow memory:\n")
-            for item in style_rules:
-                content = item.get("content", item.get("value", str(item)))
-                sections.append(f"- {_truncate(content, 300)}\n")
-            sections.append("\n")
+            # 4. Crow recall
+            style_rules = try_crow_recall(query="coding style rules patterns", register="style", limit=5)
+            if style_rules:
+                sections.append("\n\n## 🎨 Crow Style Rules\n")
+                sections.append("### Previous coding style rules from Crow memory:\n")
+                for item in style_rules:
+                    content = item.get("content", item.get("value", str(item)))
+                    sections.append(f"- {_truncate(content, 300)}\n")
+                sections.append("\n")
 
         try_crow_ingest(
             json.dumps({
                 "action": "suggest_refactor",
                 "target": target_path,
-                "style_rules_found": len(style_rules),
+                "mode": mode,
+                "max_tokens": max_tokens,
+                "style_rules_found": len(style_rules) if mode == "full" else 0,
                 "timestamp": time.time(),
             }),
             register="style"

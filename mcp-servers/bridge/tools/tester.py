@@ -106,6 +106,60 @@ def register(mcp):
 
         language = "python" if ext == ".py" else "go" if ext == ".go" else "rust" if ext == ".rs" else "typescript" if ext in (".ts", ".tsx") else "javascript"
 
+        # ── 함수 의존성 그래프 추출 (호출하는 내부 함수 목록) ──
+        dependencies = []
+        try:
+            calls = ast_engine.extract_calls(content, ext)
+            # 함수 내에서 호출하는 내부 함수 식별
+            for fn in function_details:
+                fn_start = fn.get("line", 0)
+                fn_end = fn.get("end_line", fn_start)
+                fn_lines = content.split("\n")[fn_start:fn_end] if fn_start > 0 else []
+                fn_calls = []
+                for call in calls:
+                    call_line = call.get("line", 0)
+                    if fn_start <= call_line <= fn_end:
+                        call_name = call.get("name", "")
+                        # 자기 자신 호출 제외
+                        if call_name != fn.get("name", ""):
+                            fn_calls.append(call_name)
+                if fn_calls:
+                    dependencies.append({
+                        "function": fn.get("name", "anonymous"),
+                        "calls": list(set(fn_calls)),
+                        "call_count": len(set(fn_calls)),
+                    })
+        except Exception:
+            pass
+
+        # ── Mock 제안 템플릿 생성 ──
+        mock_suggestions = []
+        for imp in imports:
+            module = imp.get("module", "")
+            if module.startswith(".") or module.startswith("/"):
+                # 내부 모듈 → 모킹 필요
+                base = os.path.basename(module)
+                if ext in (".ts", ".tsx"):
+                    mock_suggestions.append(f"jest.mock('{module}', ...)")
+                elif ext == ".py":
+                    mock_suggestions.append(f"unittest.mock.patch('{module}')")
+                elif ext == ".go":
+                    mock_suggestions.append(f"interface mock for '{module}'")
+
+        # 외부 API 호출 모킹
+        for dep in dependencies:
+            for call_name in dep.get("calls", []):
+                if call_name.startswith("fetch") or call_name.startswith("axios") or call_name.startswith("request"):
+                    mock_for = f"{call_name}()"
+                    if ext in (".ts", ".tsx"):
+                        mock_suggestions.append(f"jest.spyOn(global, '{call_name}').mockResolvedValue(...)")
+                    elif ext == ".py":
+                        mock_suggestions.append(f"unittest.mock.patch('requests.get')")
+                    break
+
+        # 중복 제거
+        mock_suggestions = list(dict.fromkeys(mock_suggestions))
+
         # ── ToolContext 생성 ──
         ctx = make_generate_tests_context(
             source_path=str(target),
@@ -114,6 +168,8 @@ def register(mcp):
             imports=imports,
             existing_tests=[],  # 향후: 기존 테스트 파일 스캔
         )
+        ctx.dependencies = dependencies
+        ctx.mock_suggestions = mock_suggestions
 
         # ── 기존 템플릿 출력 ──
         output = _markdown_header(f"Test Generation: {target.name}")

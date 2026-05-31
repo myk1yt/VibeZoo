@@ -337,10 +337,11 @@ def register(mcp):
         issues = []
         stats = {"functions": 0, "classes": 0, "interfaces": 0, "max_depth": 0}
 
+        ast_engine = _get_ast_engine()
+        ast_engine._init_legacy_tree_sitter()
+
         # AST 분석 (TS/JS)
         if ext in TS_JS_EXTS:
-            ast_engine = _get_ast_engine()
-            ast_engine._init_legacy_tree_sitter()
             ast = ast_engine.parse(content, ext)
             functions = ast.get("functions", [])
             classes = ast.get("classes", [])
@@ -411,6 +412,47 @@ def register(mcp):
                 issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
 
         elif ext == ".py":
+            # ── Python AST 분석 ──
+            ast = ast_engine.parse(content, ext)
+            functions = ast.get("functions", [])
+            classes = ast.get("classes", [])
+            stats["functions"] = len(functions)
+            stats["classes"] = len(classes)
+
+            # Python AST 기반 이슈
+            if functions:
+                long_funcs = []
+                for fn in functions:
+                    fn_start = fn.get('line', 0)
+                    fn_end = fn.get('end_line', fn_start)
+                    fn_lines = fn_end - fn_start
+                    if fn_lines > 50:
+                        long_funcs.append((fn.get('name', 'anonymous'), fn_lines, fn_start))
+                for name, fn_lines, ln in long_funcs[:5]:
+                    issues.append(("📏", f"Long function `{name}()`: {fn_lines} lines (line {ln}) — consider splitting"))
+
+                # 파라미터 개수 검사
+                for fn in functions:
+                    fn_name = fn.get('name', '')
+                    if fn_name:
+                        # AST에 params가 없으므로 regex로 추정
+                        fn_text = content.split("\n")[fn.get('line', 0):fn.get('line', 0)+1][0] if fn.get('line', 0) > 0 else ""
+                        param_count = fn_text.count(",") + 1 if "(" in fn_text else 0
+                        if param_count > 6:  # self 포함
+                            issues.append(("⚠️", f"Function `{fn_name}()` has ~{param_count} parameters (line {fn.get('line', 0)}) — consider reducing"))
+
+            if classes:
+                long_classes = []
+                for cls in classes:
+                    cls_start = cls.get('line', 0)
+                    cls_end = cls.get('end_line', cls_start)
+                    cls_lines = cls_end - cls_start
+                    if cls_lines > 200:
+                        long_classes.append((cls.get('name', 'anonymous'), cls_lines, cls_start))
+                for name, cls_lines, ln in long_classes[:3]:
+                    issues.append(("📏", f"Large class `{name}`: {cls_lines} lines (line {ln}) — consider splitting"))
+
+            # Python 특화 검사
             console_logs = len(re.findall(r'\bprint\(', content))
             if console_logs > 0:
                 issues.append(("⚠️", f"`print()` found {console_logs} time(s) — use logging instead"))
@@ -420,6 +462,11 @@ def register(mcp):
             empty_excepts = len(re.findall(r'except\s*:', content))
             if empty_excepts > 0:
                 issues.append(("⚠️", f"Bare `except:` found {empty_excepts} time(s) — specify exception type"))
+
+            # Import 구조 분석
+            py_imports = re.findall(r'^(?:from\s+(\S+)\s+)?import\s+(\S+)', content, re.MULTILINE)
+            if len(py_imports) > 20:
+                issues.append(("📝", f"Large number of imports ({len(py_imports)}) — consider lazy imports"))
 
             # ── Cyclomatic complexity (Python) ──
             comp = _compute_cyclomatic_complexity(content, ext)
@@ -431,10 +478,80 @@ def register(mcp):
             stats["max_depth"] = max_depth
             if max_depth > 4:
                 issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
-        else:
-            todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
+
+        elif ext == ".go":
+            # ── Go AST 분석 ──
+            ast = ast_engine.parse(content, ext)
+            functions = ast.get("functions", [])
+            classes = ast.get("classes", [])  # Go structs
+            stats["functions"] = len(functions)
+            stats["classes"] = len(classes)
+
+            # Go AST 기반 이슈
+            if functions:
+                long_funcs = []
+                for fn in functions:
+                    fn_start = fn.get('line', 0)
+                    fn_end = fn.get('end_line', fn_start)
+                    fn_lines = fn_end - fn_start
+                    if fn_lines > 50:
+                        long_funcs.append((fn.get('name', 'anonymous'), fn_lines, fn_start))
+                for name, fn_lines, ln in long_funcs[:5]:
+                    issues.append(("📏", f"Long function `{name}()`: {fn_lines} lines (line {ln}) — consider splitting"))
+
+            if classes:
+                for cls in classes:
+                    cls_start = cls.get('line', 0)
+                    cls_end = cls.get('end_line', cls_start)
+                    cls_lines = cls_end - cls_start
+                    if cls_lines > 100:
+                        issues.append(("📏", f"Large struct `{cls.get('name', 'anonymous')}`: {cls_lines} lines (line {cls_start}) — consider splitting"))
+
+            # Go 특화 검사
+            todos = len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
             if todos > 0:
                 issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+
+            go_fmt_errors = 0
+            for line in lines:
+                if len(line) > 120:
+                    go_fmt_errors += 1
+            if go_fmt_errors > 0:
+                issues.append(("📏", f"{go_fmt_errors} line(s) exceed 120 chars — run `gofmt`"))
+
+            # Error handling 검사
+            err_ignores = len(re.findall(r'if\s+err\s*!=\s*nil\s*\{\s*\n?\s*_\s*=\s*err', content))
+            if err_ignores > 0:
+                issues.append(("⚠️", f"`err` assigned to `_` {err_ignores} time(s) — handle errors properly"))
+
+            # ── Cyclomatic complexity (Go) ──
+            comp = _compute_cyclomatic_complexity(content, ext)
+            if comp > 15:
+                issues.append(("⚠️", f"Cyclomatic complexity: {comp} — consider simplifying"))
+
+            # ── 중첩 깊이 검사 (Go) ──
+            max_depth = _compute_nesting_depth(content, ext)
+            stats["max_depth"] = max_depth
+            if max_depth > 4:
+                issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
+
+        else:
+            # ── 기타 언어 (regex 폴백) ──
+            if ext == ".rs":
+                # Rust 특화 검사
+                unsafe_blocks = len(re.findall(r'\bunsafe\s*\{', content))
+                if unsafe_blocks > 0:
+                    issues.append(("⚠️", f"`unsafe` block(s) found: {unsafe_blocks} — review for safety"))
+                unwrap_calls = len(re.findall(r'\.unwrap\(\)', content))
+                if unwrap_calls > 0:
+                    issues.append(("⚠️", f"`.unwrap()` found {unwrap_calls} time(s) — use proper error handling"))
+                todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
+                if todos > 0:
+                    issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+            else:
+                todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
+                if todos > 0:
+                    issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
 
             # ── 중첩 깊이 검사 (기타 언어) ──
             max_depth = _compute_nesting_depth(content, ext)

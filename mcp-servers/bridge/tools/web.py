@@ -32,7 +32,7 @@ class WebSearchEngine:
 
     def search(self, query: str, max_results: int = 5,
                preferred_engine: str = "auto") -> list:
-        """검색 엔진 폴백 체인
+        """검색 엔진 폴백 체인 — 첫 번째 엔진에 3초, 실패 시 나머지 병렬 2초.
 
         Args:
             query: 검색어
@@ -55,30 +55,63 @@ class WebSearchEngine:
         elif preferred_engine == "bing":
             return self._search_bing_api(query, max_results)
 
-        # ── Auto fallback chain ──
-        # 1. DuckDuckGo
-        results = self._search_duckduckgo(query, max_results)
-        if results:
-            return results
+        # ── 병렬 fallback ──
+        return self._parallel_search(query, max_results)
 
-        # 2. SearXNG 공개 인스턴스
-        results = self._search_searxng(query, max_results)
-        if results:
-            return results
+    def _parallel_search(self, query: str, max_results: int) -> list:
+        """나머지 엔진을 병렬로 동시 호출, 가장 빠른 결과 사용.
 
-        # 3. Google API (환경변수 키 있으면)
-        if os.environ.get("GOOGLE_API_KEY"):
-            results = self._search_google_api(query, max_results)
+        먼저 DuckDuckGo에 3초 timeout 시도, 실패 시 SearXNG/Google/Bing을 병렬 2초 timeout.
+        """
+        # 1. DuckDuckGo (먼저 시도, 3초)
+        try:
+            results = self._search_duckduckgo(query, max_results)
             if results:
                 return results
+        except Exception:
+            pass
 
-        # 4. Bing API (환경변수 키 있으면)
-        if os.environ.get("BING_API_KEY"):
-            results = self._search_bing_api(query, max_results)
-            if results:
-                return results
+        # 2. 나머지 엔진 병렬 (2초 timeout)
+        import concurrent.futures
 
-        # 모두 실패
+        def _safe_search(engine_name: str, *args, **kwargs) -> list:
+            try:
+                return args[0](*args[1:], **kwargs) if len(args) > 0 else []
+            except Exception:
+                return []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            future_map = {}
+
+            # SearXNG
+            if True:
+                future = pool.submit(self._search_searxng, query, max_results)
+                future_map[future] = "searxng"
+
+            # Google (키 있으면)
+            if os.environ.get("GOOGLE_API_KEY"):
+                future = pool.submit(self._search_google_api, query, max_results)
+                future_map[future] = "google"
+
+            # Bing (키 있으면)
+            if os.environ.get("BING_API_KEY"):
+                future = pool.submit(self._search_bing_api, query, max_results)
+                future_map[future] = "bing"
+
+            if not future_map:
+                return []
+
+            try:
+                for future in concurrent.futures.as_completed(future_map, timeout=2):
+                    try:
+                        result = future.result()
+                        if result:
+                            return result
+                    except Exception:
+                        continue
+            except concurrent.futures.TimeoutError:
+                pass
+
         return []
 
     def _search_duckduckgo(self, query: str, max_results: int) -> list:
