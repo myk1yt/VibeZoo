@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from bridge.config import (
-    WHITEBOARD_FILE, WHITEBOARD_ACTION_FILE, UI_ACTION_FILE,
+    WHITEBOARD_FILE, WHITEBOARD_ACTION_FILE, UI_ACTION_FILE, DZ_ACTION_FILE,
     UPLOADED_IMAGE_PATH, IMAGE_CACHE_DIR,
 )
 from bridge.utils import (
@@ -819,12 +819,12 @@ def _open_dropzone_in_webview() -> str:
     html_b64 = b64encode(_DROPZONE_HTML.encode('utf-8')).decode('utf-8')
 
     data = {
-        "action": "open_dropzone",
+        "action": "open",
         "html_b64": html_b64,
         "title": "VibeZoo Image Drop Zone",
         "timestamp": time.time(),
     }
-    _atomic_write_json(WHITEBOARD_ACTION_FILE, data, indent=2)
+    _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
 
     return (_markdown_header("Image Drop Zone", "📸")
             + "Drop zone opened in VS Code Webview.\n\n"
