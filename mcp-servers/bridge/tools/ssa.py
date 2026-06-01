@@ -3,6 +3,7 @@
 # Statistical Spatial Aggregator v3 — 이미지를 공간 통계 매트릭스로 압축
 
 import json
+import base64
 import math
 import os
 import time
@@ -747,6 +748,16 @@ def register(mcp):
 
             if ocr_section:
                 report += ocr_section
+
+            # ── 이미지를 base64 data URI로 포함 (LLM vision 지원) ──
+            try:
+                _img_b64 = base64.b64encode(open(image_path, 'rb').read()).decode()
+                _img_ext = os.path.splitext(image_path)[1].lower().lstrip('.') or 'png'
+                if _img_ext == 'jpg': _img_ext = 'jpeg'
+                _img_data_uri = f"data:image/{_img_ext};base64,{_img_b64[:200000]}"
+                report = f"![uploaded image]({_img_data_uri})\n\n" + report
+            except Exception:
+                pass  # 이미지 포함 실패시 조용히 스킵
 
             try_crow_ingest(f"SSA v3 analyze: {fname} ({orig_w}x{orig_h}, detail={detail}, ocr={ocr_engine_name}, text_blocks={ocr_blocks_count})",
                             register="context")
