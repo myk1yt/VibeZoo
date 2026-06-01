@@ -3847,6 +3847,10 @@ def get_preferences(category: Optional[str] = None) -> str:
     return output
 
 
+# ── 드랍존 액션 파일 ────────────────────────────
+DZ_ACTION_FILE = os.path.join(os.path.expanduser("~"), ".vibezoo-dropzone-action.json")
+
+
 # ── 이미지 업로드 캐시 ──────────────────────────────
 IMAGE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".vibezoo-cache")
 os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
