@@ -6,7 +6,6 @@ export declare class VisualVibePanels {
     private readonly homedir;
     private _activated;
     private _watching;
-    private _watchers;
     private _lastCommandsHash;
     /** Whiteboard가 아직 열리지 않았을 때 대기 중인 드로잉 명령 */
     private _pendingDrawCommands;
@@ -16,21 +15,19 @@ export declare class VisualVibePanels {
     /**
      * action 파일의 변경을 감지하여 콜백 실행.
      * @param filePath 감시할 파일 경로
-     * @param _lastMtime 마지막 mtime 기록 (객체 참조로 유지) — fallback watchFile에서 사용
+     * @param lastMtime 마지막 mtime 기록 (객체 참조로 유지)
      * @param onChange 파일 내용이 변경되었을 때 실행할 콜백
      */
     private handleFileChange;
     /** 현재 파일의 mtime 반환 (없으면 0) */
     private getCurrentMtime;
     /**
-     * 파일 감시 시작 (fs.watch 기반).
+     * 파일 감시 시작 (fs.watchFile 기반).
      * activate()에서 최초 1회 호출.
      */
     private startWatching;
     /** 파일 감시 중단 */
     private stopWatching;
-    /** fs.watch 실패 시 fs.watchFile로 폴백 */
-    private _fallbackWatchFile;
     /** AI 드로잉 명령을 Whiteboard Webview로 전달 */
     private sendToWhiteboard;
     /** Whiteboard 열기 — Fabric.js 기반 드로잉 캔버스 */
