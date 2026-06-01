@@ -581,7 +581,7 @@ def try_crow_recall(query: str, register: str = "context", limit: int = 5) -> li
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> JSONResponse:
-    """헬스체크 엔드포인트 — Bridge 상태 및 Crow 연결 상태 반환"""
+    """헬스체크 엔드포인트 — Bridge 상태 · Crow 연결 · Tree-sitter 상태 반환"""
     crow_ok = False
     try:
         import requests
@@ -589,11 +589,17 @@ async def health_check(request: Request) -> JSONResponse:
         crow_ok = resp.ok
     except Exception:
         pass
+    # tree-sitter 상태 확인 (lazy init 시도 후)
+    _init_tree_sitter()
     return JSONResponse({
         "status": "ok",
         "crow": crow_ok,
         "timestamp": time.time(),
         "version": VERSION,
+        "tree_sitter": {
+            "available": _ts_available,
+            "languages": ["typescript", "javascript"] if _ts_available else [],
+        },
     })
 
 
@@ -3852,5 +3858,12 @@ if __name__ == "__main__":
 
     print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
     print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
+
+    # Tree-sitter 초기화 시도 및 상태 로깅
+    if _init_tree_sitter():
+        print(f"   ✅ Tree-sitter AST: available (typescript, javascript)")
+    else:
+        print(f"   ⚠️  Tree-sitter not installed — using regex fallback.")
+        print(f"      Run vibezoo_setup(target=\"recommended\") for AST-based analysis.")
 
     mcp.run(transport="sse", host="127.0.0.1", port=args.port)
