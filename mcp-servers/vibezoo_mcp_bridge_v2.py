@@ -273,7 +273,7 @@ def _init_tree_sitter():
             _ts_parser = ts.Parser()
             
             try:
-                from tree_sitter_languages import get_language
+                from tree_sitter_languages import get_language  # type: ignore[import-untyped]
                 _ts_ts_language = get_language("typescript")
                 _ts_ts_language_js = get_language("javascript")
             except ImportError:
