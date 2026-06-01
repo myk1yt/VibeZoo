@@ -1,4 +1,4 @@
-// VibeZoo Wave 5: Visual Vibe 통합 패널
+﻿// VibeZoo Wave 5: Visual Vibe 통합 패널
 // Whiteboard, UI Preview, Diagram 등 Webview 패널 생성
 // AI가 MCP 도구(draw_on_whiteboard, open_whiteboard)를 호출하면
 // 파일 감시를 통해 자동으로 패널을 열고 그림을 렌더링한다.
@@ -400,7 +400,7 @@ export class VisualVibePanels {
       'vibezoo-dropzone',
       '📸 VibeZoo Drop Zone',
       vscode.ViewColumn.Two,
-      { enableScripts: true, retainContextWhenHidden: true },
+      { enableScripts: true, retainContextWhenHidden: true, enableDragAndDrop: true } as any,
     );
 
     this.dropzonePanel.webview.html = this.dropzoneHtml();
