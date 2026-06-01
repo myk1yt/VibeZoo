@@ -600,13 +600,13 @@ _DROPZONE_HTML = """<!DOCTYPE html>
       dropzone.classList.add('has-image');
       showStatus('Uploading...', '');
       try {
-        const resp = await fetch('/upload', {
+        const resp = await fetch('http://127.0.0.1:9027/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: dataUrl, filename: file.name })
         });
         const result = await resp.json();
-        if (result.success) {
+        if (result.status === 'ok') {
           showStatus('✅ Image uploaded! Path: ' + result.path, 'success');
           clearBtn.style.display = 'inline-block';
         } else {
