@@ -17,36 +17,9 @@ from starlette.requests import Request
 from bridge.config import VERSION, CROW_URL, CROW_TIMEOUT, IMAGE_CACHE_DIR, UPLOADED_IMAGE_PATH
 from bridge.crow_client import crow_health_check
 from bridge.tools import register_all_tools
-from bridge.ast_engine import AstEngine
 
 mcp = FastMCP(name="vibezoo")
 register_all_tools(mcp)
-
-
-# ── Tree-sitter 상태 확인 ───────────────────────────────
-
-_ts_status: dict = {"available": False, "languages": [], "init_errors": []}
-
-
-def _check_tree_sitter() -> dict:
-    """Tree-sitter AST 엔진 초기화를 시도하고 상태를 반환.
-    서버 기동 시 한 번 호출되어 health check에서 참조됩니다.
-    """
-    engine = AstEngine()
-    available = engine._init_legacy_tree_sitter()
-    langs = list(engine._initialized) if available else []
-    errors = engine._init_errors[:5] if engine._init_errors else []
-
-    # 멀티랭귀지 파서도 시도
-    for lang_name in ["python", "go", "rust"]:
-        if engine._init_language(lang_name):
-            langs.append(lang_name)
-
-    return {
-        "available": available or len(langs) > 0,
-        "languages": langs,
-        "init_errors": errors,
-    }
 
 
 # ── Zoo Code MCP 호환: list_subagents ─────────────────────
@@ -79,14 +52,13 @@ async def list_subagents_route(request: Request) -> JSONResponse:
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> JSONResponse:
-    """헬스체크 엔드포인트 — Bridge 상태 · Crow 연결 · Tree-sitter 상태 반환"""
+    """헬스체크 엔드포인트 — Bridge 상태 및 Crow 연결 상태 반환"""
     crow_ok = crow_health_check()
     return JSONResponse({
         "status": "ok",
         "crow": crow_ok,
         "timestamp": time.time(),
         "version": VERSION,
-        "tree_sitter": _ts_status,
     })
 
 
@@ -152,15 +124,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=9027, help="SSE server port")
     args = parser.parse_args()
 
-    print(f"🚀 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
+    print(f"\U0001f680 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
     print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
-
-    # Tree-sitter 초기화 시도 및 상태 기록
-    _ts_status = _check_tree_sitter()
-    if _ts_status["available"]:
-        print(f"   ✅ Tree-sitter AST: available ({', '.join(_ts_status['languages'])})")
-    else:
-        print(f"   ⚠️  Tree-sitter not installed — using regex fallback.")
-        print(f"      Run vibezoo_setup(target=\"recommended\") for AST-based analysis.")
 
     mcp.run(transport="sse", host="127.0.0.1", port=args.port)
