@@ -25,8 +25,12 @@ import { exec } from 'child_process';
 const WB_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard.json');
 const WB_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard-action.json');
 const UI_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-ui-action.json');
-const DZ_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-dropzone-action.json');
-const DROPZONE_CACHE_DIR = () => path.join(os.homedir(), '.vibezoo-cache');
+const CHAT_PENDING_FILE = () => path.join(os.homedir(), '.vibezoo-chat-pending.json');
+const getDateString = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const DROPZONE_CACHE_DIR = () => path.join(os.homedir(), '.vibezoo-uploads', getDateString());
 const UPLOADED_IMAGE_PATH = () => path.join(DROPZONE_CACHE_DIR(), 'dropped_image.png');
 
 const FABRIC_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js';
@@ -152,12 +156,10 @@ export class VisualVibePanels {
     const wbFile = WB_FILE();
     const wbAction = WB_ACTION_FILE();
     const uiAction = UI_ACTION_FILE();
-    const dzAction = DZ_ACTION_FILE();
 
     const lastWbMtime = { current: this.getCurrentMtime(wbFile) };
     const lastActionMtime = { current: this.getCurrentMtime(wbAction) };
     const lastUiMtime = { current: this.getCurrentMtime(uiAction) };
-    const lastDzMtime = { current: this.getCurrentMtime(dzAction) };
 
     // ── whiteboard-action.json 감시 (open_whiteboard MCP 도구) ──
     fs.watchFile(wbAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
@@ -180,20 +182,6 @@ export class VisualVibePanels {
       this.handleFileChange(uiAction, lastUiMtime, (content) => {
         if (content.action === 'open_ui') {
           this.openUIPreview(content.code || '', content.framework || 'react');
-        }
-      });
-    });
-
-    // ── vibezoo-dropzone-action.json 감시 (open_dropzone / open_image_dropzone MCP 도구) ──
-    fs.watchFile(dzAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastDzMtime.current) return;
-      lastDzMtime.current = curr.mtimeMs;
-      this.handleFileChange(dzAction, lastDzMtime, (content) => {
-        if (content.action === 'open') {
-          this.openDropzone();
-          if (content.message) {
-            log(\`Dropzone action: $\{content.message}\`);
-          }
         }
       });
     });
@@ -230,7 +218,6 @@ export class VisualVibePanels {
     try { fs.unwatchFile(WB_FILE()); } catch { /* ignore */ }
     try { fs.unwatchFile(WB_ACTION_FILE()); } catch { /* ignore */ }
     try { fs.unwatchFile(UI_ACTION_FILE()); } catch { /* ignore */ }
-    try { fs.unwatchFile(DZ_ACTION_FILE()); } catch { /* ignore */ }
     this._watching = false;
     log('File watching stopped');
   }

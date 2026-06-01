@@ -57,6 +57,60 @@ def _read_text_file(path: str, max_chars: int = 50000) -> str:
             continue
     return "", "unknown"
 
+
+def _encode_image_as_safe_data_uri(image_path: str, max_dim: int = 1024, quality: int = 85) -> str:
+    """이미지를 안전한 Data URI로 인코딩.
+    
+    Pillow로 이미지를 로드하여 max_dim 이하로 리사이징한 후,
+    JPEG으로 압축(품질 85)하고 전체 Base64 인코딩을 수행한다.
+    문자열 슬라이싱을 사용하지 않으므로 이미지 손상이 발생하지 않는다.
+    """
+    try:
+        from PIL import Image
+        import io
+        
+        img = Image.open(image_path)
+        
+        # RGBA → RGB 변환 (JPEG은 알파채널 미지원)
+        if img.mode in ('RGBA', 'P', 'LA'):
+            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            img = rgb_img
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # 리사이징 (max_dim 이하로, 비율 유지)
+        w, h = img.size
+        largest = max(w, h)
+        if largest > max_dim:
+            scale = max_dim / largest
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        
+        # JPEG 압축 → Base64
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG', quality=quality, optimize=True)
+        img_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return f"data:image/jpeg;base64,{img_b64}"
+    except ImportError:
+        # Pillow 미설치 시: 원본 이미지를 4자 정렬로 안전하게 자르기 (fallback)
+        try:
+            with open(image_path, "rb") as f:
+                img_b64 = base64.b64encode(f.read()).decode('utf-8')
+            safe_len = (200000 // 4) * 4
+            ext = os.path.splitext(image_path)[1].lower().lstrip('.') or 'png'
+            if ext == 'jpg': ext = 'jpeg'
+            return f"data:image/{ext};base64,{img_b64[:safe_len]}"
+        except Exception:
+            return ""
+    except Exception:
+        return ""
+
+
 def analyze_file(file_path: str) -> str:
     """파일 분석 메인 함수
     
@@ -82,26 +136,63 @@ def analyze_file(file_path: str) -> str:
     lines.append(f"- **Modified:** {info['modified']}")
     lines.append("")
     
-    # For images: include data URI for vision
+    # For images: 통합 Image Pipeline 실행
     if info['type'] == 'image':
-        try:
-            with open(path, "rb") as f:
-                img_b64 = base64.b64encode(f.read()).decode()
-            ext = info['ext'].lstrip('.') or 'png'
-            if ext == 'jpg': ext = 'jpeg'
-            data_uri = f"data:image/{ext};base64,{img_b64[:200000]}"
-            lines.append(f"![uploaded image]({data_uri})")
+        # 안전한 Data URI 생성 (Pillow 리사이징)
+        safe_uri = _encode_image_as_safe_data_uri(path, max_dim=1024, quality=85)
+        if safe_uri:
+            lines.append(f"![uploaded image]({safe_uri})")
             lines.append("")
-        except Exception:
-            pass
-        
-        # Try MiniCPM-V vision
+        lines.append("---")
+        lines.append("## 🔬 Image Analysis Pipeline")
+        lines.append("")
+
+        # ── Phase 1: SSA (Statistical Spatial Aggregator) ──
+        try:
+            from bridge.tools.ssa import _analyze_image, _imread_korean_safe, _summarize_ssa_results
+            import cv2, numpy as np
+            img_raw = _imread_korean_safe(path)
+            if img_raw is not None:
+                orig_h, orig_w = img_raw.shape[:2]
+                target_w = 640
+                target_h = int(orig_h * (target_w / orig_w))
+                img_resized = cv2.resize(img_raw, (target_w, target_h))
+                ssa_report = _analyze_image(img_resized, detail="full", orig_w=orig_w, orig_h=orig_h)
+                ssa_summary = _summarize_ssa_results(ssa_report)
+                if ssa_summary:
+                    lines.append(ssa_summary)
+                lines.append(ssa_report)
+                lines.append("")
+            else:
+                lines.append("### 📊 SSA: Cannot read image for spatial analysis\n")
+        except ImportError:
+            lines.append("### 📊 SSA: OpenCV not available (install opencv-python)\n")
+        except Exception as e:
+            lines.append(f"### 📊 SSA: Analysis failed ({e})\n")
+
+        # ── Phase 2: OCR 텍스트 추출 ──
+        try:
+            from bridge.ocr_engine import OcrEngine
+            ocr_engine = OcrEngine()
+            if ocr_engine.is_available():
+                ocr_result = ocr_engine.ocr(path, lang="auto", detail="quick")
+                ocr_md = OcrEngine.ocr_to_markdown(ocr_result)
+                lines.append(ocr_md)
+                lines.append("")
+            else:
+                lines.append("### 📝 OCR: Not available (install Tesseract or PaddleOCR)\n")
+        except ImportError:
+            lines.append("### 📝 OCR: Module not loaded\n")
+        except Exception as e:
+            lines.append(f"### 📝 OCR: Failed ({e})\n")
+
+        # ── Phase 3: MiniCPM-V Vision ──
         try:
             from bridge.vision.minicpm import describe_image, is_available
             if is_available():
                 desc = describe_image(path)
                 if desc:
-                    lines.append("### 🤖 Vision Analysis")
+                    lines.append("### 🤖 Vision Analysis (MiniCPM-V)")
                     lines.append(desc)
                     lines.append("")
         except Exception:

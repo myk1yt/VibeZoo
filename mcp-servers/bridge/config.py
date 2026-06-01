@@ -26,8 +26,10 @@ UI_ACTION_FILE = str(HOME_DIR / ".vibezoo-ui-action.json")
 
 # ── 캐시 ─────────────────────────────────────────────
 
-CACHE_DIR = str(HOME_DIR / ".vibezoo-cache")
-IMAGE_CACHE_DIR = str(HOME_DIR / ".vibezoo-cache")
+from datetime import date
+_DATE_STR = date.today().isoformat()  # "2026-06-01"
+CACHE_DIR = str(HOME_DIR / ".vibezoo-uploads" / _DATE_STR)
+IMAGE_CACHE_DIR = str(HOME_DIR / ".vibezoo-uploads" / _DATE_STR)
 MAX_CACHE_SIZE = 50  # L1 메모리 캐시 최대 파일 수
 
 # ── 검색 / 파일 필터 ──────────────────────────────────
@@ -35,7 +37,7 @@ MAX_CACHE_SIZE = 50  # L1 메모리 캐시 최대 파일 수
 DEFAULT_EXCLUDE_DIRS = {
     ".git", "node_modules", ".zoo-code", "dist", "build",
     ".next", "coverage", "target", "vendor", "__pycache__",
-    ".venv", "env", ".env", ".vibezoo-cache",
+    ".venv", "env", ".env", ".vibezoo-uploads",
 }
 SOURCE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs"}
 TS_JS_EXTS = {".ts", ".tsx", ".js", ".jsx"}
