@@ -1,8 +1,13 @@
-// VibeZoo Wave 5: Visual Vibe 통합 패널
+﻿// VibeZoo Wave 5: Visual Vibe 통합 패널
 // Whiteboard, UI Preview, Diagram 등 Webview 패널 생성
 // AI가 MCP 도구(draw_on_whiteboard, open_whiteboard)를 호출하면
 // 파일 감시를 통해 자동으로 패널을 열고 그림을 렌더링한다.
 //
+// ★ 2026-06-01: P0-Critical 버그 수정
+//   - BUG FIX: fs.watchFile(poll) → fs.watch(OS native) 교체
+//   - BUG FIX: handleFileChange async 제거, readFileSync 사용
+//   - BUG FIX: _fallbackWatchFile 폴백 메서드 추가
+//   - fs.watch 실패 시 fs.watchFile로 fallback
 // ★ 2026-05-27: 버그 수정 + 리팩토링
 //   - BUG FIX: handleFileChange mtime 이중 검사로 파일 읽기 안 되던 버그 수정
 //   - BUG FIX: acquireVsCodeApi() 중복 호출 → 1회로 통일
@@ -37,7 +42,6 @@ const CAPTURE_TIMEOUT_MS = 60000;
 const UI_PREVIEW_FALLBACK_MS = 600;
 const IMAGE_MAX_WIDTH = 600;
 const IMAGE_SCALE_FACTOR = 0.8;
-
 const log = (msg: string, ...args: any[]) => {
   if (process.env.VIBEZOO_DEBUG) console.log(`[VibeZoo::Visual] ${msg}`, ...args);
 };
@@ -81,6 +85,7 @@ export class VisualVibePanels {
   private readonly homedir: string;
   private _activated = false;
   private _watching = false;
+  private _watchers: fs.FSWatcher[] = [];
   private _lastCommandsHash = '';
   /** Whiteboard가 아직 열리지 않았을 때 대기 중인 드로잉 명령 */
   private _pendingDrawCommands: DrawCommand[] | null = null;
@@ -110,16 +115,16 @@ export class VisualVibePanels {
   /**
    * action 파일의 변경을 감지하여 콜백 실행.
    * @param filePath 감시할 파일 경로
-   * @param lastMtime 마지막 mtime 기록 (객체 참조로 유지)
+   * @param _lastMtime 마지막 mtime 기록 (객체 참조로 유지) — fallback watchFile에서 사용
    * @param onChange 파일 내용이 변경되었을 때 실행할 콜백
    */
-  private async handleFileChange(
+  private handleFileChange(
     filePath: string,
-    lastMtime: { current: number },
+    _lastMtime: { current: number },
     onChange: (content: WatchFileContent) => void,
-  ): Promise<void> {
+  ): void {
     try {
-      const contentStr = await fs.promises.readFile(filePath, 'utf-8');
+      const contentStr = fs.readFileSync(filePath, 'utf-8');
       const content: WatchFileContent = JSON.parse(contentStr);
       onChange(content);
     } catch {
@@ -137,7 +142,7 @@ export class VisualVibePanels {
   }
 
   /**
-   * 파일 감시 시작 (fs.watchFile 기반).
+   * 파일 감시 시작 (fs.watch 기반).
    * activate()에서 최초 1회 호출.
    */
   private startWatching(): void {
@@ -148,64 +153,84 @@ export class VisualVibePanels {
     const wbAction = WB_ACTION_FILE();
     const uiAction = UI_ACTION_FILE();
 
-    const lastWbMtime = { current: this.getCurrentMtime(wbFile) };
-    const lastActionMtime = { current: this.getCurrentMtime(wbAction) };
-    const lastUiMtime = { current: this.getCurrentMtime(uiAction) };
+    // 디바운스 타이머들
+    let wbTimer: ReturnType<typeof setTimeout> | null = null;
+    let actionTimer: ReturnType<typeof setTimeout> | null = null;
+    let uiTimer: ReturnType<typeof setTimeout> | null = null;
+    // 공통 감시 헬퍼
+    const watchFile = (
+      filePath: string,
+      onChange: (content: WatchFileContent) => void,
+      debounceMs: number = 300,
+    ): void => {
+      try {
+        const dir = path.dirname(filePath);
+        const basename = path.basename(filePath);
+        const watcher = fs.watch(dir, { persistent: false }, (eventType, filename) => {
+          if (filename !== basename) return;
+          if (eventType !== 'change' && eventType !== 'rename') return;
 
-    // ── whiteboard-action.json 감시 (open_whiteboard MCP 도구) ──
-    fs.watchFile(wbAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastActionMtime.current) return;
-      lastActionMtime.current = curr.mtimeMs;
-      this.handleFileChange(wbAction, lastActionMtime, (content) => {
-        if (content.action === 'open') {
-          this.openWhiteboard();
-          if (content.message) {
-            log(`Whiteboard action: ${content.message}`);
-          }
-        }
-      });
+          // 디바운스
+          if (filePath === wbFile && wbTimer) clearTimeout(wbTimer);
+          if (filePath === wbAction && actionTimer) clearTimeout(actionTimer);
+          if (filePath === uiAction && uiTimer) clearTimeout(uiTimer);
+
+          const timer = setTimeout(() => {
+            this.handleFileChange(filePath, { current: 0 }, onChange);
+          }, debounceMs);
+
+          if (filePath === wbFile) wbTimer = timer;
+          else if (filePath === wbAction) actionTimer = timer;
+          else if (filePath === uiAction) uiTimer = timer;
+        });
+        watcher.on('error', () => {
+          this._fallbackWatchFile(filePath, onChange);
+        });
+        this._watchers.push(watcher);
+      } catch {
+        this._fallbackWatchFile(filePath, onChange);
+      }
+    };
+
+    // action 파일 감시
+    watchFile(wbAction, (content) => {
+      if (content.action === 'open') {
+        this.openWhiteboard();
+      }
     });
 
-    // ── ui-action.json 감시 (open_ui_preview MCP 도구) ──
-    fs.watchFile(uiAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastUiMtime.current) return;
-      lastUiMtime.current = curr.mtimeMs;
-      this.handleFileChange(uiAction, lastUiMtime, (content) => {
-        if (content.action === 'open_ui') {
-          this.openUIPreview(content.code || '', content.framework || 'react');
-        }
-      });
+    // UI action 파일 감시
+    watchFile(uiAction, (content) => {
+      if (content.action === 'open_ui') {
+        this.openUIPreview(content.code || '', content.framework || 'react');
+      }
     });
 
-    // ── whiteboard.json 감시 (draw_on_whiteboard MCP 도구) ──
-    fs.watchFile(wbFile, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastWbMtime.current) return;
-      lastWbMtime.current = curr.mtimeMs;
-      this.handleFileChange(wbFile, lastWbMtime, (content) => {
-        // canvasState에서 쓴 내용은 건너뜀 (무한 루프 방지)
-        if (content._source === 'canvasState') return;
-        if (!content.commands || content.commands.length === 0) return;
-
-        // 중복 전송 방지
-        const hash = JSON.stringify(content.commands);
-        if (hash === this._lastCommandsHash) return;
-        this._lastCommandsHash = hash;
-
-        if (!this.whiteboardPanel) {
-          this.openWhiteboard();
-          this._pendingDrawCommands = content.commands;
-        } else {
-          this.sendToWhiteboard(content.commands);
-        }
-      });
+    // whiteboard.json 감시
+    watchFile(wbFile, (content) => {
+      if (content._source === 'canvasState') return;
+      if (!content.commands || content.commands.length === 0) return;
+      const hash = JSON.stringify(content.commands);
+      if (hash === this._lastCommandsHash) return;
+      this._lastCommandsHash = hash;
+      if (!this.whiteboardPanel) {
+        this.openWhiteboard();
+        this._pendingDrawCommands = content.commands;
+      } else {
+        this.sendToWhiteboard(content.commands);
+      }
     });
 
-    log('File watching started (fs.watchFile)');
+    log('File watching started (fs.watch)');
   }
 
   /** 파일 감시 중단 */
   private stopWatching(): void {
     if (!this._watching) return;
+    for (const w of this._watchers) {
+      try { w.close(); } catch { /* ignore */ }
+    }
+    this._watchers = [];
     try { fs.unwatchFile(WB_FILE()); } catch { /* ignore */ }
     try { fs.unwatchFile(WB_ACTION_FILE()); } catch { /* ignore */ }
     try { fs.unwatchFile(UI_ACTION_FILE()); } catch { /* ignore */ }
@@ -213,6 +238,18 @@ export class VisualVibePanels {
     log('File watching stopped');
   }
 
+  /** fs.watch 실패 시 fs.watchFile로 폴백 */
+  private _fallbackWatchFile(
+    filePath: string,
+    onChange: (content: WatchFileContent) => void,
+  ): void {
+    const lastMtime = { current: this.getCurrentMtime(filePath) };
+    fs.watchFile(filePath, { interval: WATCH_INTERVAL_MS }, (curr) => {
+      if (curr.mtimeMs <= lastMtime.current) return;
+      lastMtime.current = curr.mtimeMs;
+      this.handleFileChange(filePath, lastMtime, onChange);
+    });
+  }
   // ── Whiteboard ───────────────────────────────────────────
 
   /** AI 드로잉 명령을 Whiteboard Webview로 전달 */
@@ -382,7 +419,6 @@ export class VisualVibePanels {
     this.diagramPanel.onDidDispose(() => { this.diagramPanel = null; });
     return this.diagramPanel;
   }
-
   // ── HTML 템플릿 ──────────────────────────────────────────
 
   private whiteboardHtml(): string {
@@ -457,7 +493,6 @@ export class VisualVibePanels {
   canvas.on('object:added', sendStateDebounced);
   canvas.on('object:modified', sendStateDebounced);
   canvas.on('object:removed', sendStateDebounced);
-
   // ── 공통 이미지 추가 함수 ──
   function addImageToCanvas(url) {
     fabric.Image.fromURL(url, function(img) {
@@ -702,7 +737,6 @@ export class VisualVibePanels {
 </script>
 </body></html>`;
   }
-
   private uiPreviewHtml(): string {
     return `<!DOCTYPE html>
 <html><head>
@@ -737,7 +771,6 @@ export class VisualVibePanels {
 </script>
 </body></html>`;
   }
-
   private diagramHtml(diagramType?: string): string {
     return `<!DOCTYPE html>
 <html><head>

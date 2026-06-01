@@ -21,7 +21,7 @@ from bridge.crow_client import try_crow_ingest
 class WebSearchEngine:
     """다중 검색 엔진 폴백 체인 — DuckDuckGo 우선, SearXNG 차선, Google/Bing API 키"""
 
-    ENGINES = ["auto", "duckduckgo", "searxng", "google", "bing"]
+    ENGINES = ["auto", "duckduckgo", "mojeek", "wikipedia", "searxng", "google", "bing"]
     SEARXNG_INSTANCES = [
         "https://searx.be",
         "https://search.sapti.me",
@@ -32,61 +32,67 @@ class WebSearchEngine:
 
     def search(self, query: str, max_results: int = 5,
                preferred_engine: str = "auto") -> list:
-        """검색 엔진 폴백 체인 — 첫 번째 엔진에 3초, 실패 시 나머지 병렬 2초.
+        """검색 엔진 폴백 체인 — DuckDuckGo Lite → Mojeek → Wikipedia → 병렬 폴백.
 
         Args:
             query: 검색어
             max_results: 최대 결과 수
-            preferred_engine: "auto" | "duckduckgo" | "searxng" | "google" | "bing"
+            preferred_engine: "auto" | "duckduckgo" | "mojeek" | "wikipedia" | "searxng" | "google" | "bing"
 
         Returns:
             검색 결과 목록 (실패 시 빈 리스트)
         """
-        if preferred_engine == "auto" or preferred_engine == "duckduckgo":
-            results = self._search_duckduckgo(query, max_results)
-            if results:
-                return results
+        if preferred_engine == "auto":
+            # 순차적 폴백: Lite → Mojeek → Wikipedia
+            engines = [
+                self._search_duckduckgo,
+                self._search_mojeek,
+                self._search_wikipedia,
+            ]
+            for engine_fn in engines:
+                try:
+                    results = engine_fn(query, max_results)
+                    if results:
+                        return results
+                except Exception:
+                    continue
+            return self._parallel_search(query, max_results)
+        elif preferred_engine == "duckduckgo":
+            return self._search_duckduckgo(query, max_results)
+        elif preferred_engine == "mojeek":
+            return self._search_mojeek(query, max_results)
+        elif preferred_engine == "wikipedia":
+            return self._search_wikipedia(query, max_results)
         elif preferred_engine == "searxng":
-            results = self._search_searxng(query, max_results)
-            if results:
-                return results
+            return self._search_searxng(query, max_results)
         elif preferred_engine == "google":
             return self._search_google_api(query, max_results)
         elif preferred_engine == "bing":
             return self._search_bing_api(query, max_results)
-
-        # ── 병렬 fallback ──
-        return self._parallel_search(query, max_results)
+        return []
 
     def _parallel_search(self, query: str, max_results: int) -> list:
         """나머지 엔진을 병렬로 동시 호출, 가장 빠른 결과 사용.
 
-        먼저 DuckDuckGo에 3초 timeout 시도, 실패 시 SearXNG/Google/Bing을 병렬 2초 timeout.
+        DuckDuckGo Lite/Mojeek/Wikipedia가 모두 실패한 후 호출되므로,
+        SearXNG/Mojeek/Wikipedia/Google/Bing을 병렬 2초 timeout.
         """
-        # 1. DuckDuckGo (먼저 시도, 3초)
-        try:
-            results = self._search_duckduckgo(query, max_results)
-            if results:
-                return results
-        except Exception:
-            pass
-
-        # 2. 나머지 엔진 병렬 (2초 timeout)
         import concurrent.futures
 
-        def _safe_search(engine_name: str, *args, **kwargs) -> list:
-            try:
-                return args[0](*args[1:], **kwargs) if len(args) > 0 else []
-            except Exception:
-                return []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             future_map = {}
 
+            # Mojeek (빠른 HTML 스크래핑)
+            future = pool.submit(self._search_mojeek, query, max_results)
+            future_map[future] = "mojeek"
+
+            # Wikipedia (빠른 API)
+            future = pool.submit(self._search_wikipedia, query, max_results)
+            future_map[future] = "wikipedia"
+
             # SearXNG
-            if True:
-                future = pool.submit(self._search_searxng, query, max_results)
-                future_map[future] = "searxng"
+            future = pool.submit(self._search_searxng, query, max_results)
+            future_map[future] = "searxng"
 
             # Google (키 있으면)
             if os.environ.get("GOOGLE_API_KEY"):
@@ -115,52 +121,92 @@ class WebSearchEngine:
         return []
 
     def _search_duckduckgo(self, query: str, max_results: int) -> list:
-        """DuckDuckGo HTML 검색"""
+        """DuckDuckGo Lite 검색 (JS 없음, 차단 약함)"""
         encoded_query = urllib.parse.quote(query)
-        url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
-
-        req = urllib.request.Request(
-            url,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml',
-                'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
-            }
-        )
-
         try:
+            url = f"https://lite.duckduckgo.com/lite/?q={encoded_query}"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+            })
             with urllib.request.urlopen(req, timeout=10) as response:
                 html = response.read().decode('utf-8', errors='replace')
+
+            results = []
+            # 결과 링크 추출
+            for a_tag in _re.finditer(r'<a[^>]*href="(https?://[^"]+)"[^>]*>(.*?)</a>', html, _re.DOTALL):
+                href = a_tag.group(1)
+                if 'duckduckgo.com' in href or 'duck.com' in href:
+                    continue
+                title = _re.sub(r'<[^>]+>', '', a_tag.group(2)).strip()
+                if title:
+                    results.append({"title": title, "url": href, "snippet": ""})
+                    if len(results) >= max_results:
+                        break
+
+            # snippet 추출 (별도 블록)
+            snippets = _re.findall(r'<td[^>]*class="result-snippet"[^>]*>(.*?)</td>', html, _re.DOTALL)
+            for i, snip in enumerate(snippets):
+                if i < len(results):
+                    results[i]["snippet"] = _re.sub(r'<[^>]+>', '', snip).strip()
+
+            if results:
+                return results
+        except Exception:
+            pass
+        return []
+
+    def _search_mojeek(self, query: str, max_results: int) -> list:
+        """Mojeek 검색 (API 키 불필요)"""
+        encoded_query = urllib.parse.quote(query)
+        try:
+            url = f"https://www.mojeek.com/search?q={encoded_query}"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+            })
+            with urllib.request.urlopen(req, timeout=10) as response:
+                html = response.read().decode('utf-8', errors='replace')
+
+            results = []
+            # Mojeek 결과: <h2 class="title"><a href="...">title</a></h2>
+            blocks = _re.findall(
+                r'<h2[^>]*class="title"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>\s*</h2>',
+                html, _re.DOTALL
+            )
+            for href, title_raw in blocks[:max_results]:
+                title = _re.sub(r'<[^>]+>', '', title_raw).strip()
+                if title:
+                    results.append({
+                        "title": title,
+                        "url": href,
+                        "snippet": "No description available.",
+                    })
+            return results
         except Exception:
             return []
 
-        results = []
-        blocks = _re.findall(r'<div class="result__body">.*?</div>\s*</div>', html, _re.DOTALL)
-
-        for block in blocks[:max_results]:
-            title_match = _re.search(r'<a class="result__url"[^>]*>(.*?)</a>', block, _re.DOTALL)
-            href_match = _re.search(r'href="([^"]+)"', block)
-            snippet_match = _re.search(r'<a class="result__snippet"[^>]*>(.*?)</a>', block, _re.DOTALL)
-
-            if title_match and href_match:
-                title = _re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
-                raw_href = href_match.group(1)
-
-                if '/l/?kh=' in raw_href:
-                    parsed_url = urllib.parse.parse_qs(urllib.parse.urlparse(raw_href).query)
-                    href = parsed_url.get('uddg', [raw_href])[0]
-                else:
-                    href = raw_href
-
-                snippet = _re.sub(r'<[^>]+>', '', snippet_match.group(1)).strip() if snippet_match else "No description available."
-
+    def _search_wikipedia(self, query: str, max_results: int) -> list:
+        """Wikipedia API 검색"""
+        encoded_query = urllib.parse.quote(query)
+        try:
+            url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={encoded_query}&format=json&srlimit={max_results}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'VibeZoo/1.0'})
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+            results = []
+            for item in data.get("query", {}).get("search", []):
+                title = item.get("title", "")
+                page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
                 results.append({
-                    "title": title,
-                    "url": href,
-                    "snippet": snippet,
+                    "title": f"[Wikipedia] {title}",
+                    "url": page_url,
+                    "snippet": item.get("snippet", ""),
                 })
-
-        return results
+            return results
+        except Exception:
+            return []
 
     def _search_searxng(self, query: str, max_results: int) -> list:
         """SearXNG 공개 인스턴스 검색"""
@@ -319,12 +365,12 @@ def register(mcp):
 
     @mcp.tool
     def web_search(query: str, max_results: int = 5, engine: str = "auto") -> str:
-        """웹 검색을 수행합니다. DuckDuckGo 우선, SearXNG 차선, Google/Bing API 키 fallback.
+        """웹 검색을 수행합니다. DuckDuckGo Lite → Mojeek → Wikipedia → 병렬 폴백.
 
         Args:
             query: 검색어
             max_results: 최대 결과 수 (기본: 5)
-            engine: 검색 엔진 ("auto" (기본), "duckduckgo", "searxng", "google", "bing")
+            engine: 검색 엔진 ("auto" (기본), "duckduckgo", "mojeek", "wikipedia", "searxng", "google", "bing")
 
         Returns:
             검색 결과 목록 (제목, URL, 요약)
@@ -340,7 +386,9 @@ def register(mcp):
             # 모든 엔진 실패 시 명확한 에러 메시지
             error_details = []
             if engine == "auto":
-                error_details.append("DuckDuckGo 차단됨")
+                error_details.append("DuckDuckGo Lite 차단/무응답")
+                error_details.append("Mojeek 무응답")
+                error_details.append("Wikipedia API 무응답")
                 error_details.append("SearXNG 공개 인스턴스 사용 불가")
                 if os.environ.get("GOOGLE_API_KEY"):
                     error_details.append("Google API 키 오류")

@@ -143,7 +143,7 @@ def register(mcp):
     # ── integrated 도구들은 지연 임포트로 내부 함수 참조 ──
 
     def _get_search_codebase():
-        from bridge.tools.scout import search_codebase as fn
+        from bridge.tools.scout import _search_codebase_impl as fn
         _tool_registry["search_codebase"] = fn
         return fn
 
@@ -178,7 +178,7 @@ def register(mcp):
         return fn
 
     def _get_summarize_architecture():
-        from bridge.tools.scout import summarize_architecture as fn
+        from bridge.tools.scout import _summarize_architecture_impl as fn
         _tool_registry["summarize_architecture"] = fn
         return fn
 

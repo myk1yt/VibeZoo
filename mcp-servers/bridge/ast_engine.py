@@ -146,6 +146,35 @@ class AstEngine:
         """초기화 시도 결과 진단 정보 반환."""
         return list(self._init_errors)
 
+    def get_install_hint(self) -> str:
+        """미설치 언어 패키지에 대한 설치 안내 메시지 반환.
+
+        ast_engine 초기화 시 실패한 언어가 있으면
+        사용자에게 설치 명령어를 안내한다.
+        """
+        if not self._init_errors:
+            return ""
+
+        missing_langs = set()
+        for err in self._init_errors:
+            # 에러 메시지에서 언어명 추출 (예: "[python] not available")
+            for lang in ['python', 'go', 'rust', 'typescript', 'javascript']:
+                if lang in err.lower():
+                    missing_langs.add(lang)
+
+        if not missing_langs:
+            return ""
+
+        packages = ' '.join(f"tree-sitter-{lang}" for lang in sorted(missing_langs))
+        hint = (
+            "\n⚠️ **Tree-sitter language packs missing**: "
+            f"{', '.join(sorted(missing_langs))}\n"
+            f"  Install: `pip install {packages}`\n"
+            f"  Or run: `vibezoo_setup(target=\"recommended\")`\n"
+            f"  Currently falling back to regex-based analysis (reduced accuracy).\n"
+        )
+        return hint
+
     # ──────────────────────────────────────────────
     # 2. 하위 호환 — 기존 레거시 TS/JS 초기화
     # ──────────────────────────────────────────────

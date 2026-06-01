@@ -660,6 +660,9 @@ def register(mcp):
         if detail not in ("auto", "quick", "full"):
             detail = "auto"
 
+        # ~ 경로 확장 (예: ~/.vibezoo-cache/dropped_image.png)
+        image_path = os.path.expanduser(image_path)
+
         try:
             # 한글 경로 지원: cv2.imread 대신 cv2.imdecode 사용
             img_raw = _imread_korean_safe(image_path)
