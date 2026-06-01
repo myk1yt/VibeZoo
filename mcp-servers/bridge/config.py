@@ -42,4 +42,6 @@ TS_JS_EXTS = {".ts", ".tsx", ".js", ".jsx"}
 
 # ── SSA ──────────────────────────────────────────────
 
-UPLOADED_IMAGE_PATH = str(Path(IMAGE_CACHE_DIR) / "dropped_image.png")
+# Windows TEMP 폴더에 이미지 저장 (c:\temp 대신 시스템 temp 사용)
+_TEMP_DIR = Path(os.environ.get("TEMP", os.path.join(os.environ.get("USERPROFILE", "C:"), "temp")))
+UPLOADED_IMAGE_PATH = str(_TEMP_DIR / "vibezoo_uploaded_image.png")
