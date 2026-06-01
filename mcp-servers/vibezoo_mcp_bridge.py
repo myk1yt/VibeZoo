@@ -36,7 +36,10 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Reviewer", "status": "ready", "tools": ["review_code"]},
             {"name": "DeepAnalyzer", "status": "ready", "tools": ["analyze_call_graph", "map_dependencies", "extract_patterns", "reverse_engineer"]},
             {"name": "Tester", "status": "ready", "tools": ["generate_tests", "analyze_coverage"]},
-            {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen"]},
+            {"name": "Whiteboard", "status": "ready", "tools": [
+                "draw_on_whiteboard", "get_whiteboard_state", "capture_screen",
+                "open_dropzone", "open_image_dropzone"
+            ]},
             {"name": "FixLoop", "status": "ready", "tools": ["auto_fix_status", "retry_build", "check_intervention"]},
             {"name": "Integrated", "status": "ready", "tools": ["review_project", "find_bugs", "suggest_refactor", "generate_docs"]},
             {"name": "Analysis", "status": "ready", "tools": ["explain_code", "analyze_changes", "review_pr", "refactor_across_files"]},

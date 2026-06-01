@@ -6,7 +6,7 @@ from pathlib import Path
 
 # ── 버전 ─────────────────────────────────────────────
 
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 
 # ── Crow Memory ──────────────────────────────────────
 
@@ -23,6 +23,7 @@ CHAT_PENDING_FILE = str(HOME_DIR / ".vibezoo-chat-pending.json")
 PREFERENCES_FILE = str(HOME_DIR / ".vibezoo-preferences.json")
 WHITEBOARD_ACTION_FILE = str(HOME_DIR / ".vibezoo-whiteboard-action.json")
 UI_ACTION_FILE = str(HOME_DIR / ".vibezoo-ui-action.json")
+DZ_ACTION_FILE = str(HOME_DIR / ".vibezoo-dropzone-action.json")
 
 # ── 캐시 ─────────────────────────────────────────────
 
