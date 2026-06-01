@@ -28,7 +28,10 @@ from bridge.crow_client import try_crow_ingest
 
 _DROPZONE_HTML = """<!DOCTYPE html>
 <html lang="ko">
-<head><meta charset="UTF-8"><title>VibeZoo Image Drop Zone</title>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: vscode-resource: https:; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline';">
+<title>VibeZoo Image Drop Zone</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#1e1e1e;color:#ccc;font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
@@ -48,22 +51,33 @@ _DROPZONE_HTML = """<!DOCTYPE html>
 <div id="dropzone" onclick="document.getElementById('fileInput').click()">
   <div class="icon">📸</div>
   <p>Drag & drop an image here<br>or <strong>click to browse</strong></p>
-  <p class="hint">Supports: PNG, JPG, GIF, BMP, WEBP</p>
+  <p class="hint">Supports all file types: images, PDF, DOCX, TXT, code, etc.</p>
   <img id="preview" alt="Preview"/>
   <div id="status"></div>
 </div>
-<input type="file" id="fileInput" accept="image/*" onchange="handleFile(this.files[0])"/>
+<input type="file" id="fileInput"  onchange="handleFile(this.files[0])"/>
 <script>
+(function(){
 const dz=document.getElementById('dropzone');
 const preview=document.getElementById('preview');
 const status=document.getElementById('status');
+let vscodeApi=null;try{vscodeApi=acquireVsCodeApi()}catch(e){}
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
 dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');handleFile(e.dataTransfer.files[0])});
-async function handleFile(file){if(!file)return;if(!file.type.startsWith('image/')){showStatus('Not an image file','error');return}
-const form=new FormData();form.append('image',file);
-try{const r=await fetch('/upload',{method:'POST',body:form});const t=await r.text();showStatus('Uploaded! Use aggregate_spatial_pixels() to analyze.','success');preview.src=URL.createObjectURL(file);preview.style.display='block';dz.classList.add('has-image')}
-catch(e){showStatus('Upload failed. Save manually to ~/.vibezoo-cache/dropped_image.png','error')}}
+async function handleFile(file){if(!file||!vscodeApi)return;
+showStatus('Uploading...','');
+const reader=new FileReader();
+reader.onload=function(e){vscodeApi.postMessage({type:'uploadImage',dataUrl:e.target.result,filename:file.name,fileSize:file.size})};
+reader.readAsDataURL(file)}
+window.handleFile=handleFile;
+window.addEventListener('message',function(e){
+  if(e.data.type==='uploadResult'){
+    if(e.data.success){showStatus('Uploaded! Path: '+e.data.path,'success');preview.src=e.data.previewUrl||'';preview.style.display='block';dz.classList.add('has-image')}
+    else{showStatus('Upload failed: '+(e.data.error||'unknown'),'error')}
+  }
+});
+})();
 function showStatus(msg,type){status.textContent=msg;status.className=type}
 </script></body></html>"""
 
@@ -787,7 +801,7 @@ $graphics.Dispose()
         _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
 
         output = (_markdown_header("Screen Capture")
-                  + f"Screen captured ({width}x{height}). Image saved to whiteboard.\n\n"
+                  + f"Screen captured ({width}x{height}). Content saved to whiteboard.\n\n"
                   + f"Use `get_whiteboard_state()` to view the captured content.\n")
         try_crow_ingest(f"Screen captured: {width}x{height}", register="context")
         output += _markdown_footer()
@@ -815,7 +829,7 @@ def _open_dropzone_in_webview() -> str:
     return (_markdown_header("Image Drop Zone", "📸")
             + "Drop zone opened in VS Code Webview.\n\n"
             + "1. Drag & drop an image into the Webview\n"
-            + "2. Image will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
+            + "2. File will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
             + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n\n"
             + "💡 **Tip**: Use `capture_screen()` (without arguments) to capture your screen directly.\n"
             + _markdown_footer())
@@ -833,7 +847,7 @@ def _open_file_picker() -> str:
     return (_markdown_header("File Picker", "📁")
             + "File picker opened in VS Code Webview.\n\n"
             + "1. Select an image file from the file picker\n"
-            + "2. Image will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
+            + "2. File will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
             + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n"
             + _markdown_footer())
 
