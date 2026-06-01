@@ -25,12 +25,7 @@ import { exec } from 'child_process';
 const WB_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard.json');
 const WB_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard-action.json');
 const UI_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-ui-action.json');
-const CHAT_PENDING_FILE = () => path.join(os.homedir(), '.vibezoo-chat-pending.json');
-const getDateString = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-const DROPZONE_CACHE_DIR = () => path.join(os.homedir(), '.vibezoo-uploads', getDateString());
+const DROPZONE_CACHE_DIR = () => path.join(os.homedir(), '.vibezoo-cache');
 const UPLOADED_IMAGE_PATH = () => path.join(DROPZONE_CACHE_DIR(), 'dropped_image.png');
 
 const FABRIC_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js';
