@@ -3993,6 +3993,22 @@ def open_image_dropzone() -> str:
                 + _markdown_footer())
 
 
+@mcp.tool
+def open_dropzone(message: str = "") -> str:
+    """VibeZoo 드랍존을 엽니다. AI가 파일 업로드/분석이 필요할 때 호출합니다."""
+    try:
+        data = {"action": "open", "message": message, "timestamp": time.time()}
+        _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
+        try_crow_ingest(f"Dropzone opened: {message[:100]}" if message else "Dropzone opened", register="context")
+        return (_markdown_header("Drop Zone")
+                + f"Drop zone opened. {message}\n"
+                + _markdown_footer())
+    except Exception as e:
+        return (_markdown_header("Drop Zone Error", "❌")
+                + f"**Failed:** `{e}`\n"
+                + _markdown_footer())
+
+
 # ═══════════════════════════════════════════════════════════
 # 메인 — SSE 서버 시작
 # ═══════════════════════════════════════════════════════════
