@@ -41,6 +41,8 @@ build/
 test_*.py
 _insert_*.py
 _debug*
+_fix_*.py
+_fix_*.txt
 
 # VibeZoo data (user local)
 .zoo-code/

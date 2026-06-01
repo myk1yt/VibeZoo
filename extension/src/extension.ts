@@ -334,6 +334,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  // Open Drop Zone
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.openDropzone', () => {
+      visualPanels.openDropzone();
+    })
+  );
+
   // Show Agent Info (TreeView 아이템 클릭 시)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.showAgentInfo', (node: any) => {

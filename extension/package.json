@@ -59,6 +59,10 @@
         "title": "VibeZoo: Open Orchestra Dashboard"
       },
       {
+        "command": "vibezoo.openDropzone",
+        "title": "VibeZoo: Open Drop Zone (파일 업로드)"
+      },
+      {
         "command": "vibezoo.toggleFileGuard",
         "title": "VibeZoo: Toggle FileGuard (파일 보호 켜기/끄기)"
       },

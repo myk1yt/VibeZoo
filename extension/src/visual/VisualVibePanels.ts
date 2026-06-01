@@ -25,6 +25,8 @@ import { exec } from 'child_process';
 const WB_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard.json');
 const WB_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard-action.json');
 const UI_ACTION_FILE = () => path.join(os.homedir(), '.vibezoo-ui-action.json');
+const DROPZONE_CACHE_DIR = () => path.join(os.homedir(), '.vibezoo-cache');
+const UPLOADED_IMAGE_PATH = () => path.join(DROPZONE_CACHE_DIR(), 'dropped_image.png');
 
 const FABRIC_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js';
 const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
@@ -78,6 +80,7 @@ export class VisualVibePanels {
   private whiteboardPanel: vscode.WebviewPanel | null = null;
   private uiPreviewPanel: vscode.WebviewPanel | null = null;
   private diagramPanel: vscode.WebviewPanel | null = null;
+  private dropzonePanel: vscode.WebviewPanel | null = null;
   private readonly homedir: string;
   private _activated = false;
   private _watching = false;
@@ -103,6 +106,7 @@ export class VisualVibePanels {
     this.whiteboardPanel?.dispose();
     this.uiPreviewPanel?.dispose();
     this.diagramPanel?.dispose();
+    this.dropzonePanel?.dispose();
   }
 
   // ── 파일 감시 ─────────────────────────────────────────────
@@ -381,6 +385,81 @@ export class VisualVibePanels {
     this.diagramPanel.webview.html = this.diagramHtml(diagramType);
     this.diagramPanel.onDidDispose(() => { this.diagramPanel = null; });
     return this.diagramPanel;
+  }
+
+  // ── Dropzone ────────────────────────────────────────────
+
+  /** 드랍존 열기 — 드래그앤드롭 / 파일 선택으로 이미지 업로드 */
+  openDropzone(): vscode.WebviewPanel {
+    if (this.dropzonePanel) {
+      this.dropzonePanel.reveal(vscode.ViewColumn.Two);
+      return this.dropzonePanel;
+    }
+
+    this.dropzonePanel = vscode.window.createWebviewPanel(
+      'vibezoo-dropzone',
+      '📸 VibeZoo Drop Zone',
+      vscode.ViewColumn.Two,
+      { enableScripts: true, retainContextWhenHidden: true },
+    );
+
+    this.dropzonePanel.webview.html = this.dropzoneHtml();
+
+    this.dropzonePanel.webview.onDidReceiveMessage((message) => {
+      switch (message.type) {
+        case 'uploadFile':
+          this.handleDropzoneUpload(message.fileName, message.data, message.mimeType);
+          break;
+      }
+    });
+
+    this.dropzonePanel.onDidDispose(() => { this.dropzonePanel = null; });
+    return this.dropzonePanel;
+  }
+
+  /** 드랍존 파일 업로드 처리 — Temp 폴더에 저장 */
+  private handleDropzoneUpload(fileName: string, dataBase64: string, mimeType: string): void {
+    try {
+      const cacheDir = DROPZONE_CACHE_DIR();
+      fs.mkdirSync(cacheDir, { recursive: true });
+
+      let ext = path.extname(fileName);
+      if (!ext) {
+        const mimeMap: Record<string, string> = {
+          'image/png': '.png',
+          'image/jpeg': '.jpg',
+          'image/gif': '.gif',
+          'image/webp': '.webp',
+          'image/bmp': '.bmp',
+          'image/svg+xml': '.svg',
+          'text/plain': '.txt',
+          'application/pdf': '.pdf',
+        };
+        ext = mimeMap[mimeType] || '.bin';
+      }
+
+      const safeName = `upload_${Date.now()}${ext}`;
+      const destPath = path.join(cacheDir, safeName);
+
+      const raw = dataBase64.replace(/^data:[^;]+;base64,/, '');
+      const buffer = Buffer.from(raw, 'base64');
+      fs.writeFileSync(destPath, buffer);
+
+      console.log(`[VibeZoo] Dropzone upload saved: ${destPath} (${buffer.length} bytes)`);
+
+      this.dropzonePanel?.webview.postMessage({
+        type: 'uploadComplete',
+        path: destPath,
+        size: buffer.length,
+        fileName: safeName,
+      });
+    } catch (e: any) {
+      console.log(`[VibeZoo] Dropzone upload error: ${e.message}`);
+      this.dropzonePanel?.webview.postMessage({
+        type: 'uploadError',
+        error: e.message,
+      });
+    }
   }
 
   // ── HTML 템플릿 ──────────────────────────────────────────
@@ -769,6 +848,164 @@ export class VisualVibePanels {
       }
     }
   });
+</script>
+</body></html>`;
+  }
+
+
+  private dropzoneHtml(): string {
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibeZoo Drop Zone</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1e1e1e; color: #ccc; font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; flex-direction: column; padding: 20px; }
+  #dropzone { width: 100%; max-width: 600px; height: 350px; border: 3px dashed #555; border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; cursor: pointer; transition: all 0.3s; text-align: center; padding: 20px; }
+  #dropzone:hover, #dropzone.dragover { border-color: #4ec9ff; background: rgba(78,201,255,0.1); }
+  #dropzone.dragover { border-color: #6acb6a; background: rgba(106,203,106,0.1); }
+  #dropzone img { max-width: 90%; max-height: 250px; border-radius: 8px; display: none; object-fit: contain; }
+  #dropzone.has-image img { display: block; }
+  #dropzone.has-image .placeholder { display: none; }
+  .icon { font-size: 56px; opacity: 0.4; }
+  .placeholder h2 { font-size: 20px; margin-bottom: 4px; }
+  .hint { font-size: 13px; color: #888; margin-top: 4px; }
+  .status { font-size: 15px; margin-top: 12px; padding: 8px 16px; border-radius: 8px; background: #2d2d2d; display: none; }
+  .status.show { display: block; }
+  .status.success { color: #6acb6a; border: 1px solid #6acb6a; }
+  .status.error { color: #f44747; border: 1px solid #f44747; }
+  .status.info { color: #4ec9ff; border: 1px solid #4ec9ff; }
+  .file-info { font-size: 12px; color: #888; margin-top: 4px; }
+  .actions { margin-top: 16px; display: flex; gap: 8px; }
+  .actions button { padding: 8px 20px; background: #3c3c3c; color: #ccc; border: 1px solid #555; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .actions button:hover { background: #505050; }
+  .actions button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
+  .actions button.primary:hover { background: #1177bb; }
+  input[type=file] { display: none; }
+</style>
+</head><body>
+<div id="dropzone" onclick="document.getElementById('fileInput').click()">
+  <div class="icon">📷</div>
+  <div class="placeholder">
+    <h2>VibeZoo Drop Zone</h2>
+    <p>Drag & drop any file here</p>
+    <p class="hint">or click to browse files</p>
+  </div>
+  <img id="preview">
+</div>
+<div class="status" id="status"></div>
+<div class="file-info" id="fileInfo"></div>
+<div class="actions">
+  <button onclick="document.getElementById('fileInput').click()" class="primary">📂 Open File</button>
+  <button onclick="clearDropzone()">🗑️ Clear</button>
+</div>
+<input type="file" id="fileInput" onchange="handleFiles(this.files)">
+<script>
+  var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+
+  function handleFiles(files) {
+    if (!files || files.length === 0) return;
+    var file = files[0];
+    uploadFile(file);
+  }
+
+  function uploadFile(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var dataUrl = e.target.result;
+      if (file.type.startsWith('image/')) {
+        var img = document.getElementById('preview');
+        img.src = dataUrl;
+        img.style.display = 'block';
+        document.getElementById('dropzone').classList.add('has-image');
+      }
+      setStatus('Uploading...', 'info');
+      if (vscode) {
+        vscode.postMessage({
+          type: 'uploadFile',
+          fileName: file.name,
+          data: dataUrl,
+          mimeType: file.type,
+          size: file.size,
+        });
+      }
+      document.getElementById('fileInfo').textContent = file.name + ' (' + formatSize(file.size) + ')';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function setStatus(msg, type) {
+    var el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status show ' + (type || 'info');
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+
+  function clearDropzone() {
+    document.getElementById('preview').src = '';
+    document.getElementById('preview').style.display = 'none';
+    document.getElementById('dropzone').classList.remove('has-image');
+    document.getElementById('status').className = 'status';
+    document.getElementById('fileInfo').textContent = '';
+    document.getElementById('fileInput').value = '';
+  }
+
+  window.addEventListener('message', function(e) {
+    var msg = e.data;
+    if (!msg) return;
+    switch (msg.type) {
+      case 'uploadComplete':
+        setStatus('✅ Uploaded! Path: ' + msg.path, 'success');
+        if (msg.fileName) {
+          document.getElementById('fileInfo').textContent = msg.fileName + ' (' + formatSize(msg.size) + ')';
+        }
+        break;
+      case 'uploadError':
+        setStatus('❌ Upload failed: ' + msg.error, 'error');
+        break;
+    }
+  });
+
+  var dz = document.getElementById('dropzone');
+  dz.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('dragover');
+  });
+  dz.addEventListener('dragleave', function(e) {
+    this.classList.remove('dragover');
+  });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    var files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
+  });
+
+  document.addEventListener('paste', function(e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item.kind === 'file') {
+        var file = item.getAsFile();
+        if (file) {
+          uploadFile(file);
+          break;
+        }
+      }
+    }
+  });
+
+  if (vscode) vscode.postMessage({ type: 'ready' });
 </script>
 </body></html>`;
   }
