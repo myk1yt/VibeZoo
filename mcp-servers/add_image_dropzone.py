@@ -126,39 +126,12 @@ def open_image_dropzone() -> str:
         업로드 페이지 URL 및 사용법 안내
     """
     try:
-        import webbrowser
-        port = vscode_workspace_get_configuration_get('vibezoo').get('bridge.port', 9027) \
-               if 'vscode_workspace_get_configuration_get' in dir() else 9027
-        
-        # 실제 브릿지 포트 찾기
-        import subprocess as _sp
-        try:
-            from starlette.routing import Route
-            # read the actual port from a simple heuristic
-            port = 9027  # default
-        except:
-            pass
-        
-        url = f"http://localhost:{port}/upload"
-        
-        try:
-            webbrowser.open(url)
-            browser_msg = "✅ Browser opened automatically."
-        except:
-            browser_msg = "🔗 Open this URL in your browser:"
-        
-        return (_markdown_header("Image Drop Zone", "📸")
-                + f"{browser_msg}\n\n"
-                + f"**URL**: `{url}`\n\n"
-                + f"### Usage\n"
-                + f"1. Open the URL in your browser\n"
-                + f"2. Drag & drop an image file onto the drop zone\n"
-                + f"3. Wait for '✅ Uploaded' confirmation\n"
-                + f"4. Then call `aggregate_spatial_pixels(image_path=\"~/.vibezoo-cache/dropped_image.png\")`\n\n"
-                + f"### Cached file location\n"
-                + f"`{UPLOADED_IMAGE_PATH}`\n"
-                + _markdown_footer())
+        from bridge.tools.whiteboard import _open_dropzone_in_webview
+        return _open_dropzone_in_webview()
+    except ImportError:
+        return "Error: Cannot import _open_dropzone_in_webview. Check bridge/tools/whiteboard.py"
     except Exception as e:
+        from bridge.utils import _markdown_header, _markdown_footer
         return (_markdown_header("Drop Zone Error", "❌")
                 + f"**Failed to open drop zone**: {e}\n"
                 + _markdown_footer())

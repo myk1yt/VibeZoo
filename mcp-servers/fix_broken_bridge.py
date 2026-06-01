@@ -68,21 +68,12 @@ def open_image_dropzone() -> str:
     이후 aggregate_spatial_pixels()로 분석할 수 있습니다.
     """
     try:
-        import webbrowser
-        port = 9027
-        url = f"http://localhost:{port}/upload"
-        try:
-            webbrowser.open(url)
-            browser_msg = "Browser opened."
-        except:
-            browser_msg = "Open this URL:"
-        
-        return (_markdown_header("Image Drop Zone", "\\U0001f4f8")
-                + f"{browser_msg}\\n\\n**URL**: `{url}`\\n\\n"
-                + "1. Open URL in browser\\n2. Drag & drop image\\n"
-                + f"3. Then call `aggregate_spatial_pixels()`\\n"
-                + _markdown_footer())
+        from bridge.tools.whiteboard import _open_dropzone_in_webview
+        return _open_dropzone_in_webview()
+    except ImportError:
+        return "Error: Cannot import _open_dropzone_in_webview."
     except Exception as e:
+        from bridge.utils import _markdown_header, _markdown_footer
         return (_markdown_header("Drop Zone Error", "\\u274c")
                 + f"**Error**: {e}\\n" + _markdown_footer())
 '''

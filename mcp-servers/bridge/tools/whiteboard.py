@@ -14,7 +14,7 @@ from typing import Optional
 
 from bridge.config import (
     WHITEBOARD_FILE, WHITEBOARD_ACTION_FILE, UI_ACTION_FILE,
-    UPLOADED_IMAGE_PATH, IMAGE_CACHE_DIR, DZ_ACTION_FILE,
+    UPLOADED_IMAGE_PATH, IMAGE_CACHE_DIR,
 )
 from bridge.utils import (
     _markdown_header, _markdown_footer,
@@ -965,57 +965,5 @@ def register(mcp):
         except Exception as e:
             return (_markdown_header("Whiteboard Error", "❌")
                     + f"**Failed:** `{e}`\n"
-                    + _markdown_footer())
-
-    @mcp.tool
-    def open_dropzone(message: str = "") -> str:
-        """VibeZoo 드랍존을 엽니다. AI가 파일 업로드/분석이 필요할 때 호출합니다.
-
-        동작 방식:
-        1. VS Code Extension이 설치된 경우 → Webview 패널이 열립니다
-        2. 일반 VS Code / 브라우저 환경 → 브라우저 기반 드롭존이 열립니다
-        3. 업로드된 파일은 ~/.vibezoo-cache/에 저장됩니다
-
-        Args:
-            message: 드롭존에 표시할 선택적 메시지
-        """
-        try:
-            data = {"action": "open", "message": message, "timestamp": time.time()}
-            _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
-            try_crow_ingest(
-                f"Dropzone opened: {message[:100]}" if message else "Dropzone opened",
-                register="context"
-            )
-            return (_markdown_header("Drop Zone", "📸")
-                    + f"Drop zone opened. {message}\n"
-                    + _markdown_footer())
-        except Exception as e:
-            return (_markdown_header("Drop Zone Error", "❌")
-                    + f"**Failed:** `{e}`\n"
-                    + _markdown_footer())
-
-    @mcp.tool
-    def open_image_dropzone() -> str:
-        """VS Code Webview에서 이미지 드래그앤드롭 업로드 드롭존을 엽니다.
-        업로드된 이미지는 ~/.vibezoo-cache/dropped_image.png에 저장됩니다.
-        이후 aggregate_spatial_pixels()로 분석할 수 있습니다.
-
-        Returns:
-            VS Code Webview 드롭존 열림 안내
-        """
-        try:
-            # VS Code Extension이 감시하는 DZ_ACTION_FILE에 action 기록 → Webview 패널 오픈
-            data = {"action": "open", "message": "Image drop zone opened", "timestamp": time.time()}
-            _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
-            try_crow_ingest("Image drop zone opened", register="context")
-            return (_markdown_header("Image Drop Zone", "📸")
-                    + "Drop zone opened in VS Code Webview.\n\n"
-                    + "1. Drag & drop an image into the Webview\n"
-                    + "2. File will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
-                    + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n\n"
-                    + _markdown_footer())
-        except Exception as e:
-            return (_markdown_header("Drop Zone Error", "❌")
-                    + f"**Failed to open drop zone**: {e}\n"
                     + _markdown_footer())
 
