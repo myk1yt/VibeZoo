@@ -603,6 +603,28 @@ async def health_check(request: Request) -> JSONResponse:
     })
 
 
+
+
+@mcp.custom_route("/tools/list_subagents", methods=["POST"])
+async def list_subagents_route(request: Request) -> JSONResponse:
+    """Zoo Code MCP 호환 — 연결된 서브에이전트 목록 반환"""
+    return JSONResponse({
+        "agents": [
+            {"name": "Scout", "status": "ready", "tools": ["search_codebase", "find_references", "summarize_architecture"]},
+            {"name": "Reviewer", "status": "ready", "tools": ["review_code"]},
+            {"name": "DeepAnalyzer", "status": "ready", "tools": ["analyze_call_graph", "map_dependencies", "extract_patterns", "reverse_engineer"]},
+            {"name": "Tester", "status": "ready", "tools": ["generate_tests", "analyze_coverage"]},
+            {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen", "open_dropzone", "open_image_dropzone"]},
+            {"name": "FixLoop", "status": "ready", "tools": ["auto_fix_status", "retry_build", "check_intervention"]},
+            {"name": "Integrated", "status": "ready", "tools": ["review_project", "find_bugs", "suggest_refactor", "generate_docs"]},
+            {"name": "Analysis", "status": "ready", "tools": ["explain_code", "analyze_changes", "review_pr", "refactor_across_files"]},
+            {"name": "Knowledge", "status": "ready", "tools": ["learn_project", "recall_project", "learn_preference", "get_preferences"]},
+            {"name": "Web", "status": "ready", "tools": ["fetch_page", "web_search"]},
+            {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
+            {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
+        ]
+    })
+
 # ═══════════════════════════════════════════════════════════
 # Scout: 코드 탐색 도구
 # ═══════════════════════════════════════════════════════════
