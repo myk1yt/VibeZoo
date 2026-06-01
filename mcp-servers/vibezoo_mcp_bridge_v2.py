@@ -29,11 +29,11 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from starlette.responses import JSONResponse, HTMLResponse
+    from starlette.responses import JSONResponse
     from starlette.requests import Request
 except ImportError:
     # FastMCP 의존성에 포함되어 있음
-    from starlette.responses import JSONResponse, HTMLResponse
+    from starlette.responses import JSONResponse
     from starlette.requests import Request
 
 # ── 상수 ──────────────────────────────────────────────
@@ -3932,7 +3932,7 @@ document.getElementById('dropzone').addEventListener('drop', function(e) {
 });
 </script>
 </body></html>"""
-        return HTMLResponse(html, status_code=200)
+        return JSONResponse({"html": html}, status_code=200)
     
     elif request.method == "POST":
         try:
@@ -3957,58 +3957,59 @@ document.getElementById('dropzone').addEventListener('drop', function(e) {
 
 @mcp.tool
 def open_image_dropzone() -> str:
-    """브라우저에서 이미지 드래그앤드롭 업로드 페이지를 엽니다.
+    """VS Code Webview에서 이미지 드래그앤드롭 업로드 드롭존을 엽니다.
     업로드된 이미지는 ~/.vibezoo-cache/dropped_image.png에 저장됩니다.
     이후 aggregate_spatial_pixels()로 분석할 수 있습니다.
     
     Returns:
-        업로드 페이지 URL 및 사용법 안내
+        VS Code Webview 드롭존 열림 안내
     """
     try:
-        import webbrowser
-        port = 9027
+        # VS Code Extension이 감시하는 DZ_ACTION_FILE에 action 기록 → Webview 패널 오픈
+        data = {"action": "open", "message": "Image drop zone opened", "timestamp": time.time()}
+        _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
         
-        url = f"http://localhost:{port}/upload"
-        
-        try:
-            webbrowser.open(url)
-            browser_msg = "✅ Browser opened automatically."
-        except:
-            browser_msg = "🔗 Open this URL in your browser:"
-        
+        try_crow_ingest("Image drop zone opened", register="context")
         return (_markdown_header("Image Drop Zone", "📸")
-                + f"{browser_msg}\n\n"
-                + f"**URL**: `{url}`\n\n"
-                + f"### Usage\n"
-                + f"1. Open the URL in your browser\n"
-                + f"2. Drag & drop an image file onto the drop zone\n"
-                + f"3. Wait for '✅ Uploaded' confirmation\n"
-                + f"4. Then call `aggregate_spatial_pixels(image_path=\"~/.vibezoo-cache/dropped_image.png\")`\n\n"
-                + f"### Cached file location\n"
-                + f"`{UPLOADED_IMAGE_PATH}`\n"
+                + "Drop zone opened in VS Code Webview.\n\n"
+                + "1. Drag & drop an image into the Webview\n"
+                + "2. File will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
+                + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n\n"
                 + _markdown_footer())
     except Exception as e:
         return (_markdown_header("Drop Zone Error", "❌")
                 + f"**Failed to open drop zone**: {e}\n"
                 + _markdown_footer())
 
-
 @mcp.tool
 def open_dropzone(message: str = "") -> str:
     """VibeZoo 드랍존을 엽니다. AI가 파일 업로드/분석이 필요할 때 호출합니다.
     
     동작 방식:
-    - VS Code Extension이 설치된 경우 → Webview 패널이 열립니다
-    - 업로드된 파일은 ~/.vibezoo-cache/에 저장됩니다
+    1. VS Code Extension이 설치된 경우 → Webview 패널이 열립니다
+    2. 일반 VS Code / 브라우저 환경 → 브라우저 기반 드롭존이 열립니다
+    3. 업로드된 파일은 ~/.vibezoo-cache/에 저장됩니다
     """
+    browser_msg = ""
     try:
-        # Extension용 action 파일 생성 → VS Code Webview 열림
+        # 1. Extension용 action 파일 생성
         data = {"action": "open", "message": message, "timestamp": time.time()}
         _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
+        
+        # 2. 브라우저 fallback (일반 VS Code / 브라우저 환경)
+        try:
+            import webbrowser
+            port = 9027
+            url = f"http://localhost:{port}/upload"
+            webbrowser.open(url)
+            browser_msg = f"\n\n🌐 Browser fallback: `{url}`\n👉 Drag & drop any file there."
+        except:
+            pass
         
         try_crow_ingest(f"Dropzone opened: {message[:100]}" if message else "Dropzone opened", register="context")
         return (_markdown_header("Drop Zone", "📸")
                 + f"Drop zone opened. {message}\n"
+                + browser_msg
                 + _markdown_footer())
     except Exception as e:
         return (_markdown_header("Drop Zone Error", "❌")
