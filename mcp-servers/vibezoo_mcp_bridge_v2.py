@@ -33,7 +33,7 @@ try:
     from starlette.requests import Request
 except ImportError:
     # FastMCP 의존성에 포함되어 있음
-    from starlette.responses import JSONResponse
+    from starlette.responses import JSONResponse, HTMLResponse
     from starlette.requests import Request
 
 # ── 상수 ──────────────────────────────────────────────
@@ -273,7 +273,7 @@ def _init_tree_sitter():
             _ts_parser = ts.Parser()
             
             try:
-                from tree_sitter_languages import get_language  # type: ignore[import-untyped]
+                from tree_sitter_languages import get_language
                 _ts_ts_language = get_language("typescript")
                 _ts_ts_language_js = get_language("javascript")
             except ImportError:
@@ -537,32 +537,6 @@ def _extract_regex_imports(file_path: str) -> list:
         m = re.search(r'^\s*"([^"]+)"', line)
         if m:
             imports.append(m.group(1))
-    return imports
-
-
-def _extract_python_imports(content: str) -> list:
-    """파이썬 파일에서 import 문 추출 (AST fallback)"""
-    imports = []
-    for line in content.split("\n"):
-        line = line.strip()
-        m = re.match(r'^(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))', line)
-        if m:
-            module = m.group(1) or m.group(2)
-            imports.append({"module": module, "type": "import", "line": 0})
-    return imports
-
-
-def _extract_go_imports(content: str) -> list:
-    """Go 파일에서 import 문 추출 (AST fallback)"""
-    imports = []
-    for line in content.split("\n"):
-        line = line.strip()
-        m = re.search(r'import\s+"([^"]+)"', line)
-        if m:
-            imports.append({"module": m.group(1), "type": "import", "line": 0})
-        m = re.match(r'^\s*"([^"]+)"', line)
-        if m:
-            imports.append({"module": m.group(1), "type": "import", "line": 0})
     return imports
 
 
@@ -3890,7 +3864,7 @@ async def image_upload_handler(request: Request) -> JSONResponse:
         html = """<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<title>VibeZoo Drop Zone</title>
+<title>VibeZoo Image Upload</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #1e1e1e; color: #ccc; font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -4024,30 +3998,17 @@ def open_dropzone(message: str = "") -> str:
     """VibeZoo 드랍존을 엽니다. AI가 파일 업로드/분석이 필요할 때 호출합니다.
     
     동작 방식:
-    1. VS Code Extension이 설치된 경우 → Webview 패널이 열립니다
-    2. 일반 VS Code / 브라우저 환경 → 브라우저 기반 드롭존이 열립니다
-    3. 업로드된 파일은 ~/.vibezoo-cache/에 저장됩니다
+    - VS Code Extension이 설치된 경우 → Webview 패널이 열립니다
+    - 업로드된 파일은 ~/.vibezoo-cache/에 저장됩니다
     """
-    browser_msg = ""
     try:
-        # 1. Extension용 action 파일 생성
+        # Extension용 action 파일 생성 → VS Code Webview 열림
         data = {"action": "open", "message": message, "timestamp": time.time()}
         _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
-        
-        # 2. 브라우저 fallback (일반 VS Code / 브라우저 환경)
-        try:
-            import webbrowser
-            port = 9027
-            url = f"http://localhost:{port}/upload"
-            webbrowser.open(url)
-            browser_msg = f"\n\n🌐 Browser fallback: `{url}`\n👉 Drag & drop any file there."
-        except:
-            pass
         
         try_crow_ingest(f"Dropzone opened: {message[:100]}" if message else "Dropzone opened", register="context")
         return (_markdown_header("Drop Zone", "📸")
                 + f"Drop zone opened. {message}\n"
-                + browser_msg
                 + _markdown_footer())
     except Exception as e:
         return (_markdown_header("Drop Zone Error", "❌")
