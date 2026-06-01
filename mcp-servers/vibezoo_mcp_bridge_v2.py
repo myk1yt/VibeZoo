@@ -29,7 +29,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from starlette.responses import JSONResponse
+    from starlette.responses import JSONResponse, HTMLResponse
     from starlette.requests import Request
 except ImportError:
     # FastMCP 의존성에 포함되어 있음
@@ -537,6 +537,32 @@ def _extract_regex_imports(file_path: str) -> list:
         m = re.search(r'^\s*"([^"]+)"', line)
         if m:
             imports.append(m.group(1))
+    return imports
+
+
+def _extract_python_imports(content: str) -> list:
+    """파이썬 파일에서 import 문 추출 (AST fallback)"""
+    imports = []
+    for line in content.split("\n"):
+        line = line.strip()
+        m = re.match(r'^(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))', line)
+        if m:
+            module = m.group(1) or m.group(2)
+            imports.append({"module": module, "type": "import", "line": 0})
+    return imports
+
+
+def _extract_go_imports(content: str) -> list:
+    """Go 파일에서 import 문 추출 (AST fallback)"""
+    imports = []
+    for line in content.split("\n"):
+        line = line.strip()
+        m = re.search(r'import\s+"([^"]+)"', line)
+        if m:
+            imports.append({"module": m.group(1), "type": "import", "line": 0})
+        m = re.match(r'^\s*"([^"]+)"', line)
+        if m:
+            imports.append({"module": m.group(1), "type": "import", "line": 0})
     return imports
 
 
@@ -3864,7 +3890,7 @@ async def image_upload_handler(request: Request) -> JSONResponse:
         html = """<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<title>VibeZoo Image Upload</title>
+<title>VibeZoo Drop Zone</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #1e1e1e; color: #ccc; font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -3932,7 +3958,7 @@ document.getElementById('dropzone').addEventListener('drop', function(e) {
 });
 </script>
 </body></html>"""
-        return JSONResponse({"html": html}, status_code=200)
+        return HTMLResponse(html, status_code=200)
     
     elif request.method == "POST":
         try:
