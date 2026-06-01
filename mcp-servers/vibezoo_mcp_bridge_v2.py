@@ -4018,20 +4018,9 @@ def open_dropzone(message: str = "") -> str:
         data = {"action": "open", "message": message, "timestamp": time.time()}
         _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
         
-        # 2. 브라우저 fallback (일반 VS Code / 브라우저 환경)
-        try:
-            import webbrowser
-            port = 9027
-            url = f"http://localhost:{port}/upload"
-            webbrowser.open(url)
-            browser_msg = f"\n\n🌐 Browser fallback: `{url}`\n👉 Drag & drop any file there."
-        except:
-            pass
-        
         try_crow_ingest(f"Dropzone opened: {message[:100]}" if message else "Dropzone opened", register="context")
         return (_markdown_header("Drop Zone", "📸")
                 + f"Drop zone opened. {message}\n"
-                + browser_msg
                 + _markdown_footer())
     except Exception as e:
         return (_markdown_header("Drop Zone Error", "❌")
