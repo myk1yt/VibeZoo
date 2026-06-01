@@ -21,11 +21,9 @@ try:
 except SyntaxError as e:
     print(f'Syntax ERROR: {e}')
 
-# Check features
+# Check features (브라우저 드랍존 /upload 제거됨 — Webview 전용)
 features = {
     'main block': 'if __name__ == "__main__"',
-    'open_image_dropzone': 'open_image_dropzone',
-    '/upload route': '/upload',
     'aggregate_spatial_pixels': 'aggregate_spatial_pixels',
     'GrabCut': 'grabCut',
     'Saliency': 'cv2.saliency',
