@@ -1006,18 +1006,22 @@ export class VisualVibePanels {
     }
   });
 
-  var dz = document.getElementById('dropzone');
-  dz.addEventListener('dragover', function(e) {
+  // VS Code 기본 드래그 앤 드롭 동작(새 탭에 파일 열기)을 전역으로 방지
+  window.addEventListener('dragover', function(e) {
     e.preventDefault();
-    this.classList.add('dragover');
+    e.stopPropagation();
+    document.getElementById('dropzone').classList.add('dragover');
   });
-  dz.addEventListener('dragleave', function(e) {
-    this.classList.remove('dragover');
-  });
-  dz.addEventListener('drop', function(e) {
+  window.addEventListener('dragleave', function(e) {
     e.preventDefault();
-    this.classList.remove('dragover');
-    var files = e.dataTransfer.files;
+    e.stopPropagation();
+    document.getElementById('dropzone').classList.remove('dragover');
+  });
+  window.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById('dropzone').classList.remove('dragover');
+    var files = e.dataTransfer && e.dataTransfer.files;
     if (files && files.length > 0) {
       handleFiles(files);
     }
