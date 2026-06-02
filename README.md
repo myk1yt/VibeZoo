@@ -39,9 +39,12 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
 
 ---
 
-## 1. VibeZoo MCP Bridge — Tool Overview (34 Tools)
+## 1. VibeZoo MCP Bridge — Tool Overview (36 Tools)
 
-The VibeZoo MCP Bridge operates based on FastMCP + SSE, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/sse`. It provides a total of **34+ MCP tools** through a modular architecture (`bridge/tools/`).
+The VibeZoo MCP Bridge operates based on FastMCP + SSE, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/sse`. It provides a total of **36+ MCP tools** through a modular architecture (`bridge/tools/`).
+
+### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
+The `web_search` tool leverages SearxNG to autonomously fetch real-time data and documentation, while `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
 
 ### 1.1 UX (3 Tools) — Intent Detection + Auto Tool Chains
 When you say "I'll show you a file", the Dropzone opens. Uploaded files are automatically analyzed through the SSA→OCR→MiniCPM pipeline.

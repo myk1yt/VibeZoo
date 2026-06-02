@@ -88,3 +88,16 @@
   - [`.zoo/subagents_config.json`](.zoo/subagents_config.json): 분업화된 서브에이전트(Architect, Code, Debugger, MCP_Expert) 설정 영구 저장 파일 추가
 - **워크플로우**: Research → Architect → Code → Debug → Git commit/push → VSIX rebuild → Local reinstall
 - **GitHub**: 3 files changed, 41 insertions, 25 deletions, commit `90016d8`, tag `v0.14.2`
+
+## 2026-06-03: VibeZoo Autonomous Master Plan
+
+### Summary
+- **Feature 추가 — SearxNG WebSearch**:
+  - [web_search.py](mcp-servers/web_search.py): SearxNG 연동 및 에러 시 자동 Fallback 로직 추가 (MCP 도구로 등록)
+- **Feature 추가 — LLM 자가 피드백 루프**:
+  - [eedback.py](mcp-servers/bridge/tools/feedback.py): 반복 작업이나 불편 사항을 utonomous_agent_suggestions.jsonl에 스스로 기록하는 텔레메트리 도구 추가
+- **Feature 추가 — Agent.md (자율 행동 프로토콜)**:
+  - [.zoo/Agent.md](.zoo/Agent.md): LLM이 하드코딩 없이 VibeZoo 도구를 최우선 사용하고, 실패 시 자율 디버깅을 수행하도록 강제하는 핵심 프롬프트 규칙 제정
+- **Feature 추가 — Universal UX Bootstrapper**:
+  - init_vibezoo.bat, init_vibezoo.sh, README.md 가이드라인을 통해 GitHub 클론 시 즉각 환경 구성 지원
+- **GitHub**: Tag 0.14.2 release.
