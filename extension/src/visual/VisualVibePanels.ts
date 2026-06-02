@@ -987,11 +987,10 @@ export class VisualVibePanels {
   .actions button:hover { background: #505050; }
   .actions button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
   .actions button.primary:hover { background: #1177bb; }
-  input[type=file] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
+  input[type=file] { display: none; }
 </style>
 </head><body>
-<div id="dropzone">
-  <input type="file" id="fileInput" onchange="handleFiles(this.files)" title="Drag & drop or click here">
+<div id="dropzone" onclick="document.getElementById('fileInput').click()">
   <div class="icon">📷</div>
   <div class="placeholder">
     <h2>VibeZoo Drop Zone</h2>
@@ -1003,10 +1002,10 @@ export class VisualVibePanels {
 <div class="status" id="status"></div>
 <div class="file-info" id="fileInfo"></div>
 <div class="actions">
-  <!-- 버튼은 투명 인풋 바깥(아래)에 둡니다. 하지만 z-index로 띄웁니다. -->
   <button onclick="document.getElementById('fileInput').click()" class="primary">📂 Browse</button>
   <button onclick="clearDropzone()">🗑️ Clear</button>
 </div>
+<input type="file" id="fileInput" onchange="handleFiles(this.files)">
 <script>
   var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
 
@@ -1099,13 +1098,35 @@ export class VisualVibePanels {
     }
   });
 
-  // 투명 Input Overlay가 네이티브 이벤트를 완벽하게 처리하므로 복잡한 JS 방어막 불필요
-  var fi = document.getElementById('fileInput');
   var dz = document.getElementById('dropzone');
   
-  fi.addEventListener('dragenter', function() { dz.classList.add('dragover'); });
-  fi.addEventListener('dragleave', function() { dz.classList.remove('dragover'); });
-  fi.addEventListener('drop', function() { dz.classList.remove('dragover'); });
+  dz.addEventListener('dragenter', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    this.classList.add('dragover');
+  }, false);
+
+  dz.addEventListener('dragover', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    this.classList.add('dragover');
+  }, false);
+
+  dz.addEventListener('dragleave', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    this.classList.remove('dragover');
+  }, false);
+
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    this.classList.remove('dragover');
+    var files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
+  }, false);
+
+  document.addEventListener('dragover', function(e) { e.preventDefault(); e.stopPropagation(); }, false);
+  document.addEventListener('drop', function(e) { e.preventDefault(); e.stopPropagation(); }, false);
 
   document.addEventListener('paste', function(e) {
     var items = e.clipboardData && e.clipboardData.items;
