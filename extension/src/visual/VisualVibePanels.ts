@@ -948,7 +948,7 @@ export class VisualVibePanels {
     var reader = new FileReader();
     reader.onload = function(e) {
       var dataUrl = e.target.result;
-      if (file.type.startsWith('image/')) {
+      if (file.type && file.type.startsWith('image/')) {
         var img = document.getElementById('preview');
         img.src = dataUrl;
         img.style.display = 'block';
@@ -1036,6 +1036,8 @@ export class VisualVibePanels {
     this.classList.remove('dragover');
     var files = e.dataTransfer.files;
     if (files && files.length > 0) {
+      // 마치 Open File 버튼을 눌러서 선택한 것처럼 input 태그에 직접 파일 객체 할당
+      try { document.getElementById('fileInput').files = files; } catch(err) {}
       handleFiles(files);
     }
   }, false);
