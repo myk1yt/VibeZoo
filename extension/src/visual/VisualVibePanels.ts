@@ -894,10 +894,11 @@ export class VisualVibePanels {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #1e1e1e; color: #ccc; font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; flex-direction: column; padding: 20px; }
-  #dropzone { width: 100%; max-width: 600px; height: 350px; border: 3px dashed #555; border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; cursor: pointer; transition: all 0.3s; text-align: center; padding: 20px; }
+  #dropzone { width: 100%; max-width: 600px; height: 350px; border: 3px dashed #555; border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; cursor: pointer; transition: all 0.3s; text-align: center; padding: 20px; position: relative; }
+  #dropzone * { pointer-events: none; }
   #dropzone:hover, #dropzone.dragover { border-color: #4ec9ff; background: rgba(78,201,255,0.1); }
   #dropzone.dragover { border-color: #6acb6a; background: rgba(106,203,106,0.1); }
-  #dropzone img { max-width: 90%; max-height: 250px; border-radius: 8px; display: none; object-fit: contain; }
+  #dropzone img { max-width: 90%; max-height: 250px; border-radius: 8px; display: none; object-fit: contain; pointer-events: none; }
   #dropzone.has-image img { display: block; }
   #dropzone.has-image .placeholder { display: none; }
   .icon { font-size: 56px; opacity: 0.4; }
@@ -1005,17 +1006,30 @@ export class VisualVibePanels {
     }
   });
 
-  window.addEventListener('dragover', function(e) { e.preventDefault(); });
-  window.addEventListener('drop', function(e) { e.preventDefault(); });
+  window.addEventListener('dragover', function(e) { e.preventDefault(); e.stopPropagation(); }, false);
+  window.addEventListener('drop', function(e) { e.preventDefault(); e.stopPropagation(); }, false);
 
   var dz = document.getElementById('dropzone');
+  
+  dz.addEventListener('dragenter', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.add('dragover');
+  }, false);
+
   dz.addEventListener('dragover', function(e) {
     e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
     this.classList.add('dragover');
-  });
+  }, false);
+
   dz.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
     this.classList.remove('dragover');
-  });
+  }, false);
+
   dz.addEventListener('drop', function(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -1024,7 +1038,7 @@ export class VisualVibePanels {
     if (files && files.length > 0) {
       handleFiles(files);
     }
-  });
+  }, false);
 
   document.addEventListener('paste', function(e) {
     var items = e.clipboardData && e.clipboardData.items;
