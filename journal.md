@@ -81,7 +81,10 @@
   - [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py): `check_uploaded_files()`에서 세션 이후 업로드만 필터링 (JS ms → Python s 변환)
 - **Bug 2 수정 — PDF SSA 제거**:
   - [`file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py): `_analyze_pdf_as_image()`에서 SSA 블록 19줄 완전 제거, OCR + MiniCPM-V는 유지
+- **Bug 3 수정 — MCP 브릿지 데드락 해결**:
+  - [`SubagentManager.ts`](extension/src/orchestra/SubagentManager.ts): 파이프 버퍼가 가득 차 서버가 멈추는 데드락을 방지하기 위해 `stdio` 설정을 `['ignore', 'pipe', 'pipe']`에서 `'ignore'`로 변경하여 VSCode Reload 시 VibeZoo 무한 대기 문제 영구 해결
 - **Feature 추가**:
   - [`vibezoo_mcp_bridge.py`](mcp-servers/vibezoo_mcp_bridge.py): Dropzone 웹 UI에 클립보드 이미지 복사/붙여넣기(Ctrl+V) 기능 추가
+  - [`.zoo/subagents_config.json`](.zoo/subagents_config.json): 분업화된 서브에이전트(Architect, Code, Debugger, MCP_Expert) 설정 영구 저장 파일 추가
 - **워크플로우**: Research → Architect → Code → Debug → Git commit/push → VSIX rebuild → Local reinstall
 - **GitHub**: 3 files changed, 41 insertions, 25 deletions, commit `90016d8`, tag `v0.14.2`

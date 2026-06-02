@@ -94,7 +94,7 @@ export class SubagentManager {
     // 브릿지 spawn (이제 Crow URL을 스스로 가리키도록)
     this.child = spawn('python', [this.bridgeScript, '--port', String(port)], {
       detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: 'ignore',
       env: {
         ...process.env,
         CROW_SERVER_URL: ConfigService.getCrowUrl(),
