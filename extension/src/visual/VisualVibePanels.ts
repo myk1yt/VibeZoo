@@ -441,7 +441,7 @@ export class VisualVibePanels {
     this.dropzonePanel.webview.onDidReceiveMessage((message) => {
       switch (message.type) {
         case 'uploadFile':
-          this.handleDropzoneUpload(message.fileName, message.data, message.mimeType);
+          this.handleDropzoneUpload(message.fileName, message.data, message.mimeType, message.mode);
           break;
       }
     });
@@ -451,7 +451,7 @@ export class VisualVibePanels {
   }
 
   /** 드랍존 파일 업로드 처리 — Temp 폴더에 저장 */
-  private handleDropzoneUpload(fileName: string, dataBase64: string, mimeType: string): void {
+  private handleDropzoneUpload(fileName: string, dataBase64: string, mimeType: string, mode: string = 'full'): void {
     try {
       const cacheDir = DROPZONE_CACHE_DIR();
       fs.mkdirSync(cacheDir, { recursive: true });
@@ -478,7 +478,20 @@ export class VisualVibePanels {
       const buffer = Buffer.from(raw, 'base64');
       fs.writeFileSync(destPath, buffer);
 
-      console.log(`[VibeZoo] Dropzone upload saved: ${destPath} (${buffer.length} bytes)`);
+      // Save metadata including selected mode
+      const metaPath = destPath + '.meta.json';
+      fs.writeFileSync(metaPath, JSON.stringify({ fileName, mimeType, mode, size: buffer.length }));
+
+      // Write to action file for potential backend triggers
+      const dzAction = DZ_ACTION_FILE();
+      fs.writeFileSync(dzAction, JSON.stringify({
+        action: 'file_uploaded',
+        path: destPath,
+        mode: mode,
+        timestamp: Date.now()
+      }));
+
+      console.log(`[VibeZoo] Dropzone upload saved: ${destPath} (${buffer.length} bytes, mode: ${mode})`);
 
       this.dropzonePanel?.webview.postMessage({
         type: 'uploadComplete',
@@ -916,6 +929,19 @@ export class VisualVibePanels {
   .actions button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
   .actions button.primary:hover { background: #1177bb; }
   input[type=file] { display: none; }
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal-content { background: #252526; border: 1px solid #454545; border-radius: 8px; padding: 24px; width: 420px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ccc; border-bottom: 1px solid #454545; padding-bottom: 12px; }
+  .modal-options { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+  .modal-options label { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; color: #ccc; font-size: 14px; }
+  .modal-options input[type="radio"] { cursor: pointer; margin-top: 2px; }
+  .modal-desc { font-size: 12px; color: #888; display: block; margin-top: 4px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .modal-actions button { padding: 6px 16px; background: #3c3c3c; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .modal-actions button:hover { background: #505050; }
+  .modal-actions button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
+  .modal-actions button.primary:hover { background: #1177bb; }
 </style>
 </head><body>
 <div id="dropzone" onclick="document.getElementById('fileInput').click()">
@@ -934,16 +960,85 @@ export class VisualVibePanels {
   <button onclick="clearDropzone()">🗑️ Clear</button>
 </div>
 <input type="file" id="fileInput" onchange="handleFiles(this.files)">
+
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal-content">
+    <div class="modal-title">Select Analysis Mode</div>
+    <div class="modal-options">
+      <label>
+        <input type="radio" name="analysisMode" value="full" checked>
+        <div>
+          <strong>🚀 Full Pipeline (Auto)</strong>
+          <span class="modal-desc">Runs SSA, OCR, and Vision LLM automatically</span>
+        </div>
+      </label>
+      <label>
+        <input type="radio" name="analysisMode" value="vision">
+        <div>
+          <strong>🤖 Vision LLM Only</strong>
+          <span class="modal-desc">Deep image understanding via MiniCPM-V</span>
+        </div>
+      </label>
+      <label>
+        <input type="radio" name="analysisMode" value="ocr">
+        <div>
+          <strong>📝 OCR Text Extract</strong>
+          <span class="modal-desc">Extract text from Image/PDF/Docx</span>
+        </div>
+      </label>
+      <label>
+        <input type="radio" name="analysisMode" value="ssa">
+        <div>
+          <strong>🖼️ SSA Only</strong>
+          <span class="modal-desc">Statistical Spatial Analysis (Colors, Edges)</span>
+        </div>
+      </label>
+      <label>
+        <input type="radio" name="analysisMode" value="none">
+        <div>
+          <strong>📂 Save Only (No Analysis)</strong>
+          <span class="modal-desc">Just save the file to local uploads folder</span>
+        </div>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="confirmUpload()">Upload</button>
+    </div>
+  </div>
+</div>
 <script>
   var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
 
+  var pendingFile = null;
+
   function handleFiles(files) {
     if (!files || files.length === 0) return;
-    var file = files[0];
-    uploadFile(file);
+    pendingFile = files[0];
+    document.getElementById('uploadModal').classList.add('show');
   }
 
-  function uploadFile(file) {
+  function closeModal() {
+    document.getElementById('uploadModal').classList.remove('show');
+    pendingFile = null;
+    document.getElementById('fileInput').value = '';
+  }
+
+  function confirmUpload() {
+    if (!pendingFile) return;
+    var modeOptions = document.getElementsByName('analysisMode');
+    var selectedMode = 'full';
+    for (var i = 0; i < modeOptions.length; i++) {
+      if (modeOptions[i].checked) {
+        selectedMode = modeOptions[i].value;
+        break;
+      }
+    }
+    uploadFile(pendingFile, selectedMode);
+    closeModal();
+  }
+
+  function uploadFile(file, mode) {
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function(e) {
@@ -954,7 +1049,7 @@ export class VisualVibePanels {
         img.style.display = 'block';
         document.getElementById('dropzone').classList.add('has-image');
       }
-      setStatus('Uploading...', 'info');
+      setStatus('Uploading... (' + mode + ')', 'info');
       if (vscode) {
         vscode.postMessage({
           type: 'uploadFile',
@@ -962,6 +1057,7 @@ export class VisualVibePanels {
           data: dataUrl,
           mimeType: file.type,
           size: file.size,
+          mode: mode
         });
       }
       document.getElementById('fileInfo').textContent = file.name + ' (' + formatSize(file.size) + ')';
