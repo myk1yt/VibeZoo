@@ -11,7 +11,7 @@ VibeZoo is a Companion Extension for Zoo Code. Without modifying a single line o
 If you find VibeZoo and Crow Memory helpful for your productivity, consider supporting our development!
 **[💖 Sponsor VibeZoo on Gumroad](https://teamsunplaza.gumroad.com/l/vibezoo)**
 
-Your support helps us maintain the servers, develop new features, and keep the AI coding revolution moving forward.
+Your support helps us develop new features and keep the AI coding revolution moving forward.
 
 ---
 
@@ -73,6 +73,8 @@ VibeZoo includes a built-in Vision AI pipeline for image analysis:
 ---
 
 ## 3. Crow Memory Overview
+
+You can find the standalone Crow Memory repository and core engine here: **[myk1yt/crowmemory](https://github.com/myk1yt/crowmemory)**
 
 ### 3.1 Philosophy — "Crow remembers not the code, but the hand that wrote it."
 
