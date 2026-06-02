@@ -298,25 +298,8 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
         pix.save(img_path)
         doc.close()
 
-        # ── SSA 공간 분석 ──
-        try:
-            from bridge.tools.ssa import _analyze_image, _imread_korean_safe, _summarize_ssa_results
-            import cv2
-            img_raw = _imread_korean_safe(img_path)
-            if img_raw is not None:
-                orig_h, orig_w = img_raw.shape[:2]
-                target_w = 640
-                target_h = int(orig_h * (target_w / orig_w))
-                img_resized = cv2.resize(img_raw, (target_w, target_h))
-                ssa_report = _analyze_image(img_resized, detail="full", orig_w=orig_w, orig_h=orig_h)
-                ssa_summary = _summarize_ssa_results(ssa_report)
-                if ssa_summary:
-                    lines.append(ssa_summary)
-                lines.append(ssa_report)
-                lines.append("")
-        except Exception as e:
-            lines.append(f"SSA skipped: {e}")
-            lines.append("")
+        # ── (SSA 생략: PDF 문서는 공간 분석 대상이 아님) ──
+        lines.append("")
 
         # ── OCR 텍스트 추출 (한국어 우선) ──
         try:

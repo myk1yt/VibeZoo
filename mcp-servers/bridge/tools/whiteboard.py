@@ -14,6 +14,7 @@ from typing import Optional
 
 from bridge.config import (
     WHITEBOARD_FILE, WHITEBOARD_ACTION_FILE, UI_ACTION_FILE, DZ_ACTION_FILE,
+    DZ_SESSION_FILE,
     UPLOADED_IMAGE_PATH, IMAGE_CACHE_DIR,
 )
 from bridge.utils import (
@@ -818,6 +819,14 @@ def _open_dropzone_in_webview() -> str:
 
     html_b64 = b64encode(_DROPZONE_HTML.encode('utf-8')).decode('utf-8')
 
+    # 현재 세션 타임스탬프 기록 (check_uploaded_files에서 필터링용)
+    session_data = {
+        "started_at": time.time(),
+        "action": "dropzone_open",
+    }
+    os.makedirs(os.path.dirname(DZ_SESSION_FILE), exist_ok=True)
+    _atomic_write_json(DZ_SESSION_FILE, session_data, indent=2)
+
     data = {
         "action": "open",
         "html_b64": html_b64,
@@ -858,33 +867,56 @@ def register(mcp):
     @mcp.tool
     def check_uploaded_files() -> str:
         """드랍존에 업로드된 최근 파일 목록을 확인합니다.
-        
+
         Returns:
             업로드된 파일 경로와 메타데이터 목록
         """
         registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
-        
+
         if not os.path.exists(registry_path):
             return "📂 아직 업로드된 파일이 없습니다."
-        
+
+        # 세션 시작 시간 읽기
+        session_start = 0.0
+        try:
+            if os.path.exists(DZ_SESSION_FILE):
+                with open(DZ_SESSION_FILE, 'r') as f:
+                    session = json.load(f)
+                session_start = session.get("started_at", 0.0)
+        except Exception:
+            pass
+
+        # 세션 파일이 없으면 최근 5분 이내 파일만 표시 (fallback)
+        if session_start == 0.0:
+            session_start = time.time() - 300
+
         try:
             with open(registry_path, 'r') as f:
                 entries = json.load(f)
-            
+
+            # 세션 시작 이후 항목만 필터링 (latest.json은 ms, session은 s)
+            entries = [
+                e for e in entries
+                if (e.get("timestamp", 0) / 1000.0) >= session_start
+            ]
+
+            if not entries:
+                return "📂 현재 세션에 업로드된 파일이 없습니다. 드롭존에 파일을 업로드해주세요."
+
             lines = ["## 📎 최근 업로드된 파일", ""]
             for i, entry in enumerate(entries):
                 path = entry.get("path", "?")
                 name = entry.get("fileName", "?")
                 size = entry.get("size", 0)
                 mime = entry.get("mimeType", "?")
-                
+
                 size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
                 lines.append(f"### {i+1}. {name}")
                 lines.append(f"- **경로**: `{path}`")
                 lines.append(f"- **크기**: {size_str}")
                 lines.append(f"- **타입**: {mime}")
                 lines.append("")
-            
+
             if entries:
                 lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
             return "\n".join(lines)

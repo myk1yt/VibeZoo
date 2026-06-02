@@ -24,6 +24,7 @@ PREFERENCES_FILE = str(HOME_DIR / ".vibezoo-preferences.json")
 WHITEBOARD_ACTION_FILE = str(HOME_DIR / ".vibezoo-whiteboard-action.json")
 UI_ACTION_FILE = str(HOME_DIR / ".vibezoo-ui-action.json")
 DZ_ACTION_FILE = str(HOME_DIR / ".vibezoo-dropzone-action.json")
+DZ_SESSION_FILE = str(HOME_DIR / ".vibezoo-uploads" / "dz_session.json")
 
 # ── 캐시 ─────────────────────────────────────────────
 
