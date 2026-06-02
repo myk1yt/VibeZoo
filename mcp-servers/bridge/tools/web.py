@@ -19,16 +19,8 @@ from bridge.crow_client import try_crow_ingest
 
 
 class WebSearchEngine:
-    """다중 검색 엔진 폴백 체인 — DuckDuckGo 우선, SearXNG 차선, Google/Bing API 키"""
 
-    ENGINES = ["auto", "duckduckgo", "mojeek", "wikipedia", "searxng", "google", "bing"]
-    SEARXNG_INSTANCES = [
-        "https://searx.be",
-        "https://search.sapti.me",
-        "https://search.nerdvpn.de",
-        "https://search.mdosch.de",
-        "https://searx.work",
-    ]
+    ENGINES = ["auto", "duckduckgo", "mojeek", "wikipedia", "google", "bing"]
 
     def search(self, query: str, max_results: int = 5,
                preferred_engine: str = "auto") -> list:
@@ -37,7 +29,7 @@ class WebSearchEngine:
         Args:
             query: 검색어
             max_results: 최대 결과 수
-            preferred_engine: "auto" | "duckduckgo" | "mojeek" | "wikipedia" | "searxng" | "google" | "bing"
+            preferred_engine: "auto" | "duckduckgo" | "mojeek" | "wikipedia" |  | "google" | "bing"
 
         Returns:
             검색 결과 목록 (실패 시 빈 리스트)
@@ -63,8 +55,7 @@ class WebSearchEngine:
             return self._search_mojeek(query, max_results)
         elif preferred_engine == "wikipedia":
             return self._search_wikipedia(query, max_results)
-        elif preferred_engine == "searxng":
-            return self._search_searxng(query, max_results)
+        elif preferred_engine == :
         elif preferred_engine == "google":
             return self._search_google_api(query, max_results)
         elif preferred_engine == "bing":
@@ -75,7 +66,6 @@ class WebSearchEngine:
         """나머지 엔진을 병렬로 동시 호출, 가장 빠른 결과 사용.
 
         DuckDuckGo Lite/Mojeek/Wikipedia가 모두 실패한 후 호출되므로,
-        SearXNG/Mojeek/Wikipedia/Google/Bing을 병렬 2초 timeout.
         """
         import concurrent.futures
 
@@ -90,9 +80,7 @@ class WebSearchEngine:
             future = pool.submit(self._search_wikipedia, query, max_results)
             future_map[future] = "wikipedia"
 
-            # SearXNG
-            future = pool.submit(self._search_searxng, query, max_results)
-            future_map[future] = "searxng"
+            future_map[future] = 
 
             # Google (키 있으면)
             if os.environ.get("GOOGLE_API_KEY"):
@@ -208,25 +196,6 @@ class WebSearchEngine:
         except Exception:
             return []
 
-    def _search_searxng(self, query: str, max_results: int) -> list:
-        """SearXNG 공개 인스턴스 검색"""
-        for instance in self.SEARXNG_INSTANCES:
-            try:
-                search_url = f"{instance}/search"
-                data = urllib.parse.urlencode({"q": query, "format": "json", "language": "ko-KR"}).encode()
-                req = urllib.request.Request(
-                    search_url,
-                    data=data,
-                    headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=8) as response:
-                    json_data = json.loads(response.read().decode('utf-8', errors='replace'))
-
-                results = []
                 for r in json_data.get("results", [])[:max_results]:
                     results.append({
                         "title": r.get("title", "No title"),
@@ -370,7 +339,7 @@ def register(mcp):
         Args:
             query: 검색어
             max_results: 최대 결과 수 (기본: 5)
-            engine: 검색 엔진 ("auto" (기본), "duckduckgo", "mojeek", "wikipedia", "searxng", "google", "bing")
+            engine: 검색 엔진 ("auto" (기본), "duckduckgo", "mojeek", "wikipedia", "google", "bing")
 
         Returns:
             검색 결과 목록 (제목, URL, 요약)
@@ -389,7 +358,6 @@ def register(mcp):
                 error_details.append("DuckDuckGo Lite 차단/무응답")
                 error_details.append("Mojeek 무응답")
                 error_details.append("Wikipedia API 무응답")
-                error_details.append("SearXNG 공개 인스턴스 사용 불가")
                 if os.environ.get("GOOGLE_API_KEY"):
                     error_details.append("Google API 키 오류")
                 else:

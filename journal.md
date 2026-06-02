@@ -1,4 +1,16 @@
-# VibeZoo Development Journal
+﻿# VibeZoo Development Journal
+
+## 2026-06-03: 3-Engine Parallel Web Search
+
+### Summary
+- **Architecture Redesign**: Completely replaced the faulty SearxNG dependency with a new robust 3-Engine Parallel Search architecture.
+- **Engines**: Integrated duckduckgo-search (AsyncDDGS), googlesearch-python (Threaded), and Yahoo Search (aiohttp + BeautifulSoup).
+- **Concurrency**: Utilized syncio.gather() for parallel execution and aggregated, deduplicated results into clean Markdown.
+- **Files Modified**: mcp-servers/web_search.py, README.md, mcp-servers/bridge/tools/web.py.
+- **Cleanup**: Removed all SearxNG references.
+
+---
+
 
 ## 2026-06-02: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)
 
@@ -101,3 +113,4 @@
 - **Feature 추가 — Universal UX Bootstrapper**:
   - init_vibezoo.bat, init_vibezoo.sh, README.md 가이드라인을 통해 GitHub 클론 시 즉각 환경 구성 지원
 - **GitHub**: Tag 0.14.2 release.
+
