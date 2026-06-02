@@ -432,11 +432,55 @@ export class VisualVibePanels {
         case 'uploadFile':
           this.handleDropzoneUpload(message.fileName, message.data, message.mimeType);
           break;
+        case 'uploadLocalFile':
+          this.handleLocalFileDrop(message.filePath, message.fileName);
+          break;
       }
     });
 
     this.dropzonePanel.onDidDispose(() => { this.dropzonePanel = null; });
     return this.dropzonePanel;
+  }
+
+  /** 드랍존 절대 경로 파일 복사 (VS Code 샌드박스 우회 근본 해결책) */
+  private handleLocalFileDrop(sourcePath: string, fileName: string): void {
+    try {
+      const cacheDir = DROPZONE_CACHE_DIR();
+      fs.mkdirSync(cacheDir, { recursive: true });
+
+      const safeName = `drop_${Date.now()}_${fileName}`;
+      const destPath = path.join(cacheDir, safeName);
+
+      fs.copyFileSync(sourcePath, destPath);
+      const stat = fs.statSync(destPath);
+
+      // 터미널 팝업
+      try {
+        const cp = require('child_process');
+        const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+        cp.exec(`start cmd /k "python \\"${analyzerScript}\\" \\"${destPath}\\""`);
+      } catch (err) {
+        console.error("Failed to spawn analyzer", err);
+      }
+
+      console.log(`[VibeZoo] Local Dropzone file copied: ${destPath} (${stat.size} bytes)`);
+
+      const webviewUri = this.dropzonePanel?.webview.asWebviewUri(vscode.Uri.file(destPath)).toString();
+
+      this.dropzonePanel?.webview.postMessage({
+        type: 'uploadComplete',
+        path: destPath,
+        size: stat.size,
+        fileName: safeName,
+        webviewUri: webviewUri
+      });
+    } catch (e: any) {
+      console.log(`[VibeZoo] Local Dropzone error: ${e.message}`);
+      this.dropzonePanel?.webview.postMessage({
+        type: 'uploadError',
+        error: e.message,
+      });
+    }
   }
 
   /** 드랍존 파일 업로드 처리 — Temp 폴더에 저장 */
@@ -940,7 +984,21 @@ export class VisualVibePanels {
   function handleFiles(files) {
     if (!files || files.length === 0) return;
     var file = files[0];
-    uploadFile(file);
+    
+    // VS Code 꼼수: file.path가 존재하면 (로컬 드래그 앤 드롭)
+    if (file.path) {
+      setStatus('Uploading local file...', 'info');
+      if (vscode) {
+        vscode.postMessage({
+          type: 'uploadLocalFile',
+          filePath: file.path,
+          fileName: file.name
+        });
+      }
+    } else {
+      // 버튼으로 올렸거나 일반 웹 환경 (Base64 변환)
+      uploadFile(file);
+    }
   }
 
   function uploadFile(file) {
@@ -998,6 +1056,12 @@ export class VisualVibePanels {
         setStatus('✅ Uploaded! Path: ' + msg.path, 'success');
         if (msg.fileName) {
           document.getElementById('fileInfo').textContent = msg.fileName + ' (' + formatSize(msg.size) + ')';
+        }
+        if (msg.webviewUri) {
+          var img = document.getElementById('preview');
+          img.src = msg.webviewUri;
+          img.style.display = 'block';
+          document.getElementById('dropzone').classList.add('has-image');
         }
         break;
       case 'uploadError':
