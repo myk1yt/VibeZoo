@@ -1,7 +1,7 @@
-# VibeZoo Architecture — v0.14.0
+# VibeZoo Architecture — v0.14.1
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.0 UX Workflow)
-> **Baseline Version**: v0.14.0
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade)
+> **Baseline Version**: v0.14.1
 > **Project**: VibeZoo — Standalone Companion Extension for Zoo Code
 > **Core Constraint**: Do not modify Zoo Code source code. All features are implemented via VibeZoo Extension + MCP Bridge + configuration changes.
 
@@ -517,7 +517,7 @@ User:                                                   │
 
 ## 10. Conclusion
 
-VibeZoo v0.14.0 achieved the following **without modifying a single line of Zoo Code source code**:
+VibeZoo v0.14.1 achieved the following **without modifying a single line of Zoo Code source code**:
 
 - **34 MCP Tools**: tree-sitter AST based semantic code analysis + UX Workflow
 - **UX Workflow**: Intent detection + automatic tool chain orchestration (intent_detector + ux_coordinator)

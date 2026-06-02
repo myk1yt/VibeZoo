@@ -6,6 +6,7 @@
 ---
 
 - [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
+- [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
 - [2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)](#2026-06-02---v0140-ux-workflow-구현-의도-감지--자동-도구-체인)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)

@@ -1,7 +1,7 @@
-# VibeZoo Implementation Plan — v0.14.0
+# VibeZoo Implementation Plan — v0.14.1
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.0 UX Workflow)
-> **Baseline Version**: v0.14.0
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade)
+> **Baseline Version**: v0.14.1
 > **Base Documents**: [Architecture.md](./Architecture.md), [ROADMAP.md](./ROADMAP.md), [JOURNAL.md](./JOURNAL.md)
 
 ---
@@ -10,7 +10,8 @@
 
 | Version | Date | Key Changes | Notes |
 |:---|:---|:---|:---|
-| **v0.14.0** | 2026-06-02 (Current) | UX Workflow: intent_detector + ux_coordinator (3 tools) + 문서 업데이트 | Current |
+| **v0.14.1** | 2026-06-02 (Current) | VibeZoo v2 업그레이드: 드랍존 범용화 + PDF 파이프라인 + OCR 전처리 + 문서 최신화 | Current |
+| **v0.14.0** | 2026-06-02 | UX Workflow: intent_detector + ux_coordinator (3 tools) + 문서 업데이트 |
 | **v0.10.0** | 2026-05-27 AM | Initial implementation complete (26 files). 4 Go MCP servers. AutoBuildFix empty loop. | Design → Implementation |
 | **v0.10.0** | 2026-05-27 PM | Switched to Python MCP bridge. All Go servers removed. Single `vibezoo_mcp_bridge.py` file. | Go→Python |
 | **v0.10.0** | 2026-05-27 PM | AI auto Whiteboard + UI Preview integration. 4 new MCP tools including `draw_on_whiteboard`. | `setInterval` polling |

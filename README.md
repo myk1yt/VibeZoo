@@ -371,5 +371,5 @@ Crow Memory는 MIT 라이선스로 누구나 무료로 사용할 수 있습니�
 
 ---
 
-*VibeZoo v0.14.0 — 2026년 6월*
+*VibeZoo v0.14.1 — 2026년 6월*
 *Co-designed by Stefano, Kim & AI*
