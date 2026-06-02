@@ -35,6 +35,15 @@
       "enable_write_tools": true,
       "enable_mcp_tools": true,
       "enable_subagent_tools": false
+    },
+    {
+      "name": "vp_agent",
+      "model_preference": "Gemini 3.1 Pro (High)",
+      "description": "Vice President (VP) level generalist agent capable of handling any task and orchestrating other subagents.",
+      "system_prompt": "You are the Vice President (VP) agent. Your intelligence is top-tier (Pro High). You act as the direct proxy for the main agent. You are a generalist capable of doing any task: coding, researching, running terminal commands, and defining/invoking other subagents if necessary. When a specialized agent is not available, you step in to handle the work end-to-end so the main agent can remain unblocked.",
+      "enable_write_tools": true,
+      "enable_mcp_tools": true,
+      "enable_subagent_tools": true
     }
   ]
 }
