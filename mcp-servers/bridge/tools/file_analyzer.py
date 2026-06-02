@@ -216,15 +216,20 @@ def analyze_file(file_path: str) -> str:
                 import fitz  # PyMuPDF
                 doc = fitz.open(path)
                 lines.append(f"### 📑 PDF Content ({doc.page_count} pages)")
+                has_text = False
                 for i, page in enumerate(doc):
                     text = page.get_text()
                     if text.strip():
+                        has_text = True
                         lines.append(f"\n**Page {i+1}:**")
                         lines.append(f"```\n{text[:2000]}\n```")
-                    if i >= 5:  # Max 5 pages
+                    if i >= 5:
                         lines.append("*...more pages available*")
                         break
                 doc.close()
+                if not has_text:
+                    # 스캔 문서: 이미지 변환 → OCR/MiniCPM 파이프라인
+                    _analyze_pdf_as_image(path, lines)
             except ImportError:
                 lines.append("⚠️ PyMuPDF not installed. Run: `pip install PyMuPDF`")
             except Exception as e:
@@ -266,6 +271,89 @@ def analyze_file(file_path: str) -> str:
     lines.insert(1, f"*{info['size_kb']}KB {info['type']} file analyzed*")
     
     return "\n".join(lines)
+
+
+def _analyze_pdf_as_image(path: str, lines: list) -> None:
+    """PDF를 이미지로 변환하여 분석 파이프라인 (SSA → OCR → MiniCPM) 실행.
+
+    텍스트 추출 불가능한 스캔 문서 PDF를 처리.
+    """
+    try:
+        import fitz
+        doc = fitz.open(path)
+        if doc.page_count == 0:
+            lines.append("⚠️ PDF has no pages.")
+            doc.close()
+            return
+
+        lines.append("")
+        lines.append("### 🔬 PDF → Image Pipeline (Scanned Document)")
+        lines.append(f"Text extraction failed — {doc.page_count} page(s) being analyzed as image.")
+        lines.append("")
+
+        # 첫 페이지만 이미지 변환
+        page = doc[0]
+        pix = page.get_pixmap(dpi=200)
+        img_path = path + ".png"
+        pix.save(img_path)
+        doc.close()
+
+        # ── SSA 공간 분석 ──
+        try:
+            from bridge.tools.ssa import _analyze_image, _imread_korean_safe, _summarize_ssa_results
+            import cv2
+            img_raw = _imread_korean_safe(img_path)
+            if img_raw is not None:
+                orig_h, orig_w = img_raw.shape[:2]
+                target_w = 640
+                target_h = int(orig_h * (target_w / orig_w))
+                img_resized = cv2.resize(img_raw, (target_w, target_h))
+                ssa_report = _analyze_image(img_resized, detail="full", orig_w=orig_w, orig_h=orig_h)
+                ssa_summary = _summarize_ssa_results(ssa_report)
+                if ssa_summary:
+                    lines.append(ssa_summary)
+                lines.append(ssa_report)
+                lines.append("")
+        except Exception as e:
+            lines.append(f"SSA skipped: {e}")
+            lines.append("")
+
+        # ── OCR 텍스트 추출 (한국어 우선) ──
+        try:
+            from bridge.ocr_engine import OcrEngine
+            ocr = OcrEngine()
+            if ocr.is_available():
+                result = ocr.ocr(img_path, lang="kor", detail="full")
+                md = OcrEngine.ocr_to_markdown(result)
+                lines.append(md)
+                lines.append("")
+        except Exception as e:
+            lines.append(f"OCR skipped: {e}")
+            lines.append("")
+
+        # ── MiniCPM-V 비전 분석 ──
+        try:
+            from bridge.vision.minicpm import describe_image, is_available
+            if is_available():
+                desc = describe_image(img_path,
+                    "이 PDF 문서의 내용을 한국어로 자세히 읽어주세요. 모든 텍스트를 추출해주세요.")
+                if desc:
+                    lines.append("### 🤖 Vision Analysis (MiniCPM-V)")
+                    lines.append(desc)
+        except Exception:
+            pass
+
+        # 임시 이미지 정리
+        try:
+            os.remove(img_path)
+        except Exception:
+            pass
+
+    except ImportError:
+        lines.append("⚠️ PyMuPDF not installed (required for scanned PDF analysis)")
+    except Exception as e:
+        lines.append(f"⚠️ PDF image analysis failed: {e}")
+
 
 def register(mcp):
     """파일 분석 도구 등록"""

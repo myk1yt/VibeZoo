@@ -173,8 +173,14 @@ def register(mcp):
                     response.append("```")
                     response.append("\n".join(lines[:30]))
                     response.append("```")
+                elif ext == '.pdf':
+                    # PDF: file_analyzer 직접 호출 (스캔 문서 대응)
+                    from bridge.tools.file_analyzer import analyze_file
+                    analysis = analyze_file(file_path)
+                    response.append("")
+                    response.append(analysis)
                 else:
-                    response.append(f"PDF/DOCX 파일입니다. `analyze_uploaded_file()`로 상세 분석 가능합니다.")
+                    response.append(f"DOCX/XLSX 파일입니다. `analyze_uploaded_file()`로 상세 분석 가능합니다.")
             except Exception as e:
                 response.append(f"파일 읽기 실패: {e}")
 

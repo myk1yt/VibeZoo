@@ -49,9 +49,9 @@ _DROPZONE_HTML = """<!DOCTYPE html>
 </style></head>
 <body>
 <div id="dropzone" onclick="document.getElementById('fileInput').click()">
-  <div class="icon">📸</div>
-  <p>Drag & drop an image here<br>or <strong>click to browse</strong></p>
-  <p class="hint">Supports all file types: images, PDF, DOCX, TXT, code, etc.</p>
+  <div class="icon">📎</div>
+  <p>Drag & drop a file here<br>or <strong>click to browse</strong></p>
+  <p class="hint">📸 Images · 📄 PDF · 📝 DOCX · 📋 TXT · 💻 Code — all file types supported</p>
   <img id="preview" alt="Preview"/>
   <div id="status"></div>
 </div>
@@ -826,11 +826,11 @@ def _open_dropzone_in_webview() -> str:
     }
     _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
 
-    return (_markdown_header("Image Drop Zone", "📸")
+    return (_markdown_header("File Drop Zone", "📎")
             + "Drop zone opened in VS Code Webview.\n\n"
-            + "1. Drag & drop an image into the Webview\n"
-            + "2. File will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
-            + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n\n"
+            + "1. Drag & drop any file (images, PDF, DOCX, TXT, code) into the Webview\n"
+            + "2. File will be saved to `~/.vibezoo-cache/upload_*.{ext}`\n"
+            + "3. After upload, call `auto_analyze_after_drop(file_path='...')` to analyze\n\n"
             + "💡 **Tip**: Use `capture_screen()` (without arguments) to capture your screen directly.\n"
             + _markdown_footer())
 

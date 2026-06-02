@@ -246,6 +246,9 @@ class OcrEngine:
             except Exception:
                 return self._empty_result("tesseract", "Cannot read image")
 
+        # 이미지 전처리 (OCR 정확도 향상)
+        pil_img = self._preprocess_for_ocr(pil_img)
+
         # Tesseract 언어 설정
         tesseract_lang = self._map_tesseract_lang(lang)
 
@@ -370,6 +373,40 @@ class OcrEngine:
             "engine": "paddle",
             "stats": {"word_count": len(full_lines), "line_count": len(full_lines)},
         }
+
+    # ── 이미지 전처리 ──────────────────────────────────
+
+    @staticmethod
+    def _preprocess_for_ocr(pil_img):
+        """OCR 정확도 향상을 위한 이미지 전처리.
+        
+        Adaptive Thresholding + 노이즈 제거 적용.
+        OpenCV가 없으면 원본 반환.
+        """
+        try:
+            import cv2
+            import numpy as np
+
+            # PIL → OpenCV 변환
+            cv_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+            # 그레이스케일 변환
+            gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+
+            # Adaptive Thresholding (조명 불균일 보정)
+            binary = cv2.adaptiveThreshold(
+                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 31, 10
+            )
+
+            # 노이즈 제거
+            denoised = cv2.fastNlMeansDenoising(binary, None, 10, 7, 21)
+
+            from PIL import Image
+            return Image.fromarray(denoised)
+        except Exception:
+            # OpenCV 없으면 원본 반환
+            return pil_img
 
     # ── 헬퍼 ───────────────────────────────────────────
 

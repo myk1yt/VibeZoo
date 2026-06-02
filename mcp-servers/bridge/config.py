@@ -48,3 +48,17 @@ TS_JS_EXTS = {".ts", ".tsx", ".js", ".jsx"}
 # Windows TEMP 폴더에 이미지 저장 (c:\temp 대신 시스템 temp 사용)
 _TEMP_DIR = Path(os.environ.get("TEMP", os.path.join(os.environ.get("USERPROFILE", "C:"), "temp")))
 UPLOADED_IMAGE_PATH = str(_TEMP_DIR / "vibezoo_uploaded_image.png")
+
+# ── 업로드 경로 ─────────────────────────────────────────
+import uuid
+DEFAULT_UPLOAD_NAME = "dropped_image.png"
+
+def get_uploaded_path(filename: str = None) -> str:
+    """파일명 기반 업로드 경로 반환. 없으면 기본값.
+    
+    확장자를 보존하여 PDF, DOCX 등 모든 파일 타입 지원.
+    """
+    if filename and os.path.splitext(filename)[1]:
+        safe_name = str(uuid.uuid4())[:8] + "_" + os.path.basename(filename)
+        return str(HOME_DIR / ".vibezoo-cache" / safe_name)
+    return str(HOME_DIR / ".vibezoo-cache" / DEFAULT_UPLOAD_NAME)
