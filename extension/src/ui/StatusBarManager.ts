@@ -109,7 +109,7 @@ export class StatusBarManager {
   private _guardMode: GuardMode = 'safe';
 
   /** setActive()로 설정된 base tooltip (Crow 접미사 제외) */
-  private _baseTooltip: string = 'VibeZoo: 활성화됨';
+  private _baseTooltip: string = vscode.l10n.t('VibeZoo: Active');
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(
@@ -123,9 +123,9 @@ export class StatusBarManager {
   private _composeTooltip(): string {
     let tooltip = this._baseTooltip;
     if (this._crowConnected) {
-      tooltip += ' | Crow: 연결됨';
+      tooltip += vscode.l10n.t(' | Crow: Connected');
     } else {
-      tooltip += ' | Crow: 없음';
+      tooltip += vscode.l10n.t(' | Crow: Disconnected');
     }
     if (this._cimActive) {
       tooltip += ' | CIM: ON';
@@ -159,10 +159,10 @@ export class StatusBarManager {
       this._crowConnected = crowConnected;
     }
     if (bridgeConnected) {
-      this._baseTooltip = `VibeZoo Bridge: 연결됨 (:${bridgePort || 9027})`;
+      this._baseTooltip = vscode.l10n.t('VibeZoo Bridge: Connected (:{0})', bridgePort || 9027);
       this.item.backgroundColor = undefined;
     } else {
-      this._baseTooltip = 'VibeZoo: 활성화됨';
+      this._baseTooltip = vscode.l10n.t('VibeZoo: Active');
       this.item.backgroundColor = undefined;
     }
     this.item.text = this._composeText();
@@ -232,8 +232,8 @@ export class StatusBarManager {
     this.savedCommand = this.item.command;
     const savedCrowConnected = this._crowConnected;
 
-    this.item.text = `$(gear) 권장: ${mode}`;
-    this.item.tooltip = `VibeZoo: ${reason}\n클릭하여 모드 변경`;
+    this.item.text = vscode.l10n.t('$(gear) Suggested: {0}', mode);
+    this.item.tooltip = vscode.l10n.t('VibeZoo: {0}\nClick to change mode', reason);
     this.item.command = undefined;
 
     this.modeSuggestionTimer = setTimeout(() => {

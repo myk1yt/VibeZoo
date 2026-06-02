@@ -187,11 +187,11 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
   getChildren(_element?: SubagentTreeItem): Thenable<SubagentTreeItem[]> {
     const nodes = Array.from(this.nodes.values());
     if (nodes.length === 0) {
-      const placeholder = new vscode.TreeItem('VibeZoo 대기 중...', vscode.TreeItemCollapsibleState.None);
-      placeholder.description = '브릿지 연결 시 자동 표시됩니다';
+      const placeholder = new vscode.TreeItem(vscode.l10n.t('Waiting for VibeZoo...'), vscode.TreeItemCollapsibleState.None);
+      placeholder.description = vscode.l10n.t('Automatically shown when Bridge connects');
       placeholder.iconPath = undefined;
-      placeholder.label = '$(sync~spin) VibeZoo 대기 중...';
-      placeholder.tooltip = 'VibeZoo MCP Bridge가 연결되면 Agent 상태가 표시됩니다.';
+      placeholder.label = vscode.l10n.t('$(sync~spin) Waiting for VibeZoo...');
+      placeholder.tooltip = vscode.l10n.t('Agent status will be displayed when VibeZoo MCP Bridge is connected.');
       return Promise.resolve([placeholder as any]);
     }
     const items = nodes.map((node) => new SubagentTreeItem(node, this._bridgeOk, this._crowOk));
@@ -271,7 +271,7 @@ class SubagentTreeItem extends vscode.TreeItem {
 
     this.command = {
       command: 'vibezoo.showAgentInfo',
-      title: '에이전트 정보',
+      title: vscode.l10n.t('Agent Info'),
       arguments: [node],
     };
   }
@@ -325,11 +325,11 @@ export class YoloHistoryProvider implements vscode.TreeDataProvider<YoloHistoryI
     this.loadFromDisk();
 
     if (this.snapshots.length === 0) {
-      const placeholder = new vscode.TreeItem('YOLO 기록 없음', vscode.TreeItemCollapsibleState.None);
-      placeholder.description = 'YOLO 모드로 작업 시 자동 기록됩니다';
+      const placeholder = new vscode.TreeItem(vscode.l10n.t('No YOLO history'), vscode.TreeItemCollapsibleState.None);
+      placeholder.description = vscode.l10n.t('Automatically recorded when working in YOLO mode');
       placeholder.iconPath = undefined;
-      placeholder.label = '$(history) YOLO 기록 없음';
-      placeholder.tooltip = 'YOLO(Yocto OnLine Offline) 모드로 YOCTO 스냅샷을 생성하면 여기에 기록이 표시됩니다.';
+      placeholder.label = vscode.l10n.t('$(history) No YOLO history');
+      placeholder.tooltip = vscode.l10n.t('YOLO session history will be displayed here when YOLO snapshots are created.');
       return Promise.resolve([placeholder as any]);
     }
     return Promise.resolve(
@@ -346,7 +346,7 @@ class YoloHistoryItem extends vscode.TreeItem {
     this.iconPath = undefined;
     this.label = `$(history) ${name}`;
     this.contextValue = 'yoloSnapshot';
-    this.tooltip = `YOLO 세션: ${name}\n우클릭 → Rewind 실행`;
+    this.tooltip = vscode.l10n.t('YOLO Session: {0}\nRight-click → Run Rewind', name);
   }
 
   private formatDescription(name: string): string {
@@ -398,11 +398,11 @@ export class SessionResumeProvider implements vscode.TreeDataProvider<SessionRes
     if (!element) {
       // 최상위: 세션 목록
       if (this.sessions.length === 0) {
-        const placeholder = new vscode.TreeItem('이전 세션 없음', vscode.TreeItemCollapsibleState.None);
-        placeholder.description = 'Crow Memory에서 세션 정보를 불러오는 중...';
+        const placeholder = new vscode.TreeItem(vscode.l10n.t('No previous session'), vscode.TreeItemCollapsibleState.None);
+        placeholder.description = vscode.l10n.t('Loading session info from Crow Memory...');
         placeholder.iconPath = undefined;
-        placeholder.label = '$(empty) 불러온 세션 없음';
-        placeholder.tooltip = 'Crow Memory 또는 로컬 파일에서 세션 요약을 불러올 수 없습니다.';
+        placeholder.label = vscode.l10n.t('$(empty) No loaded session');
+        placeholder.tooltip = vscode.l10n.t('Cannot load session resume from Crow Memory or local file.');
         return Promise.resolve([placeholder as any]);
       }
       return Promise.resolve(
@@ -414,13 +414,13 @@ export class SessionResumeProvider implements vscode.TreeDataProvider<SessionRes
     const session = element.session;
     const children: SessionResumeItem[] = [];
 
-    children.push(new SessionResumeItem(session, 'summary', `📋 ${session.summary || '요약 없음'}`));
-    children.push(new SessionResumeItem(session, 'project', `📁 ${session.projectPath || '프로젝트 경로 없음'}`));
+    children.push(new SessionResumeItem(session, 'summary', vscode.l10n.t('📋 {0}', session.summary || vscode.l10n.t('No summary'))));
+    children.push(new SessionResumeItem(session, 'project', vscode.l10n.t('📁 {0}', session.projectPath || vscode.l10n.t('No project path'))));
     children.push(new SessionResumeItem(session, 'mode', `⚙️ Mode: ${session.mode}`));
     children.push(new SessionResumeItem(session, 'time', `🕐 ${new Date(session.startedAt).toLocaleString('ko-KR')}`));
 
     if (session.keyDecisions.length > 0) {
-      const decisionLabel = `📌 주요 결정 (${session.keyDecisions.length})`;
+      const decisionLabel = vscode.l10n.t('📌 Key Decisions ({0})', session.keyDecisions.length);
       const decisionItem = new SessionResumeItem(session, 'decisions', decisionLabel);
       decisionItem.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       decisionItem.children = session.keyDecisions.map((d, i) =>
@@ -430,7 +430,7 @@ export class SessionResumeProvider implements vscode.TreeDataProvider<SessionRes
     }
 
     if (session.touchedFiles.length > 0) {
-      const filesLabel = `📄 수정 파일 (${session.touchedFiles.length})`;
+      const filesLabel = vscode.l10n.t('📄 Modified Files ({0})', session.touchedFiles.length);
       const filesItem = new SessionResumeItem(session, 'files', filesLabel);
       filesItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       filesItem.children = session.touchedFiles.map((f, i) =>
@@ -440,7 +440,7 @@ export class SessionResumeProvider implements vscode.TreeDataProvider<SessionRes
     }
 
     if (session.pendingTasks.length > 0) {
-      const tasksLabel = `⏳ 미완료 작업 (${session.pendingTasks.length})`;
+      const tasksLabel = vscode.l10n.t('⏳ Pending Tasks ({0})', session.pendingTasks.length);
       const tasksItem = new SessionResumeItem(session, 'tasks', tasksLabel);
       tasksItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       tasksItem.children = session.pendingTasks.map((t, i) =>
@@ -478,7 +478,7 @@ class SessionResumeItem extends vscode.TreeItem {
       this.iconPath = undefined;
       this.label = `$(calendar) ${displayName}`;
       this.tooltip = new vscode.MarkdownString(
-        `**세션 요약**\n\n${session.summary || '요약 없음'}\n\n**프로젝트**: ${session.projectPath || 'N/A'}\n**모드**: ${session.mode}\n**시작**: ${new Date(session.startedAt).toLocaleString('ko-KR')}${session.keyDecisions.length ? `\n**주요 결정**: ${session.keyDecisions.length}개` : ''}${session.touchedFiles.length ? `\n**수정 파일**: ${session.touchedFiles.length}개` : ''}${session.pendingTasks.length ? `\n**미완료 작업**: ${session.pendingTasks.length}개` : ''}`
+        vscode.l10n.t('**Session Summary**\n\n{0}\n\n**Project**: {1}\n**Mode**: {2}\n**Started**: {3}{4}{5}{6}', session.summary || vscode.l10n.t('No summary'), session.projectPath || 'N/A', session.mode, new Date(session.startedAt).toLocaleString(), session.keyDecisions.length ? vscode.l10n.t('\n**Key Decisions**: {0}', session.keyDecisions.length) : '', session.touchedFiles.length ? vscode.l10n.t('\n**Modified Files**: {0}', session.touchedFiles.length) : '', session.pendingTasks.length ? vscode.l10n.t('\n**Pending Tasks**: {0}', session.pendingTasks.length) : '')
       );
       this.contextValue = 'session';
     }

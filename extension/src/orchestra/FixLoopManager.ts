@@ -561,7 +561,7 @@ export class FixLoopManager {
       100
     );
     statusItem.text = '$(eye) VibeZoo: Watching';
-    statusItem.tooltip = '파일 저장 시 자동 tsc 검사';
+    statusItem.tooltip = vscode.l10n.t('Auto tsc check on file save');
     statusItem.command = 'vibezoo.stopWatching';
     statusItem.show();
 

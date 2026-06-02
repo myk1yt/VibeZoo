@@ -1,7 +1,7 @@
 {
   "name": "vibezoo",
-  "displayName": "VibeZoo (Local)",
-  "description": "Zoo Code Companion Extension — 세상에서 가장 흐름이 끊기지 않는 바이브코딩 환경",
+  "displayName": "%vibezoo.displayName%",
+  "description": "%vibezoo.description%",
   "version": "0.14.1",
   "publisher": "local",
   "license": "MIT",
@@ -24,126 +24,126 @@
     "commands": [
       {
         "command": "vibezoo.selfCheck",
-        "title": "VibeZoo: Self Check (시스템 자가진단)"
+        "title": "%vibezoo.selfCheck.title%"
       },
       {
         "command": "vibezoo.verifyFoundation",
-        "title": "VibeZoo: Verify Foundation"
+        "title": "%vibezoo.verifyFoundation.title%"
       },
       {
         "command": "vibezoo.reconnectCrow",
-        "title": "VibeZoo: Reconnect to Crow Memory"
+        "title": "%vibezoo.reconnectCrow.title%"
       },
       {
         "command": "vibezoo.instantRewind",
-        "title": "VibeZoo: Instant Rewind (YOLO 복구)"
+        "title": "%vibezoo.instantRewind.title%"
       },
       {
         "command": "vibezoo.toggleYolo",
-        "title": "VibeZoo: Toggle YOLO Mode"
+        "title": "%vibezoo.toggleYolo.title%"
       },
       {
         "command": "vibezoo.scanProject",
-        "title": "VibeZoo: Scan Project Tree"
+        "title": "%vibezoo.scanProject.title%"
       },
       {
         "command": "vibezoo.openWhiteboard",
-        "title": "VibeZoo: Open Whiteboard"
+        "title": "%vibezoo.openWhiteboard.title%"
       },
       {
         "command": "vibezoo.openUIPreview",
-        "title": "VibeZoo: Open UI Preview"
+        "title": "%vibezoo.openUIPreview.title%"
       },
       {
         "command": "vibezoo.openDashboard",
-        "title": "VibeZoo: Open Orchestra Dashboard"
+        "title": "%vibezoo.openDashboard.title%"
       },
       {
         "command": "vibezoo.openDropzone",
-        "title": "VibeZoo: Open Drop Zone (파일 업로드)"
+        "title": "%vibezoo.openDropzone.title%"
       },
       {
         "command": "vibezoo.toggleFileGuard",
-        "title": "VibeZoo: Toggle FileGuard (파일 보호 켜기/끄기)"
+        "title": "%vibezoo.toggleFileGuard.title%"
       },
       {
         "command": "vibezoo.showSessionResume",
-        "title": "VibeZoo: Show Session Resume"
+        "title": "%vibezoo.showSessionResume.title%"
       },
       {
         "command": "vibezoo.reviewProject",
-        "title": "VibeZoo: Review Project (통합 코드 리뷰)"
+        "title": "%vibezoo.reviewProject.title%"
       },
       {
         "command": "vibezoo.findBugs",
-        "title": "VibeZoo: Find Bugs (버그 찾기)"
+        "title": "%vibezoo.findBugs.title%"
       },
       {
         "command": "vibezoo.suggestRefactor",
-        "title": "VibeZoo: Suggest Refactoring (리팩터링 제안)"
+        "title": "%vibezoo.suggestRefactor.title%"
       },
       {
         "command": "vibezoo.generateDocs",
-        "title": "VibeZoo: Generate Documentation (문서 자동 생성)"
+        "title": "%vibezoo.generateDocs.title%"
       },
       {
         "command": "vibezoo.pauseFixLoop",
-        "title": "VibeZoo: Pause Auto-Fix Loop"
+        "title": "%vibezoo.pauseFixLoop.title%"
       },
       {
         "command": "vibezoo.resumeFixLoop",
-        "title": "VibeZoo: Resume Auto-Fix Loop"
+        "title": "%vibezoo.resumeFixLoop.title%"
       },
       {
         "command": "vibezoo.abortFixLoop",
-        "title": "VibeZoo: Abort Auto-Fix Loop"
+        "title": "%vibezoo.abortFixLoop.title%"
       },
       {
         "command": "vibezoo.startWatching",
-        "title": "VibeZoo: Start Continuous Improvement (파일 감시 시작)"
+        "title": "%vibezoo.startWatching.title%"
       },
       {
         "command": "vibezoo.stopWatching",
-        "title": "VibeZoo: Stop Continuous Improvement (파일 감시 중지)"
+        "title": "%vibezoo.stopWatching.title%"
       },
       {
         "command": "vibezoo.explainCode",
-        "title": "VibeZoo: Explain Code at Cursor (코드 설명)"
+        "title": "%vibezoo.explainCode.title%"
       },
       {
         "command": "vibezoo.analyzeChanges",
-        "title": "VibeZoo: Analyze Git Changes (변경 분석)"
+        "title": "%vibezoo.analyzeChanges.title%"
       },
       {
         "command": "vibezoo.reviewPR",
-        "title": "VibeZoo: Review Pull Request (PR 리뷰)"
+        "title": "%vibezoo.reviewPR.title%"
       },
       {
         "command": "vibezoo.refactorAcrossFiles",
-        "title": "VibeZoo: Refactor Across Files (멀티 파일 리팩토링)"
+        "title": "%vibezoo.refactorAcrossFiles.title%"
       },
       {
         "command": "vibezoo.learnProject",
-        "title": "VibeZoo: Learn Project Knowledge (프로젝트 지식 학습)"
+        "title": "%vibezoo.learnProject.title%"
       },
       {
         "command": "vibezoo.recallProject",
-        "title": "VibeZoo: Recall Project Knowledge (프로젝트 지식 회상)"
+        "title": "%vibezoo.recallProject.title%"
       },
       {
         "command": "vibezoo.learnPreference",
-        "title": "VibeZoo: Learn Coding Preference (선호도 학습)"
+        "title": "%vibezoo.learnPreference.title%"
       },
       {
         "command": "vibezoo.getPreferences",
-        "title": "VibeZoo: Show Saved Preferences (선호도 조회)"
+        "title": "%vibezoo.getPreferences.title%"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "vibezoo-sidebar",
-          "title": "VibeZoo",
+          "title": "%viewsContainer.vibezoo-sidebar.title%",
           "icon": "$(zap)"
         }
       ]
@@ -152,19 +152,19 @@
       "vibezoo-sidebar": [
         {
           "id": "vibezoo.activeSubagents",
-          "name": "Active Subagents",
+          "name": "%view.vibezoo.activeSubagents.name%",
           "type": "tree",
           "contextualTitle": "VibeZoo Subagents"
         },
         {
           "id": "vibezoo.yoloHistory",
-          "name": "YOLO History",
+          "name": "%view.vibezoo.yoloHistory.name%",
           "type": "tree",
           "contextualTitle": "VibeZoo YOLO Sessions"
         },
         {
           "id": "vibezoo.sessionResume",
-          "name": "Session Resume",
+          "name": "%view.vibezoo.sessionResume.name%",
           "type": "tree",
           "contextualTitle": "VibeZoo Session Resume"
         }
@@ -176,82 +176,82 @@
         "vibezoo.crow.port": {
           "type": "number",
           "default": 9020,
-          "description": "Crow Memory SSE 서버 포트"
+          "description": "%vibezoo.crow.port.description%"
         },
         "vibezoo.crow.autoReconnect": {
           "type": "boolean",
           "default": true,
-          "description": "VS Code 시작 시 Crow 서버 자동 재연결"
+          "description": "%vibezoo.crow.autoReconnect.description%"
         },
         "vibezoo.yolo.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "YOLO 안전망 활성화 (yocto 백업 + File Guard)"
+          "description": "%vibezoo.yolo.enabled.description%"
         },
         "vibezoo.yolo.rewindShortcut": {
           "type": "string",
           "default": "ctrl+shift+z",
-          "description": "Instant Rewind 단축키"
+          "description": "%vibezoo.yolo.rewindShortcut.description%"
         },
         "vibezoo.build.silentMode": {
           "type": "boolean",
           "default": true,
-          "description": "빌드 성공 시 터미널 숨김 (Silent Build)"
+          "description": "%vibezoo.build.silentMode.description%"
         },
         "vibezoo.build.autoFix": {
           "type": "boolean",
           "default": false,
-          "description": "빌드 실패 시 AutoBuildFix 자동 실행"
+          "description": "%vibezoo.build.autoFix.description%"
         },
         "vibezoo.build.autoFixMaxAttempts": {
           "type": "number",
           "default": 3,
-          "description": "AutoBuildFix 최대 재시도 횟수"
+          "description": "%vibezoo.build.autoFixMaxAttempts.description%"
         },
         "vibezoo.scout.port": {
           "type": "number",
           "default": 9022,
-          "description": "Scout MCP 서버 포트"
+          "description": "%vibezoo.scout.port.description%"
         },
         "vibezoo.reviewer.port": {
           "type": "number",
           "default": 9023,
-          "description": "Reviewer MCP 서버 포트"
+          "description": "%vibezoo.reviewer.port.description%"
         },
         "vibezoo.tester.port": {
           "type": "number",
           "default": 9024,
-          "description": "Tester MCP 서버 포트"
+          "description": "%vibezoo.tester.port.description%"
         },
         "vibezoo.deepAnalyzer.port": {
           "type": "number",
           "default": 9026,
-          "description": "Deep Analyzer MCP 서버 포트"
+          "description": "%vibezoo.deepAnalyzer.port.description%"
         },
         "vibezoo.context.showFreshness": {
           "type": "boolean",
           "default": true,
-          "description": "StatusBar에 Crow Context freshness 표시"
+          "description": "%vibezoo.context.showFreshness.description%"
         },
         "vibezoo.session.autoResume": {
           "type": "boolean",
           "default": true,
-          "description": "세션 시작 시 이전 세션 요약 자동 표시"
+          "description": "%vibezoo.session.autoResume.description%"
         },
         "vibezoo.visual.whiteboardEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Whiteboard 기능 활성화"
+          "description": "%vibezoo.visual.whiteboardEnabled.description%"
         },
         "vibezoo.visual.uiPreviewEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "UI Preview 기능 활성화"
+          "description": "%vibezoo.visual.uiPreviewEnabled.description%"
         },
         "vibezoo.emotion.detectionEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "감정 신호 감지 활성화 (연속 거절 패턴 분석)"
+          "description": "%vibezoo.emotion.detectionEnabled.description%"
         }
       }
     },
@@ -327,16 +327,19 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "l10n:export": "npx @vscode/l10n-dev export --outDir ./l10n ./src"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/l10n-dev": "^0.0.35",
     "@vscode/vsce": "^2.22.0",
     "eslint": "^8.0.0",
     "typescript": "^5.3.0"
   },
   "dependencies": {
     "minimatch": "^10.2.5"
-  }
+  },
+  "l10n": "./l10n"
 }

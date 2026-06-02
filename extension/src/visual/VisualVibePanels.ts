@@ -461,7 +461,7 @@ export class VisualVibePanels {
       const llmPrompt = `[Drop Zone 업로드 알림]\n제가 방금 ${fileTypeLabel}을(를) 업로드했습니다.\n파일 경로: ${destPath}\n\n이 파일을 읽고 무엇을 도와드릴까요? (원하시는 분석이나 코딩을 지시해 주세요)`;
       await vscode.env.clipboard.writeText(llmPrompt);
       
-      vscode.window.showInformationMessage(`✅ ${fileTypeLabel}이 업로드되었습니다. (경로가 클립보드에 복사되었습니다. 채팅창에 붙여넣어 LLM에게 지시하세요!)`);
+      vscode.window.showInformationMessage(vscode.l10n.t('✅ {0} uploaded. (Path copied to clipboard. Paste it in chat to instruct the LLM!)', fileTypeLabel));
 
       console.log(`[VibeZoo] Local Dropzone file copied: ${destPath} (${stat.size} bytes)`);
 
@@ -518,7 +518,7 @@ export class VisualVibePanels {
       const llmPrompt = `[Drop Zone 업로드 알림]\n제가 방금 ${fileTypeLabel}을(를) 업로드했습니다.\n파일 경로: ${destPath}\n\n이 파일을 읽고 무엇을 도와드릴까요? (원하시는 분석이나 코딩을 지시해 주세요)`;
       await vscode.env.clipboard.writeText(llmPrompt);
       
-      vscode.window.showInformationMessage(`✅ ${fileTypeLabel}이 업로드되었습니다. (경로가 클립보드에 복사되었습니다. 채팅창에 붙여넣어 LLM에게 지시하세요!)`);
+      vscode.window.showInformationMessage(vscode.l10n.t('✅ {0} uploaded. (Path copied to clipboard. Paste it in chat to instruct the LLM!)', fileTypeLabel));
 
       console.log(`[VibeZoo] Dropzone upload saved: ${destPath} (${buffer.length} bytes)`);
 
@@ -572,18 +572,18 @@ export class VisualVibePanels {
 </script>
 </head><body>
 <div id="error-overlay">
-  <h2>⚠️ Fabric.js를 불러올 수 없습니다</h2>
-  <p>인터넷 연결을 확인하거나 CDN이 차단되지 않았는지 확인하세요.</p>
+  <h2>${vscode.l10n.t('⚠️ Cannot load Fabric.js')}</h2>
+  <p>${vscode.l10n.t('Please check your internet connection or if the CDN is blocked.')}</p>
 </div>
 <div id="toolbar">
-  <button onclick="setMode('draw')">✏️ 그리기</button>
-  <button onclick="setMode('rect')">⬜ 사각형</button>
-  <button onclick="setMode('text')">📝 텍스트</button>
-  <button onclick="setMode('select')">🖱️ 선택</button>
-  <button onclick="captureScreenshot()">📸 캡처</button>
-  <button onclick="document.getElementById('imgInput').click()">📷 이미지</button>
-  <button onclick="deleteSelected()">🗑️ 선택 삭제</button>
-  <button onclick="clearAll()">🧹 전체 삭제</button>
+  <button onclick="setMode('draw')">${vscode.l10n.t('✏️ Draw')}</button>
+  <button onclick="setMode('rect')">${vscode.l10n.t('⬜ Rectangle')}</button>
+  <button onclick="setMode('text')">${vscode.l10n.t('📝 Text')}</button>
+  <button onclick="setMode('select')">${vscode.l10n.t('🖱️ Select')}</button>
+  <button onclick="captureScreenshot()">${vscode.l10n.t('📸 Capture')}</button>
+  <button onclick="document.getElementById('imgInput').click()">${vscode.l10n.t('📷 Image')}</button>
+  <button onclick="deleteSelected()">${vscode.l10n.t('🗑️ Delete Selected')}</button>
+  <button onclick="clearAll()">${vscode.l10n.t('🧹 Clear All')}</button>
   <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="addImage(this)">
 </div>
 <canvas id="c"></canvas>
@@ -705,7 +705,7 @@ export class VisualVibePanels {
           break;
         }
         case 'text': {
-          canvas.add(new fabric.Textbox(props.text || '텍스트', {
+          canvas.add(new fabric.Textbox(props.text || '${vscode.l10n.t('Text')}', {
             left: props.left || 100,
             top: props.top || 100,
             width: props.width || 300,
@@ -836,7 +836,7 @@ export class VisualVibePanels {
   }
 
   function addText() {
-    canvas.add(new fabric.Textbox('텍스트 입력', { left: 100, top: 100, width: 300, fontSize: 20, fill: '#ffffff', fontFamily: 'sans-serif' }));
+    canvas.add(new fabric.Textbox('${vscode.l10n.t("Enter text")}', { left: 100, top: 100, width: 300, fontSize: 20, fill: '#ffffff', fontFamily: 'sans-serif' }));
   }
 
   function deleteSelected() {
@@ -885,7 +885,7 @@ export class VisualVibePanels {
 </head><body>
 <div class="placeholder">
   <h2>🖼️ VibeZoo UI Preview</h2>
-  <p>AI가 React/Vue 컴포넌트 코드를 생성하면 이곳에 실시간 렌더링됩니다.</p>
+  <p>${vscode.l10n.t('When AI generates React/Vue component code, it will be rendered here in real-time.')}</p>
 </div>
 <script>
   var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
@@ -895,10 +895,10 @@ export class VisualVibePanels {
     if (event.data.type === 'render' && event.data.code) {
       // HTML 엔티티 이스케이프 (srcdoc 속성용)
       var code = event.data.code;
-      code = code.replace(/&/g, '&');
-      code = code.replace(/"/g, '"');
-      code = code.replace(/</g, '<');
-      code = code.replace(/>/g, '>');
+      code = code.replace(/&/g, '&amp;');
+      code = code.replace(/"/g, '&quot;');
+      code = code.replace(/</g, '&lt;');
+      code = code.replace(/>/g, '&gt;');
       document.body.innerHTML = '<iframe sandbox="allow-scripts" srcdoc="' + code + '"></iframe>';
     }
   });
@@ -933,7 +933,11 @@ export class VisualVibePanels {
         var result = await mermaid.render(uniqueId, event.data.mermaidCode);
         container.innerHTML = result.svg;
       } catch (err) {
-        container.innerHTML = '<p style="color:#f44747">Mermaid 렌더링 오류: ' + (err.message || String(err)) + '</p>';
+        container.innerHTML = '';
+        var errorEl = document.createElement('p');
+        errorEl.style.color = '#f44747';
+        errorEl.innerText = '${vscode.l10n.t('Mermaid render error')}: ' + (err.message || String(err));
+        container.appendChild(errorEl);
       }
     }
   });

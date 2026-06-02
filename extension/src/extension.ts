@@ -221,16 +221,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.instantRewind', async (sessionName?: string) => {
       if (!yocto) {
-        vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
+        vscode.window.showWarningMessage(vscode.l10n.t('VibeZoo: YOLO safety net is disabled.'));
         return;
       }
       try {
         const result = await yocto.instantRewind(sessionName);
         vscode.window.showInformationMessage(
-          `YOLO Rewind 완료: ${result.restoredFiles}/${result.totalFiles} 파일 복구 (${result.durationMs}ms)`
+          vscode.l10n.t('YOLO Rewind complete: {0}/{1} files restored ({2}ms)', result.restoredFiles, result.totalFiles, result.durationMs)
         );
       } catch (err: any) {
-        vscode.window.showErrorMessage(`Rewind 실패: ${err.message}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Rewind failed: {0}', err.message));
       }
     })
   );
@@ -239,7 +239,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.toggleYolo', async () => {
       if (!gitStash) {
-        vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있습니다.');
+        vscode.window.showWarningMessage(vscode.l10n.t('VibeZoo: YOLO safety net is disabled.'));
         return;
       }
       const entered = await gitStash.enterYolo();
@@ -265,21 +265,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Verify Foundation
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.verifyFoundation', async () => {
-      const lines = ['# 🔍 VibeZoo Foundation 진단', ''];
+      const lines = [vscode.l10n.t('# 🔍 VibeZoo Foundation Diagnostics'), ''];
       const crowHealthy = await crowServer.healthCheck();
-      lines.push(crowHealthy ? '✅ Zoo Code Crow Memory: 연결됨' : '❌ Zoo Code Crow Memory: 연결 실패');
-      lines.push('✅ VibeZoo Extension: 활성화됨');
+      lines.push(crowHealthy ? vscode.l10n.t('✅ Zoo Code Crow Memory: Connected') : vscode.l10n.t('❌ Zoo Code Crow Memory: Connection failed'));
+      lines.push(vscode.l10n.t('✅ VibeZoo Extension: Active'));
 
       const yoctoDir = path.join(os.homedir(), '.zoo-code', 'yocto');
-      lines.push(fs.existsSync(yoctoDir) ? '✅ yocto 디렉토리: 존재함' : '⚠️ yocto 디렉토리: 없음');
+      lines.push(fs.existsSync(yoctoDir) ? vscode.l10n.t('✅ yocto directory: Exists') : vscode.l10n.t('⚠️ yocto directory: Missing'));
 
       const folders = vscode.workspace.workspaceFolders;
       if (folders?.[0]) {
         const zooDir = path.join(folders[0].uri.fsPath, '.zoo');
-        lines.push(fs.existsSync(zooDir) ? '✅ .zoo/ 디렉토리: 존재함' : '⚠️ .zoo/ 디렉토리: 없음');
+        lines.push(fs.existsSync(zooDir) ? vscode.l10n.t('✅ .zoo/ directory: Exists') : vscode.l10n.t('⚠️ .zoo/ directory: Missing'));
       }
 
-      lines.push('', '## 설정');
+      lines.push('', vscode.l10n.t('## Settings'));
       const config = vscode.workspace.getConfiguration('vibezoo');
       lines.push(`- Crow 포트: ${config.get('crow.port')}`);
       lines.push(`- YOLO: ${config.get('yolo.enabled') ? 'ON' : 'OFF'}`);
@@ -302,12 +302,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const ok = await crowServer.reconnect();
         if (ok) {
-          vscode.window.showInformationMessage('✅ VibeZoo: Zoo Code Crow Memory 연결 확인 성공!');
+          vscode.window.showInformationMessage(vscode.l10n.t('✅ VibeZoo: Zoo Code Crow Memory connection verified!'));
         } else {
-          vscode.window.showWarningMessage('⚠️ VibeZoo: Zoo Code Crow Memory에 연결할 수 없습니다.');
+          vscode.window.showWarningMessage(vscode.l10n.t('⚠️ VibeZoo: Cannot connect to Zoo Code Crow Memory.'));
         }
       } catch (err: any) {
-        vscode.window.showErrorMessage(`❌ Crow 연결 실패: ${err.message}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('❌ Crow connection failed: {0}', err.message));
       }
     })
   );
@@ -368,32 +368,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const help = [
         '# 🚀 VibeZoo v0.14.1',
         '',
-        '## 단축키',
-        '| 키 | 기능 |',
+        vscode.l10n.t('## Shortcuts'),
+        vscode.l10n.t('| Key | Function |'),
         '|:---|:---|',
-        '| **Ctrl+Shift+Z** | Instant Rewind (YOLO 복구) |',
-        '| **Ctrl+Shift+R** | Session Resume (이전 세션) |',
+        vscode.l10n.t('| **Ctrl+Shift+Z** | Instant Rewind |'),
+        vscode.l10n.t('| **Ctrl+Shift+R** | Session Resume |'),
         '| **Ctrl+Shift+B** | Open Whiteboard |',
         '',
-        '## 명령어 (`Ctrl+Shift+P`)',
-        '| 명령어 | 기능 |',
+        vscode.l10n.t('## Commands (`Ctrl+Shift+P`)'),
+        vscode.l10n.t('| Command | Function |'),
         '|:---|:---|',
-        '| `VibeZoo: Open Whiteboard` | 🎨 AI와 그림 그리며 협업 |',
-        '| `VibeZoo: Open UI Preview` | 🖼️ React/Vue 실시간 미리보기 |',
-        '| `VibeZoo: Instant Rewind` | ⏪ YOLO 즉시 복구 |',
-        '| `VibeZoo: Verify Foundation` | 🔍 상태 진단 |',
+        vscode.l10n.t('| `VibeZoo: Open Whiteboard` | 🎨 Collaborate with AI drawing |'),
+        vscode.l10n.t('| `VibeZoo: Open UI Preview` | 🖼️ React/Vue Live Preview |'),
+        vscode.l10n.t('| `VibeZoo: Instant Rewind` | ⏪ YOLO Instant Recovery |'),
+        vscode.l10n.t('| `VibeZoo: Verify Foundation` | 🔍 State Diagnostics |'),
         '',
-        '## MCP 도구 (Zoo Code 채팅)',
-        '| "코드 검색해줘" | Scout: search_codebase |',
-        '| "코드 리뷰해줘" | Reviewer: review_code |',
-        '| "의존성 분석해줘" | DeepAnalyzer: map_dependencies |',
-        '| "그림 그려줘" | Whiteboard: draw_on_whiteboard |',
+        vscode.l10n.t('## MCP Tools (Zoo Code Chat)'),
+        vscode.l10n.t('| "search code" | Scout: search_codebase |'),
+        vscode.l10n.t('| "review code" | Reviewer: review_code |'),
+        vscode.l10n.t('| "analyze dependencies" | DeepAnalyzer: map_dependencies |'),
+        vscode.l10n.t('| "draw a picture" | Whiteboard: draw_on_whiteboard |'),
         '',
-        '## 자동 기능',
-        '- 🤫 Silent Build (빌드 에러 Crow 저장)',
-        '- 📸 yocto 백업 (모든 파일 변경 실시간 저장)',
+        vscode.l10n.t('## Auto Features'),
+        vscode.l10n.t('- 🤫 Silent Build (Save build errors to Crow)'),
+        vscode.l10n.t('- 📸 yocto Backup (Real-time save of file changes)'),
         '- 🛡️ .yoloignore File Guard',
-        '- 🔧 AutoBuildFix (빌드 실패 자동 수정)',
+        vscode.l10n.t('- 🔧 AutoBuildFix (Auto-fix build failures)'),
       ].join('\n');
       const doc = await vscode.workspace.openTextDocument({ content: help, language: 'markdown' });
       await vscode.window.showTextDocument(doc, { preview: false });
@@ -405,10 +405,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (!hasShownWelcome) {
     context.globalState.update('vibezoo.welcomeShown', true);
     setTimeout(() => {
-      vscode.window.showInformationMessage(
-        '🎉 VibeZoo 준비 완료! Ctrl+Shift+P → VibeZoo: Help',
-        'Help 보기', '닫기'
-      ).then(choice => {
+      vscode.window.showInformationMessage(vscode.l10n.t('🎉 VibeZoo ready! Ctrl+Shift+P → VibeZoo: Help'), vscode.l10n.t('View Help'), vscode.l10n.t('Close')).then(choice => {
         if (choice === 'Help 보기') vscode.commands.executeCommand('vibezoo.showHelp');
       });
     }, 2000);
@@ -435,21 +432,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // A. vibezoo.selfCheck — 시스템 자가진단
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.selfCheck', async () => {
-      const lines = ['# 🔍 VibeZoo 자가진단', '', '## 시스템 상태'];
+      const lines = [vscode.l10n.t('# 🔍 VibeZoo Self Check'), '', vscode.l10n.t('## System Status')];
       // Bridge health check
       try {
         const resp = await fetch(ConfigService.getBridgeUrl('/health'), { signal: AbortSignal.timeout(3000) });
-        lines.push(resp.ok ? '✅ MCP Bridge: 정상' : '⚠️ MCP Bridge: 비정상 응답');
+        lines.push(resp.ok ? vscode.l10n.t('✅ MCP Bridge: Normal') : vscode.l10n.t('⚠️ MCP Bridge: Abnormal response'));
       } catch {
-        lines.push('❌ MCP Bridge: 연결 실패');
+        lines.push(vscode.l10n.t('❌ MCP Bridge: Connection failed'));
       }
       // Crow health check
-      lines.push(crowServer?.lastHealthy ? '✅ Crow Memory: 연결됨' : '⚠️ Crow Memory: 연결 안 됨');
+      lines.push(crowServer?.lastHealthy ? vscode.l10n.t('✅ Crow Memory: Connected') : vscode.l10n.t('⚠️ Crow Memory: Disconnected'));
       // Extension status
-      lines.push('✅ VibeZoo Extension: 활성화됨');
+      lines.push(vscode.l10n.t('✅ VibeZoo Extension: Active'));
       // File system checks
       const yoctoDir = path.join(os.homedir(), '.zoo-code', 'yocto');
-      lines.push(fs.existsSync(yoctoDir) ? '✅ yocto 디렉토리' : '⚠️ yocto 디렉토리 없음');
+      lines.push(fs.existsSync(yoctoDir) ? vscode.l10n.t('✅ yocto directory') : vscode.l10n.t('⚠️ no yocto directory'));
       // Bridge script check
       const scriptCandidates = [
         path.join(__dirname, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
@@ -457,9 +454,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ];
       let found = false;
       for (const c of scriptCandidates) { if (fs.existsSync(c)) { found = true; break; } }
-      lines.push(found ? '✅ vibezoo_mcp_bridge.py' : '❌ vibezoo_mcp_bridge.py 없음');
+      lines.push(found ? vscode.l10n.t('✅ vibezoo_mcp_bridge.py') : vscode.l10n.t('❌ vibezoo_mcp_bridge.py not found'));
       // Config
-      lines.push('', '## 설정');
+      lines.push('', vscode.l10n.t('## Settings'));
       const config = vscode.workspace.getConfiguration('vibezoo');
       lines.push(`- Crow 포트: ${config.get('crow.port')}`);
       lines.push(`- YOLO: ${config.get('yolo.enabled') ? 'ON' : 'OFF'}`);
@@ -475,7 +472,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // B. vibezoo.startWatching — CIM 파일 감시 시작
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.startWatching', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Continuous Improvement Mode 시작');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Continuous Improvement Mode started'));
       statusBar.setCimStatus(true);
     })
   );
@@ -483,7 +480,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // C. vibezoo.stopWatching — CIM 파일 감시 중지
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.stopWatching', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Continuous Improvement Mode 중지');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Continuous Improvement Mode stopped'));
       statusBar.setCimStatus(false);
     })
   );
@@ -491,77 +488,77 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // D. vibezoo.explainCode — 현재 커서 위치 코드 설명 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.explainCode', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "코드 설명해줘" 라고 입력하세요. (explain_code MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"explain code\" in Zoo Code chat. (explain_code MCP tool)'));
     })
   );
 
   // E. vibezoo.analyzeChanges — Git 변경 분석 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.analyzeChanges', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "변경사항 분석해줘" 라고 입력하세요. (analyze_changes MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"analyze changes\" in Zoo Code chat. (analyze_changes MCP tool)'));
     })
   );
 
   // F. vibezoo.reviewPR — PR 리뷰 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.reviewPR', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "PR 리뷰해줘" 라고 입력하세요. (review_pr MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"review PR\" in Zoo Code chat. (review_pr MCP tool)'));
     })
   );
 
   // G. vibezoo.refactorAcrossFiles — 멀티 파일 리팩토링 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.refactorAcrossFiles', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "리팩토링해줘" 라고 입력하세요. (refactor_across_files MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"refactor\" in Zoo Code chat. (refactor_across_files MCP tool)'));
     })
   );
 
   // H. vibezoo.learnProject — 프로젝트 지식 학습 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.learnProject', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "프로젝트 학습해줘" 라고 입력하세요. (learn_project MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"learn project\" in Zoo Code chat. (learn_project MCP tool)'));
     })
   );
 
   // I. vibezoo.recallProject — 프로젝트 지식 회상 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.recallProject', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "프로젝트 기억해줘" 라고 입력하세요. (recall_project MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"recall project\" in Zoo Code chat. (recall_project MCP tool)'));
     })
   );
 
   // J. vibezoo.learnPreference — 코딩 선호도 학습 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.learnPreference', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "선호도 학습해줘" 라고 입력하세요. (learn_preference MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"learn preference\" in Zoo Code chat. (learn_preference MCP tool)'));
     })
   );
 
   // K. vibezoo.getPreferences — 선호도 조회 (MCP 툴 안내)
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.getPreferences', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Zoo Code 채팅에서 "선호도 보여줘" 라고 입력하세요. (get_preferences MCP 도구)');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"show preferences\" in Zoo Code chat. (get_preferences MCP tool)'));
     })
   );
 
   // L. vibezoo.pauseFixLoop — Auto-Fix 루프 일시 중지
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.pauseFixLoop', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Auto-Fix Loop 일시 중지됨');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Auto-Fix Loop paused'));
     })
   );
 
   // M. vibezoo.resumeFixLoop — Auto-Fix 루프 재개
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.resumeFixLoop', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Auto-Fix Loop 재개됨');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Auto-Fix Loop resumed'));
     })
   );
 
   // N. vibezoo.abortFixLoop — Auto-Fix 루프 중단
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.abortFixLoop', async () => {
-      vscode.window.showInformationMessage('VibeZoo: Auto-Fix Loop 중단됨');
+      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Auto-Fix Loop aborted'));
     })
   );
 
