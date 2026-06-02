@@ -18,6 +18,7 @@ export interface YoctoSnapshot {
   trigger: 'manual' | 'auto' | 'yolo-enter' | 'pre-edit';
   files: YoctoFileEntry[];
   crowBackupId?: string;
+  isBase?: boolean;
 }
 
 // ── SelfCheck (Phase 0) ───────────────────────────────────

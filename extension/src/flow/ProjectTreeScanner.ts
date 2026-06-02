@@ -44,33 +44,48 @@ export class ProjectTreeScanner {
     return this.treeCache;
   }
 
+  /** 비동기 제너레이터를 이용한 재귀적 디렉토리 스캔 (메모리 최적화) */
+  private async *walkDirectory(dirUri: vscode.Uri, depth: number = 0, excludeNames: Set<string>): AsyncGenerator<{ uri: vscode.Uri; relPath: string; isDir: boolean; depth: number }> {
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(dirUri);
+      for (const [name, type] of entries) {
+        if (excludeNames.has(name) || name === '.git') continue;
+
+        const isDir = (type & vscode.FileType.Directory) !== 0;
+        const childUri = vscode.Uri.joinPath(dirUri, name);
+        const relPath = vscode.workspace.asRelativePath(childUri);
+
+        yield { uri: childUri, relPath, isDir, depth };
+
+        if (isDir) {
+          if (depth < 3) { // 3단계 깊이까지만 즉시 전개, 나머지는 Lazy Loading 힌트 제공
+            yield* this.walkDirectory(childUri, depth + 1, excludeNames);
+          } else {
+            yield { uri: childUri, relPath: relPath + '/... (접힘: 필요시 탐색 요망)', isDir: true, depth: depth + 1 };
+          }
+        }
+      }
+    } catch {
+      // 접근 불가 폴더 무시
+    }
+  }
+
   /** 전체 재스캔 */
   async rescan(): Promise<void> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
 
-    const includePatterns = [
-      '{package.json,Cargo.toml,go.mod,pyproject.toml,pom.xml,README.md,AGENTS.md,.zoo.md}',
-      'src/**/*',
-      'lib/**/*',
-      'app/**/*',
-      'pages/**/*',
-      'components/**/*',
-    ];
+    const excludeNames = new Set(['node_modules', 'dist', 'build', '.next', 'coverage', 'target']);
+    const treeLines: string[] = ['## Project Structure (VibeZoo - Async Streaming)'];
+    const rootUri = folders[0].uri;
 
-    const excludePattern = '{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**,**/coverage/**,**/target/**}';
-
-    const treeLines: string[] = ['## Project Structure (VibeZoo)'];
-
-    for (const pattern of includePatterns) {
-      try {
-        const files = await vscode.workspace.findFiles(pattern, excludePattern, 100);
-        for (const f of files) {
-          const rel = vscode.workspace.asRelativePath(f);
-          treeLines.push(`  ${rel}`);
-        }
-      } catch {
-        // 패턴 매칭 실패 — 무시
+    for await (const node of this.walkDirectory(rootUri, 0, excludeNames)) {
+      const indent = '  '.repeat(node.depth);
+      const name = node.relPath.split(/[/\\]/).pop();
+      if (node.isDir) {
+        treeLines.push(`${indent}- 📁 ${name}`);
+      } else {
+        treeLines.push(`${indent}- 📄 ${name}`);
       }
     }
 
@@ -83,7 +98,7 @@ export class ProjectTreeScanner {
   }
 
   private async invalidateAndRescan(): Promise<void> {
-    this.treeCache = null;
+    // SWR (Stale-while-revalidate): 기존 캐시를 유지한 상태로 백그라운드 스캔 수행
     await this.rescan();
   }
 }

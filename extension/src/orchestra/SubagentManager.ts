@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import { SubagentNode } from '../types';
+import { ConfigService } from '../config/ConfigService';
 
 const BRIDGE_NAME = 'vibezoo-bridge';
 
@@ -39,18 +40,12 @@ export class SubagentManager {
   }
 
   private getBridgePort(): number {
-    return vscode.workspace.getConfiguration('vibezoo').get('bridge.port', 9027);
+    return ConfigService.getBridgePort();
   }
 
   /** 개별 에이전트 포트 목록 */
   private getAgentPorts(): Array<{ id: string; name: string; port: number }> {
-    const config = vscode.workspace.getConfiguration('vibezoo');
-    return [
-      { id: 'scout', name: 'Scout', port: config.get('scout.port', 9022) },
-      { id: 'reviewer', name: 'Reviewer', port: config.get('reviewer.port', 9023) },
-      { id: 'tester', name: 'Tester', port: config.get('tester.port', 9024) },
-      { id: 'deepAnalyzer', name: 'Deep Analyzer', port: config.get('deepAnalyzer.port', 9026) },
-    ];
+    return ConfigService.getAgentPorts();
   }
 
   /** Bridge 서버 시작 (Python — FastMCP SSE) — 기존 healthy 브릿지 재사용 or 구버전 종료 후 재시작 */
@@ -102,7 +97,7 @@ export class SubagentManager {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        CROW_SERVER_URL: `http://127.0.0.1:9020`,  // Crow Memory 기본 포트 (port 변수는 bridge 포트, Crow는 9020 고정)
+        CROW_SERVER_URL: ConfigService.getCrowUrl(),
       },
     });
 
@@ -200,7 +195,7 @@ export class SubagentManager {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2000);
-      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      const response = await fetch(ConfigService.getAgentUrl(port, '/health'), {
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -274,8 +269,7 @@ export class SubagentManager {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 1500);
-        // 127.0.0.1 사용 (localhost는 IPv6로 resolve될 수 있음)
-        const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        const response = await fetch(ConfigService.getAgentUrl(port, '/health'), {
           signal: controller.signal,
         });
         clearTimeout(timer);

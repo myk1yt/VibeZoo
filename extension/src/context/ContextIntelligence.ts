@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { SessionSummary } from '../types';
+import { ConfigService } from '../config/ConfigService';
 
 export class ContextIndicator {
   /** Crow Context 복합 지표 계산 및 StatusBar 표시 */
@@ -78,8 +79,7 @@ export class SessionResume {
 
     // 1) Crow Memory recall 시도
     try {
-      const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
-      const resp = await fetch(`http://localhost:${crowPort}/recall?query=session+summary&register=context&limit=10`);
+      const resp = await fetch(ConfigService.getCrowUrl('/recall?query=session+summary&register=context&limit=10'));
       if (resp.ok) {
         const data: any = await resp.json();
         if (Array.isArray(data)) {

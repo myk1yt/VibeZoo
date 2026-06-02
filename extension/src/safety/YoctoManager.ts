@@ -13,11 +13,10 @@ import { NotificationThrottle } from '../ui/StatusBarManager';
 export class YoctoManager {
   private snapshotsDir: string;
   private watcher: vscode.FileSystemWatcher | null = null;
-  private pendingFiles: Set<string> = new Set();
-  private globalDebounceTimer: NodeJS.Timeout | null = null;
-  private readonly DEBOUNCE_MS = 200;
+  private trackedFiles: Set<string> = new Set();
   private currentSessionId: string;
   private activeSnapshots: YoctoSnapshot[] = [];
+  private readonly MAX_SNAPSHOTS = 50;
 
   constructor() {
     this.snapshotsDir = path.join(os.homedir(), '.zoo-code', 'yocto');
@@ -29,18 +28,12 @@ export class YoctoManager {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
 
-    // 소스 파일 변경 감시
-    this.watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(folders[0], '**/*.{ts,tsx,js,jsx,py,go,rs,java,json,yaml,yml,md,css,html}'),
-      false, // 생성
-      false, // 변경
-      false  // 삭제
+    // 소스 파일 변경 감시 (onWillSaveTextDocument로 변경하여 진본 백업)
+    context.subscriptions.push(
+      vscode.workspace.onWillSaveTextDocument((e) => {
+        e.waitUntil(this.executeDirectBackup(e.document));
+      })
     );
-
-    this.watcher.onDidChange((uri) => this.scheduleBackup(uri));
-    this.watcher.onDidCreate((uri) => this.scheduleBackup(uri));
-
-    context.subscriptions.push(this.watcher);
 
     // activate 시 자동 스냅샷 생성 (Extension 재시작 후 첫 백업 대비)
     this.createSnapshot('auto');
@@ -51,15 +44,25 @@ export class YoctoManager {
 
   /** YOLO 진입 시 전체 스냅샷 생성 */
   async createSnapshot(trigger: 'manual' | 'auto' | 'yolo-enter' | 'pre-edit'): Promise<YoctoSnapshot> {
+    const snapshotId = `snap-${Date.now()}`;
     const snapshot: YoctoSnapshot = {
-      id: `snap-${Date.now()}`,
+      id: snapshotId,
       sessionId: this.currentSessionId,
       timestamp: Date.now(),
       trigger,
       files: [],
+      isBase: this.activeSnapshots.length === 0,
     };
 
     this.activeSnapshots.push(snapshot);
+    if (this.activeSnapshots.length > this.MAX_SNAPSHOTS) {
+      const evictIndex = this.activeSnapshots.findIndex((s) => !s.isBase);
+      if (evictIndex !== -1) {
+        this.activeSnapshots.splice(evictIndex, 1);
+      } else {
+        this.activeSnapshots.shift();
+      }
+    }
     return snapshot;
   }
 
@@ -156,17 +159,44 @@ export class YoctoManager {
       ? snapshot.files.map((f) => ({ originalPath: f.originalPath, backupPath: f.backupPath }))
       : diskFiles;
 
-    // 역순으로 복구
+    // 역순으로 복구 (Atomic 트랜잭션 방식)
     const reversedFiles = [...fileList].reverse();
-    for (const file of reversedFiles) {
-      try {
+    const backupOfCurrent: Array<{ originalPath: string; tempPath: string }> = [];
+
+    // 1단계: 복구 대상 파일들의 현재 상태를 임시로 저장
+    try {
+      for (const file of reversedFiles) {
+        if (fs.existsSync(file.originalPath)) {
+          const tempPath = file.originalPath + `.tmp.rewind`;
+          fs.copyFileSync(file.originalPath, tempPath);
+          backupOfCurrent.push({ originalPath: file.originalPath, tempPath });
+        }
+      }
+
+      // 2단계: 복구 진행
+      for (const file of reversedFiles) {
         if (fs.existsSync(file.backupPath)) {
           fs.copyFileSync(file.backupPath, file.originalPath);
           restored++;
         }
-      } catch (err) {
-        console.error(`[Yocto] 복구 실패: ${file.originalPath}`, err);
       }
+
+      // 3단계: 임시 백업 파일 삭제
+      for (const b of backupOfCurrent) {
+        if (fs.existsSync(b.tempPath)) {
+          fs.unlinkSync(b.tempPath);
+        }
+      }
+    } catch (err) {
+      // 복구 실패 시: 임시 백업된 파일들을 다시 원상복구(Fall-back)
+      console.error(`[Yocto] 트랜잭션 실패, 롤백 수행...`, err);
+      for (const b of backupOfCurrent) {
+        if (fs.existsSync(b.tempPath)) {
+          fs.copyFileSync(b.tempPath, b.originalPath);
+          fs.unlinkSync(b.tempPath);
+        }
+      }
+      throw new Error(`Rewind 실패 (Rollback됨): ${(err as Error).message}`);
     }
 
     // VS Code 문서 캐시 새로고침
@@ -188,17 +218,88 @@ export class YoctoManager {
     return { restoredFiles: restored, totalFiles: reversedFiles.length, durationMs };
   }
 
-  /** 다중 파일 글로벌 백업 스케줄링 (debounce) */
-  private scheduleBackup(uri: vscode.Uri): void {
-    this.pendingFiles.add(uri.fsPath);
-
-    if (this.globalDebounceTimer) {
-      clearTimeout(this.globalDebounceTimer);
+  /** 동기식 진본 백업: 저장 직전에 파일 락(레이스 컨디션 방지) */
+  private async executeDirectBackup(document: vscode.TextDocument): Promise<void> {
+    const fsPath = document.uri.fsPath;
+    
+    // 최초 원본(Base Revision) 보장
+    if (!this.trackedFiles.has(fsPath)) {
+      this.trackedFiles.add(fsPath);
+      await this.backupToBaseRevision(fsPath);
     }
 
-    this.globalDebounceTimer = setTimeout(() => {
-      this.executeGlobalBackup();
-    }, this.DEBOUNCE_MS);
+    const snapshot = await this.createSnapshot('pre-edit');
+    const backupDir = path.join(this.snapshotsDir, this.currentSessionId, snapshot.id);
+    const relativePath = vscode.workspace.asRelativePath(document.uri);
+    const backupPath = path.join(backupDir, relativePath);
+    
+    try {
+      const tmpDir = path.dirname(backupPath);
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = path.join(tmpDir, `.tmp-${crypto.randomUUID()}`);
+      
+      // 저장되기 전의 메모리(진본) 상태를 디스크에 동기적으로 기록
+      await fs.promises.writeFile(tmpFile, document.getText());
+      await fs.promises.rename(tmpFile, backupPath);
+
+      const stat = fs.statSync(backupPath);
+      snapshot.files.push({
+        originalPath: fsPath,
+        backupPath,
+        hash: crypto.createHash('sha256').update(relativePath).digest('hex').substring(0, 16),
+        size: stat.size,
+        mtime: stat.mtimeMs,
+      });
+      
+      if (snapshot.files.length > 500) {
+        snapshot.files = snapshot.files.slice(-500);
+      }
+    } catch (err) {
+      console.error(`[Yocto] 백업 실패: ${fsPath}`, err);
+    }
+  }
+
+  /** Base Revision에 파일의 최초 상태 기록 */
+  private async backupToBaseRevision(fsPath: string): Promise<void> {
+    let baseSnapshot = this.activeSnapshots.find(s => s.isBase);
+    if (!baseSnapshot) {
+      baseSnapshot = {
+        id: `base-${Date.now()}`,
+        sessionId: this.currentSessionId,
+        timestamp: Date.now(),
+        trigger: 'auto',
+        files: [],
+        isBase: true
+      };
+      this.activeSnapshots.unshift(baseSnapshot);
+    }
+
+    const backupDir = path.join(this.snapshotsDir, this.currentSessionId, baseSnapshot.id);
+    const relativePath = vscode.workspace.asRelativePath(fsPath);
+    const backupPath = path.join(backupDir, relativePath);
+    
+    try {
+      const tmpDir = path.dirname(backupPath);
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = path.join(tmpDir, `.tmp-${crypto.randomUUID()}`);
+      
+      // 최초 원본은 디스크의 현재 상태(수정 전)를 백업
+      if (fs.existsSync(fsPath)) {
+        await fs.promises.copyFile(fsPath, tmpFile);
+        await fs.promises.rename(tmpFile, backupPath);
+
+        const stat = fs.statSync(backupPath);
+        baseSnapshot.files.push({
+          originalPath: fsPath,
+          backupPath,
+          hash: crypto.createHash('sha256').update(relativePath).digest('hex').substring(0, 16),
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        });
+      }
+    } catch (err) {
+      console.error(`[Yocto] Base Revision 백업 실패: ${fsPath}`, err);
+    }
   }
 
   /** 원자적 파일 복사: 임시 파일 → rename */
@@ -208,45 +309,6 @@ export class YoctoManager {
     const tmpFile = path.join(tmpDir, `.tmp-${crypto.randomUUID()}`);
     await fs.promises.copyFile(src, tmpFile);
     await fs.promises.rename(tmpFile, dest);
-  }
-
-  /** 보류 중인 모든 파일을 단일 타임스탬프 디렉토리에 원자적으로 백업 */
-  private async executeGlobalBackup(): Promise<void> {
-    if (this.pendingFiles.size === 0) return;
-    
-    const filesToBackup = Array.from(this.pendingFiles);
-    this.pendingFiles.clear();
-    this.globalDebounceTimer = null;
-
-    const timestampStr = String(Date.now());
-    const backupDir = path.join(this.snapshotsDir, this.currentSessionId, timestampStr);
-
-    let latest = this.activeSnapshots[this.activeSnapshots.length - 1];
-    if (!latest) {
-      latest = await this.createSnapshot('auto');
-    }
-
-    for (const fsPath of filesToBackup) {
-      try {
-        const uri = vscode.Uri.file(fsPath);
-        const relativePath = vscode.workspace.asRelativePath(uri);
-        const backupPath = path.join(backupDir, relativePath);
-
-        await this.atomicCopyFile(fsPath, backupPath);
-
-        const stat = fs.statSync(fsPath);
-        const entry: YoctoFileEntry = {
-          originalPath: fsPath,
-          backupPath,
-          hash: crypto.createHash('sha256').update(relativePath).digest('hex').substring(0, 16),
-          size: stat.size,
-          mtime: stat.mtimeMs,
-        };
-        latest.files.push(entry);
-      } catch (err) {
-        console.error(`[Yocto] 백업 실패: ${fsPath}`, err);
-      }
-    }
   }
 
   /** 30일 이상 지난 백업 정리 */
@@ -268,9 +330,6 @@ export class YoctoManager {
 
   dispose(): void {
     this.watcher?.dispose();
-    if (this.globalDebounceTimer) {
-      clearTimeout(this.globalDebounceTimer);
-    }
-    this.pendingFiles.clear();
+    this.trackedFiles.clear();
   }
 }

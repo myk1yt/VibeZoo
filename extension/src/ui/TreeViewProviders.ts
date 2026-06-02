@@ -8,14 +8,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { SubagentNode, SessionSummary } from '../types';
+import { ConfigService } from '../config/ConfigService';
 
 // ── Bridge Health Check ──────────────────────────────────────
 
-const BRIDGE_HEALTH_URL = 'http://localhost:9027/health';
-
 async function checkBridgeHealth(): Promise<{ ok: boolean; crow: boolean; version: string }> {
   try {
-    const resp = await fetch(BRIDGE_HEALTH_URL, { signal: AbortSignal.timeout(3000) });
+    const resp = await fetch(ConfigService.getBridgeUrl('/health'), { signal: AbortSignal.timeout(3000) });
     if (resp.ok) {
       const data: any = await resp.json();
       return { ok: true, crow: !!data.crow, version: data.version || '?' };
@@ -88,7 +87,7 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
   /** SubagentPool의 작업 목록을 30초 간격 polling하여 TreeView에 표시 */
   private async pollSubagentTasks(): Promise<void> {
     try {
-      const resp = await fetch('http://localhost:9027/tools/list_subagents', {
+      const resp = await fetch(ConfigService.getBridgeUrl('/tools/list_subagents'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

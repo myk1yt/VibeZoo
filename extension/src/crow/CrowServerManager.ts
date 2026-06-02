@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { CrowServerConfig } from '../types';
+import { ConfigService } from '../config/ConfigService';
 
 export class CrowServerManager {
   private config: CrowServerConfig;
@@ -35,13 +36,12 @@ export class CrowServerManager {
     return this._lastHealthy;
   }
 
-  /** Crow 서버 헬스체크 (HTTP GET /health)
-   *  ★ 127.0.0.1 사용 (localhost는 IPv6로 resolve될 수 있음) */
+  /** Crow 서버 헬스체크 (HTTP GET /health) */
   async healthCheck(): Promise<boolean> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const url = `http://127.0.0.1:${this.config.port}/health`;
+      const url = ConfigService.getCrowUrl('/health');
       const response = await fetch(url, {
         signal: controller.signal,
       });
@@ -50,7 +50,7 @@ export class CrowServerManager {
       console.log(`[VibeZoo] Crow healthCheck → ${url} → ${ok ? '✅ 성공' : '❌ 실패'} (status=${response.status})`);
       return ok;
     } catch (err: any) {
-      console.log(`[VibeZoo] Crow healthCheck → http://127.0.0.1:${this.config.port}/health → 💥 예외: ${err.message}`);
+      console.log(`[VibeZoo] Crow healthCheck → ${ConfigService.getCrowUrl('/health')} → 💥 예외: ${err.message}`);
       return false;
     }
   }

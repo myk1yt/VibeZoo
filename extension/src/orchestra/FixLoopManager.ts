@@ -10,6 +10,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { Diagnostic, BuildResult } from '../types';
 import { StatusBarManager, GuardMode, NotificationThrottle } from '../ui/StatusBarManager';
+import { ConfigService } from '../config/ConfigService';
 // NotificationThrottle is used for all user-facing notifications
 
 // ── 타입 정의 ────────────────────────────────────────────────
@@ -482,8 +483,8 @@ export class FixLoopManager {
             register: 'context'
           });
           const req = http.request({
-            hostname: 'localhost',
-            port: 9020,
+            hostname: ConfigService.getHost(),
+            port: ConfigService.getCrowPort(),
             path: '/ingest',
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length }

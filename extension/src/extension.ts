@@ -16,6 +16,7 @@ import { activateBuildFeedback } from './flow/BuildFeedback';
 import { activateProjectDetector } from './flow/ProjectDetector';
 import { ProjectTreeScanner } from './flow/ProjectTreeScanner';
 import { YoctoManager } from './safety/YoctoManager';
+import { ConfigService } from './config/ConfigService';
 // FileGuard removed
 import { AutoBuildFix } from './safety/AutoBuildFix';
 import { GitStashManager } from './safety/GitStashManager';
@@ -23,6 +24,7 @@ import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetecto
 import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
+import { ConfigService } from './config/ConfigService';
 
 // ── 조기 브릿지 Spawn (모듈 로드 시점) ─────────────────────
 // activate()보다 먼저 실행되어 Python 브릿지를 미리 띄운다.
@@ -45,10 +47,11 @@ import { VisualVibePanels } from './visual/VisualVibePanels';
       return;
     }
     console.log(`[VibeZoo] 조기 브릿지 spawn: ${path.basename(scriptPath)}`);
-    const child = spawn('python', [scriptPath, '--port', '9027'], {
+    const port = ConfigService.getBridgePort();
+    const child = spawn('python', [scriptPath, '--port', String(port)], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, CROW_SERVER_URL: 'http://127.0.0.1:9020' },
+      env: { ...process.env, CROW_SERVER_URL: ConfigService.getCrowUrl() },
     });
     child.unref();
     console.log('[VibeZoo] ✅ 조기 브릿지 백그라운드 실행 완료');
@@ -154,7 +157,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
-    autoConfigureMCP();
+    autoConfigureMCP(port);
 
     // ★ Bridge 시작 후 개별 에이전트 노드 초기화
     subagentsProvider.initializeAgentNodes(port);
@@ -436,7 +439,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const lines = ['# 🔍 VibeZoo 자가진단', '', '## 시스템 상태'];
       // Bridge health check
       try {
-        const resp = await fetch('http://127.0.0.1:9027/health', { signal: AbortSignal.timeout(3000) });
+        const resp = await fetch(ConfigService.getBridgeUrl('/health'), { signal: AbortSignal.timeout(3000) });
         lines.push(resp.ok ? '✅ MCP Bridge: 정상' : '⚠️ MCP Bridge: 비정상 응답');
       } catch {
         lines.push('❌ MCP Bridge: 연결 실패');
@@ -583,7 +586,7 @@ export function deactivate(): void {
 
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 
-function autoConfigureMCP(port: number = 9027): void {
+function autoConfigureMCP(port: number): void {
   // 전역 MCP 설정에 이미 vibezoo가 등록되어 있으면 프로젝트 레벨 설정 불필요
   try {
     const globalMCPPath = path.join(os.homedir(), 'AppData', 'Roaming', 'Code', 'User', 'globalStorage',
@@ -607,7 +610,7 @@ function autoConfigureMCP(port: number = 9027): void {
   const mcpConfig = {
     mcpServers: {
       vibezoo: {
-        url: 'http://localhost:9027/sse',
+        url: ConfigService.getBridgeUrl('/sse'),
         transport: 'sse',
       },
     },
@@ -675,7 +678,7 @@ function ensureTemplates(): void {
   }
 
   // Zoo Code MCP 자동 설정
-  autoConfigureMCP();
+  autoConfigureMCP(ConfigService.getBridgePort());
 
   // .vscode/settings.json
   const vscodeDir = path.join(root, '.vscode');

@@ -18,6 +18,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { ConfigService } from '../config/ConfigService';
 import { SelfCheckReport, SelfCheckItem } from '../types';
 
 // ── AlarmMonitor ──────────────────────────────────────────────
@@ -150,7 +151,7 @@ export class SelfChecker {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
 
-      const resp = await fetch('http://localhost:9027/health', {
+      const resp = await fetch(ConfigService.getBridgeUrl('/health'), {
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -182,11 +183,9 @@ export class SelfChecker {
     };
 
     try {
-      const crowPort = vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-
-      const resp = await fetch(`http://localhost:${crowPort}/health`, {
+      const resp = await fetch(ConfigService.getCrowUrl('/health'), {
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -247,7 +246,7 @@ export class SelfChecker {
       }
 
       const vibezooConfig = config.mcpServers.vibezoo;
-      const expectedUrl = 'http://localhost:9027/sse';
+      const expectedUrl = ConfigService.getBridgeUrl('/sse');
       if (vibezooConfig.url !== expectedUrl) {
         base.status = 'warning';
         base.message = `vibezoo 서버 URL이 예상과 다름: ${vibezooConfig.url} (expected: ${expectedUrl})`;
@@ -454,7 +453,7 @@ export class SelfChecker {
     const mcpConfig = {
       mcpServers: {
         vibezoo: {
-          url: 'http://localhost:9027/sse',
+          url: ConfigService.getBridgeUrl('/sse'),
           transport: 'sse',
         },
       },
