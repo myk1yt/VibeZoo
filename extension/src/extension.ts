@@ -24,7 +24,6 @@ import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetecto
 import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
-import { ConfigService } from './config/ConfigService';
 
 // ── 조기 브릿지 Spawn (모듈 로드 시점) ─────────────────────
 // activate()보다 먼저 실행되어 Python 브릿지를 미리 띄운다.
