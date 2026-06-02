@@ -477,7 +477,7 @@ export class VisualVibePanels {
         }
 
         // 백그라운드 무음 실행
-        cp.exec(`python "${analyzerScript}" "${destPath}"`, (error: any, stdout: string, stderr: string) => {
+        cp.exec(`python "${analyzerScript}" "${destPath}"`, async (error: any, stdout: string, stderr: string) => {
           if (error) {
             this.dropzonePanel?.webview.postMessage({ type: 'analysisError', error: error.message || stderr });
             vscode.window.showErrorMessage("VibeZoo AI 분석 실패: " + (error.message || stderr));
@@ -486,6 +486,16 @@ export class VisualVibePanels {
           // 분석 성공 -> 웹뷰에 결과 전송
           this.dropzonePanel?.webview.postMessage({ type: 'analysisComplete', result: stdout });
           vscode.window.showInformationMessage("VibeZoo AI 분석이 완료되었습니다!");
+
+          // LLM 연계(ZooCode/agy-cli)를 위해 결과를 캐시 파일로 저장하고 편집기에 오픈
+          try {
+            const resultPath = path.join(cacheDir, `vision_result_${Date.now()}.txt`);
+            fs.writeFileSync(resultPath, stdout);
+            const doc = await vscode.workspace.openTextDocument(resultPath);
+            await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+          } catch (writeErr) {
+            console.error("Failed to write/open result document", writeErr);
+          }
         });
       }
 
@@ -560,7 +570,7 @@ export class VisualVibePanels {
         }
 
         // 백그라운드 무음 실행
-        cp.exec(`python "${analyzerScript}" "${destPath}"`, (error: any, stdout: string, stderr: string) => {
+        cp.exec(`python "${analyzerScript}" "${destPath}"`, async (error: any, stdout: string, stderr: string) => {
           if (error) {
             this.dropzonePanel?.webview.postMessage({ type: 'analysisError', error: error.message || stderr });
             vscode.window.showErrorMessage("VibeZoo AI 분석 실패: " + (error.message || stderr));
@@ -569,6 +579,16 @@ export class VisualVibePanels {
           // 분석 성공 -> 웹뷰에 결과 전송
           this.dropzonePanel?.webview.postMessage({ type: 'analysisComplete', result: stdout });
           vscode.window.showInformationMessage("VibeZoo AI 분석이 완료되었습니다!");
+
+          // LLM 연계(ZooCode/agy-cli)를 위해 결과를 캐시 파일로 저장하고 편집기에 오픈
+          try {
+            const resultPath = path.join(cacheDir, `vision_result_${Date.now()}.txt`);
+            fs.writeFileSync(resultPath, stdout);
+            const doc = await vscode.workspace.openTextDocument(resultPath);
+            await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+          } catch (writeErr) {
+            console.error("Failed to write/open result document", writeErr);
+          }
         });
       }
       // ---------------------------------
@@ -1017,7 +1037,8 @@ export class VisualVibePanels {
   @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head><body>
-<div id="dropzone" onclick="document.getElementById('fileInput').click()">
+<!-- 드래그 앤 드롭 이벤트를 방해하지 않도록 인라인 onclick 속성을 완전히 제거합니다 -->
+<div id="dropzone">
   <div class="icon">📷</div>
   <div class="placeholder">
     <h2>VibeZoo Drop Zone</h2>
