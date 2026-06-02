@@ -33,6 +33,11 @@ PIP_OPTIONAL: dict[str, str] = {
     "html2text": "HTML→마크다운 변환",
     "requests": "HTTP 클라이언트 (Crow 연동)",
     "huggingface-hub": "허깅페이스 모델 다운로더",
+    "PyMuPDF": "PDF 문서 파싱 및 텍스트/이미지 추출",
+    "python-docx": "DOCX 워드 문서 텍스트 추출",
+    "paddlepaddle": "PaddleOCR 딥러닝 백엔드",
+    "paddleocr": "고성능 다국어 OCR 딥러닝 엔진",
+    "llama-cpp-python": "MiniCPM-V GGUF 모델 로컬 구동 코어",
 }
 
 # 시스템 도구 정보
