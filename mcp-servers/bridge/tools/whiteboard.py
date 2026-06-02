@@ -813,7 +813,7 @@ $graphics.Dispose()
 
 
 def _open_dropzone_in_webview() -> str:
-    """VS Code Webview 내장 드롭존 열기 (open_image_dropzone 통합)"""
+    """VS Code Webview 내장 드롭존 열기"""
     from base64 import b64encode
 
     html_b64 = b64encode(_DROPZONE_HTML.encode('utf-8')).decode('utf-8')
@@ -821,17 +821,15 @@ def _open_dropzone_in_webview() -> str:
     data = {
         "action": "open",
         "html_b64": html_b64,
-        "title": "VibeZoo Image Drop Zone",
+        "title": "VibeZoo Drop Zone",
         "timestamp": time.time(),
     }
     _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
 
     return (_markdown_header("File Drop Zone", "📎")
-            + "Drop zone opened in VS Code Webview.\n\n"
-            + "1. Drag & drop any file (images, PDF, DOCX, TXT, code) into the Webview\n"
-            + "2. File will be saved to `~/.vibezoo-cache/upload_*.{ext}`\n"
-            + "3. After upload, call `auto_analyze_after_drop(file_path='...')` to analyze\n\n"
-            + "💡 **Tip**: Use `capture_screen()` (without arguments) to capture your screen directly.\n"
+            + "Drop zone opened. Upload a file and I'll check it.\n\n"
+            + "File saved to: `~/.vibezoo-uploads/{date}/`\n"
+            + "After upload, call `check_uploaded_files()` to see the latest uploads.\n"
             + _markdown_footer())
 
 
@@ -857,6 +855,42 @@ def _open_file_picker() -> str:
 def register(mcp):
     """Whiteboard 도구 등록"""
 
+    @mcp.tool
+    def check_uploaded_files() -> str:
+        """드랍존에 업로드된 최근 파일 목록을 확인합니다.
+        
+        Returns:
+            업로드된 파일 경로와 메타데이터 목록
+        """
+        registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
+        
+        if not os.path.exists(registry_path):
+            return "📂 아직 업로드된 파일이 없습니다."
+        
+        try:
+            with open(registry_path, 'r') as f:
+                entries = json.load(f)
+            
+            lines = ["## 📎 최근 업로드된 파일", ""]
+            for i, entry in enumerate(entries):
+                path = entry.get("path", "?")
+                name = entry.get("fileName", "?")
+                size = entry.get("size", 0)
+                mime = entry.get("mimeType", "?")
+                
+                size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
+                lines.append(f"### {i+1}. {name}")
+                lines.append(f"- **경로**: `{path}`")
+                lines.append(f"- **크기**: {size_str}")
+                lines.append(f"- **타입**: {mime}")
+                lines.append("")
+            
+            if entries:
+                lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"⚠️ 업로드 레지스트리 읽기 실패: {e}"
+    
     @mcp.tool
     def capture_screen(source: str = "screen") -> str:
         """화면을 캡처하거나 드롭존을 엽니다.

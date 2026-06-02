@@ -2366,8 +2366,14 @@ def analyze_coverage(target_path: Optional[str] = None) -> str:
     output += _markdown_footer()
     return output
 @mcp.tool
-def capture_screen() -> str:
-    """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다."""
+def capture_screen(source: str = "screen") -> str:
+    """화면을 캡처하거나 드롭존을 엽니다.
+    
+    source="dropzone" 시 VS Code Webview 드롭존을 열어 파일을 업로드할 수 있습니다.
+    
+    Args:
+        source: "screen" (화면 캡처) | "dropzone" (드롭존 열기) | "file" (파일 선택)
+    """
     try:
         from PIL import ImageGrab
         import base64

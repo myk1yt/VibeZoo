@@ -528,6 +528,20 @@ export class VisualVibePanels {
         size: buffer.length,
         fileName: safeName,
       });
+
+      // 업로드 레지스트리 기록 (LLM이 파일 경로를 알 수 있도록)
+      try {
+        const registryPath = path.join(os.homedir(), '.vibezoo-uploads', 'latest.json');
+        const registry = { path: destPath, fileName: safeName, size: buffer.length, mimeType, timestamp: Date.now() };
+        let entries: any[] = [];
+        if (fs.existsSync(registryPath)) {
+          entries = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+        }
+        entries.unshift(registry);
+        if (entries.length > 10) entries = entries.slice(0, 10);
+        fs.writeFileSync(registryPath, JSON.stringify(entries, null, 2));
+        console.log(`[VibeZoo] Upload registry updated: ${destPath}`);
+      } catch {}
     } catch (e: any) {
       console.log(`[VibeZoo] Dropzone upload error: ${e.message}`);
       this.dropzonePanel?.webview.postMessage({
