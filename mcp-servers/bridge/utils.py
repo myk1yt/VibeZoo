@@ -161,22 +161,22 @@ def _truncate(text: str, max_len: int = 2000, ellipsis: str = "...") -> str:
 
 
 def _atomic_write_json(file_path: str, data: dict, indent: int = 2):
-    """원자적 JSON 파일 쓰기 (부분 쓰기 방지)"""
+    """원자적 JSON 파일 쓰기 (부분 쓰기 방지)
+    * 수정: 윈도우에서 os.replace()는 VS Code의 fs.watch를 깨뜨리므로
+      직접 쓰기(overwrite) 모드로 변경합니다. (TS 쪽에 재시도 로직이 있으므로 안전함)
+    """
     base_dir = os.path.dirname(file_path)
     if not base_dir:
         base_dir = os.getcwd()
     os.makedirs(base_dir, exist_ok=True)
-    temp_fd, temp_file_path = tempfile.mkstemp(dir=base_dir, suffix=".vztmp")
-    try:
-        with os.fdopen(temp_fd, "w", encoding="utf-8") as temp_file:
-            json.dump(data, temp_file, indent=indent, ensure_ascii=False)
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=indent, ensure_ascii=False)
+        f.flush()
         if hasattr(os, "sync"):
             os.sync()
-        os.replace(temp_file_path, file_path)
-    except Exception as write_error:
-        if os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
-        raise write_error
+        elif hasattr(os, "fsync"):
+            os.fsync(f.fileno())
 
 
 def _npx_cmd() -> str:

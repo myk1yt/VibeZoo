@@ -154,6 +154,10 @@ export class VisualVibePanels {
     }
   }
 
+  /**
+   * 파일 감시 시작 (fs.watchFile 기반).
+   * activate()에서 최초 1회 호출.
+   */
   private startWatching(): void {
     if (this._watching) return;
     this._watching = true;
@@ -168,79 +172,61 @@ export class VisualVibePanels {
     const lastUiMtime = { current: this.getCurrentMtime(uiAction) };
     const lastDzMtime = { current: this.getCurrentMtime(dzAction) };
 
-    const watchConfig = [
-      {
-        file: wbAction,
-        lastMtime: lastActionMtime,
-        handler: (content: WatchFileContent) => {
-          if (content.action === 'open') {
-            this.openWhiteboard();
-            if (content.message) log(`Whiteboard action: ${content.message}`);
+    // ── whiteboard-action.json 감시 (open_whiteboard MCP 도구) ──
+    fs.watchFile(wbAction, { interval: WATCH_INTERVAL_MS }, () => {
+      this.handleFileChange(wbAction, lastActionMtime, (content) => {
+        if (content.action === 'open') {
+          this.openWhiteboard();
+          if (content.message) {
+            log(`Whiteboard action: ${content.message}`);
           }
         }
-      },
-      {
-        file: uiAction,
-        lastMtime: lastUiMtime,
-        handler: (content: WatchFileContent) => {
-          if (content.action === 'open_ui') {
-            this.openUIPreview(content.code || '', content.framework || 'react');
-          }
-        }
-      },
-      {
-        file: dzAction,
-        lastMtime: lastDzMtime,
-        handler: (content: WatchFileContent) => {
-          if (content.action === 'open') {
-            this.openDropzone();
-            if (content.message) log(`Dropzone action: ${content.message}`);
-          }
-        }
-      },
-      {
-        file: wbFile,
-        lastMtime: lastWbMtime,
-        handler: (content: WatchFileContent) => {
-          if (content._source === 'canvasState') return;
-          if (!content.commands || content.commands.length === 0) return;
-
-          const hash = JSON.stringify(content.commands);
-          if (hash === this._lastCommandsHash) return;
-          this._lastCommandsHash = hash;
-
-          if (!this.whiteboardPanel) {
-            this.openWhiteboard();
-            this._pendingDrawCommands = content.commands;
-          } else {
-            this.sendToWhiteboard(content.commands);
-          }
-        }
-      }
-    ];
-
-    // fs.watch를 이용한 안정적인 파일 감시
-    watchConfig.forEach(config => {
-      // 파일이 없을 경우를 대비해 미리 빈 파일 생성 (watch 에러 방지)
-      if (!fs.existsSync(config.file)) {
-        try { fs.writeFileSync(config.file, '{}', 'utf-8'); } catch { /* ignore */ }
-      }
-      try {
-        fs.watch(config.file, (eventType) => {
-          if (eventType === 'change' || eventType === 'rename') {
-            this.handleFileChange(config.file, config.lastMtime, config.handler);
-          }
-        });
-      } catch (err: any) {
-        log(`Failed to watch ${config.file}: ${err.message}`);
-        // Fallback to watchFile if watch fails
-        fs.watchFile(config.file, { interval: WATCH_INTERVAL_MS }, () => {
-          this.handleFileChange(config.file, config.lastMtime, config.handler);
-        });
-      }
+      });
     });
 
-    log('File watching started (fs.watch)');
+    // ── ui-action.json 감시 (open_ui_preview MCP 도구) ──
+    fs.watchFile(uiAction, { interval: WATCH_INTERVAL_MS }, () => {
+      this.handleFileChange(uiAction, lastUiMtime, (content) => {
+        if (content.action === 'open_ui') {
+          this.openUIPreview(content.code || '', content.framework || 'react');
+        }
+      });
+    });
+
+    // ── dropzone-action.json 감시 (open_dropzone MCP 도구) ──
+    fs.watchFile(dzAction, { interval: WATCH_INTERVAL_MS }, () => {
+      this.handleFileChange(dzAction, lastDzMtime, (content) => {
+        if (content.action === 'open') {
+          this.openDropzone();
+          if (content.message) {
+            log(`Dropzone action: ${content.message}`);
+          }
+        }
+      });
+    });
+
+    // ── whiteboard.json 감시 (draw_on_whiteboard MCP 도구) ──
+    fs.watchFile(wbFile, { interval: WATCH_INTERVAL_MS }, () => {
+      this.handleFileChange(wbFile, lastWbMtime, (content) => {
+        // canvasState에서 쓴 내용은 건너뜀 (무한 루프 방지)
+        if (content._source === 'canvasState') return;
+        if (!content.commands || content.commands.length === 0) return;
+
+        // 중복 전송 방지
+        const hash = JSON.stringify(content.commands);
+        if (hash === this._lastCommandsHash) return;
+        this._lastCommandsHash = hash;
+
+        if (!this.whiteboardPanel) {
+          this.openWhiteboard();
+          this._pendingDrawCommands = content.commands;
+        } else {
+          this.sendToWhiteboard(content.commands);
+        }
+      });
+    });
+
+    log('File watching started (fs.watchFile)');
   }
 
   /** 파일 감시 중단 */
