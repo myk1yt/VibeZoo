@@ -209,17 +209,19 @@ export class FixLoopManager {
     const instability = this.calculateInstability();
     const guardMode = getGuardMode(instability);
 
-    if (guardMode === 'active') {
-      // 불안정성 높음 → 즉시 중단
+    const THRESHOLD = 0.5;
+
+    if (instability >= THRESHOLD) {
+      // 불안정성 높음 → 즉시 중단 (Recovery/Halt)
       this.currentSession.status = 'abandoned';
       this.state = 'abandoned';
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
       NotificationThrottle.showWarning(
-        `⚠️ VibeZoo: I_instability=${instability.toFixed(2)} (Guard: Active). Auto-Fix를 중단합니다. 수동 확인이 필요합니다.`
+        `⚠️ VibeZoo: I_instability=${instability.toFixed(2)} (Guard: Safe/Halt). Auto-Fix를 중단합니다. 수동 확인이 필요합니다.`
       );
-      console.log(`[VibeZoo] FixLoopManager: → abandoned (I_instability=${instability.toFixed(2)}, Guard=${guardMode})`);
+      console.log(`[VibeZoo] FixLoopManager: → abandoned (I_instability=${instability.toFixed(2)} >= ${THRESHOLD})`);
       return;
     }
 

@@ -159,19 +159,24 @@ export class SubagentManager {
         const pidMatch = pidOutput.match(/(\d+)\s*$/m);
         if (pidMatch) {
           const pid = pidMatch[1].trim();
-          const killCmd = isWin ? `taskkill /F /PID ${pid}` : `kill -9 ${pid}`;
+          const killCmd = isWin ? `taskkill /F /PID ${pid} /T` : `kill -9 ${pid}`;
           execSync(killCmd, { timeout: 3000 });
           console.log(`[VibeZoo] 구버전 Bridge(PID ${pid}) 종료 완료`);
         }
       } catch (e: any) {
         // netstat/findstr 실패 시 휴리스틱 fallback
-        console.warn(`[VibeZoo] PID 탐색 실패, fallback kill: ${e.message}`);
-        try {
-          if (process.platform === 'win32') {
-            execSync(`taskkill /F /FI "IMAGENAME eq python.exe"`, { timeout: 3000 });
+        console.warn(`[VibeZoo] PID 탐색 실패, 강제 종료 생략(고립 대기): ${e.message}`);
+        if (this.child && this.child.pid) {
+          try {
+            console.log(`[VibeZoo] 캐싱된 ChildProcess(PID: ${this.child.pid})를 통해 종료 시도`);
+            if (process.platform === 'win32') {
+              execSync(`taskkill /F /PID ${this.child.pid} /T`, { timeout: 3000 });
+            } else {
+              this.child.kill('SIGKILL');
+            }
+          } catch (err) {
+            console.warn(`[VibeZoo] 캐싱된 ChildProcess 종료 실패:`, err);
           }
-        } catch {
-          // 이미 종료되었거나 접근 권한 없음 — 무시
         }
       }
     } catch {
@@ -227,19 +232,25 @@ export class SubagentManager {
   terminate(): void {
     if (this.child) {
       const child = this.child;
-      child.kill('SIGTERM');
-
-      child.on('exit', () => {
-        console.log('[VibeZoo] Bridge process exited');
-      });
-
-      setTimeout(() => {
-        if (this.child) {
-          this.child.kill('SIGKILL');
+      const pid = child.pid;
+      
+      try {
+        if (process.platform === 'win32' && pid) {
+           execSync(`taskkill /F /PID ${pid} /T`, { timeout: 3000 });
+        } else {
+           child.kill('SIGTERM');
+           setTimeout(() => {
+             if (this.child) {
+               this.child.kill('SIGKILL');
+             }
+           }, 5000);
         }
-        this.child = null;
-        this.node = null;
-      }, 5000);
+      } catch (err) {
+         console.warn('[VibeZoo] Process termination failed', err);
+      }
+      
+      this.child = null;
+      this.node = null;
     }
   }
 

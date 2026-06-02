@@ -450,18 +450,36 @@ export class SelfChecker {
     const zooMCPDir = path.join(root, '.roo');
     const zooMCPPath = path.join(zooMCPDir, 'mcp.json');
 
-    const mcpConfig = {
-      mcpServers: {
-        vibezoo: {
-          url: ConfigService.getBridgeUrl('/sse'),
-          transport: 'sse',
-        },
-      },
+    fs.mkdirSync(zooMCPDir, { recursive: true });
+
+    let existingConfig: any = { mcpServers: {} };
+    try {
+      if (fs.existsSync(zooMCPPath)) {
+        const raw = await fs.promises.readFile(zooMCPPath, 'utf-8');
+        if (raw.trim()) {
+          existingConfig = JSON.parse(raw);
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[SelfCheck:Recovery] 기존 mcp.json 파싱 실패 (초기화 진행): ${err.message}`);
+      existingConfig = { mcpServers: {} };
+    }
+
+    if (!existingConfig.mcpServers || typeof existingConfig.mcpServers !== 'object') {
+      existingConfig.mcpServers = {};
+    }
+
+    existingConfig.mcpServers.vibezoo = {
+      url: ConfigService.getBridgeUrl('/sse'),
+      transport: 'sse',
     };
 
-    fs.mkdirSync(zooMCPDir, { recursive: true });
-    fs.writeFileSync(zooMCPPath, JSON.stringify(mcpConfig, null, 2), 'utf-8');
-    console.log(`[SelfCheck:Recovery] MCP 설정 재구성 완료: ${zooMCPPath}`);
+    try {
+      await fs.promises.writeFile(zooMCPPath, JSON.stringify(existingConfig, null, 2), 'utf-8');
+      console.log(`[SelfCheck:Recovery] MCP 설정 병합 및 재구성 완료: ${zooMCPPath}`);
+    } catch (err: any) {
+      console.error(`[SelfCheck:Recovery] MCP 설정 파일 쓰기 실패: ${err.message}`);
+    }
   }
 
   /** 자가진단 결과를 마크다운으로 포맷팅 */
