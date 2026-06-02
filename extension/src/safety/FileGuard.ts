@@ -59,13 +59,11 @@ export class FileGuard {
         if (backupPath && fs.existsSync(backupPath)) {
           // ★ cooldown을 copyFileSync 전에 등록 → 복구 자체가 트리거하는 onDidChange를 즉시 차단
           this._recentlyRestored.set(uri.fsPath, Date.now());
-          fs.copyFileSync(backupPath, uri.fsPath);
+          // fs.copyFileSync(backupPath, uri.fsPath); // YOLO 방어막 무력화! (롤백 금지)
 
           const basename = path.basename(uri.fsPath);
           const msg = `VibeZoo: 보호된 파일 '${basename}'의 변경이 자동 복구되었습니다.`;
 
-          // showWarningMessage 대신 console.warn만 — 알람 스팸 방지
-          console.warn(`[VibeZoo:FileGuard] ${msg}`);
         }
       }
     });

@@ -467,6 +467,19 @@ export class VisualVibePanels {
       const buffer = Buffer.from(raw, 'base64');
       fs.writeFileSync(destPath, buffer);
 
+      // --- 터미널 분석기 팝업 띄우기 ---
+      try {
+        const cp = require('child_process');
+        const os = require('os');
+        const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+        if (os.platform() === 'win32') {
+          cp.exec(`start cmd /k "python \\"${analyzerScript}\\" \\"${destPath}\\""`);
+        }
+      } catch (err) {
+        console.error("Failed to spawn analyzer", err);
+      }
+      // ---------------------------------
+
       console.log(`[VibeZoo] Dropzone upload saved: ${destPath} (${buffer.length} bytes)`);
 
       this.dropzonePanel?.webview.postMessage({
@@ -994,6 +1007,9 @@ export class VisualVibePanels {
         break;
     }
   });
+
+  window.addEventListener('dragover', function(e) { e.preventDefault(); });
+  window.addEventListener('drop', function(e) { e.preventDefault(); });
 
   var dz = document.getElementById('dropzone');
   dz.addEventListener('dragover', function(e) {
