@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-06-02 - Dropzone Webview Bug Fixes & Architecture Analysis
+
+### 변경 요약 (Dropzone Webview 치명적 버그 수정)
+- **파이썬 `os.replace` 와처 파괴 버그 수정**: `mcp-servers/bridge/utils.py`의 `_atomic_write_json` 함수에서 `os.replace` 방식 대신 윈도우 와처 호환을 위해 `with open(..., 'w')` 직접 덮어쓰기 방식으로 변경.
+- **TS 파싱 에러 데드락 버그 수정**: `extension/src/visual/VisualVibePanels.ts`의 `handleFileChange` 콜백이 0바이트 파일에 의해 실패하는 것을 대비하여 `retries=5` (200ms 간격) 재시도 로직 구현.
+- **TS 타임스탬프 해상도 버그 회피**: 윈도우 OS의 낮은 `mtimeMs` 해상도로 인한 이벤트 무시(씹힘) 현상을 막기 위해 파일 내용 기반 해시(`JSON.stringify(content)`) 비교 로직 도입.
+- **Drag & Drop 새 창 열림 버그 수정**: Dropzone 웹뷰에서 파일을 떨어뜨릴 때 VS Code 기본 동작(새 탭에 이미지 열림)이 발동하지 않도록 `window` 객체 전역에 `dragover`, `dragleave`, `drop` 이벤트를 등록하여 `preventDefault()`, `stopPropagation()` 적용.
+- **로컬 환경 동기화 (Hot-fix)**: `tsc` 빌드 결과물(`out/`)을 글로벌 확장 프로그램 경로(`~/.vscode/extensions/local.vibezoo-0.14.0/out/`)에 덮어씌워 런타임 적용.
+
+### 추가 설치 현황 (Dropzone 3계층 분석 엔진 대비)
+- **의존성 설치 완료**: `PyMuPDF`, `python-docx` (문서 텍스트 추출용), `paddlepaddle`, `paddleocr` (Tesseract 대체 및 fallback용 OCR 엔진).
+- **모델 다운로드**: `models/` 디렉토리 생성 후 `huggingface-cli`를 통해 MiniCPM-V GGUF 로컬 Vision LLM 모델 백그라운드 다운로드 진행.
+- **보고서 작성**: `feedbacks/260602_vibezoo_dropzone_ultimate_fix.md` 최종 리포트 커밋 완료.
+
+---
+
 - [2026-05-31 - v0.14.0 SOTA: 3 Cycle Evolution + bridge/ 모듈화 완료](#2026-05-31---v0140-sota-3-cycle-evolution--bridge-모듈화-완료)
 - [2026-05-30 - v0.14.0: SOTA MCP Tool Upgrade Phase 1-3](#2026-05-30---v0140-sota-mcp-tool-upgrade-phase-1-3)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
