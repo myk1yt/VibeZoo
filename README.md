@@ -15,6 +15,12 @@ Your support helps us develop new features and keep the AI coding revolution mov
 
 ---
 
+## 🌍 Global i18n / l10n Support
+
+VibeZoo now fully supports global internationalization (i18n). Built on top of the native `vscode.l10n` API, VibeZoo automatically detects your VS Code display language. It currently provides a base English locale along with a fully translated Korean (`ko`) language pack, ensuring a native experience regardless of your region.
+
+---
+
 ## 1. VibeZoo MCP Bridge — Tool Overview (34 Tools)
 
 The VibeZoo MCP Bridge operates based on FastMCP + SSE, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/sse`. It provides a total of **34+ MCP tools** through a modular architecture (`bridge/tools/`).
