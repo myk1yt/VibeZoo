@@ -1,5 +1,19 @@
 # VibeZoo Development Journal
 
+## 2026-06-02: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)
+
+### Summary
+- **실제 사용 피드백 기반 개선** — KOICA CTS PDF 업로드→분석 워크플로우에서 발견된 문제 해결
+- **드랍존 범용화** — 이미지+PDF+DOCX+TXT+코드 모든 파일 지원, 확장자 보존 저장 ([`config.py`](mcp-servers/bridge/config.py))
+- **PDF 스캔문서 파이프라인** — `_analyze_pdf_as_image()` 신규: fitz→SSA→OCR→MiniCPM 자동 연계 ([`file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py))
+- **auto_analyze_after_drop 강화** — PDF 파일 `analyze_file()` 직접 호출 ([`ux_coordinator.py`](mcp-servers/bridge/tools/ux_coordinator.py))
+- **OCR 전처리** — AdaptiveThresholding + 노이즈 제거로 한글 인식률 향상 ([`ocr_engine.py`](mcp-servers/bridge/ocr_engine.py))
+- **설계 문서**: [`plans/vibezoo-v2-upgrade.md`](plans/vibezoo-v2-upgrade.md)
+- **GitHub**: 6 files changed, 481 insertions, push 완료 (commit `20b8943`)
+- **Cleanup**: `_extract_pdf.py`, `_extract_pdf_v2.py` 삭제
+
+---
+
 ## 2026-06-02: UX Workflow 구현 (의도 감지 + 자동 도구 체인)
 
 ### Summary

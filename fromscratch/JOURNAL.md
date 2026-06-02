@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
 - [2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)](#2026-06-02---v0140-ux-workflow-구현-의도-감지--자동-도구-체인)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
@@ -14,6 +15,21 @@
 - [2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal](#2026-05-27-v0100-python-mcp-bridge-migration--go-removal)
 - [2026-05-27 - v0.10.0: Initial implementation complete (26 files)](#2026-05-27-v0100-initial-implementation-complete-26-files)
 - [2026-05-27 - Architecture design started](#2026-05-27-architecture-design-started)
+
+---
+
+## 2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)
+
+**Changes**:
+- 실제 사용 피드백 기반 개선 (KOICA CTS PDF 업로드 → 분석 워크플로우)
+- config.py: `get_uploaded_path()` 함수 추가 — 확장자 보존 동적 경로
+- whiteboard.py: 드랍존 HTML/메시지 멀티파일 지원 (📎 모든 파일 타입)
+- file_analyzer.py: `_analyze_pdf_as_image()` 신규 — PDF→이미지 변환(fitz)→SSA→OCR→MiniCPM 자동 연계
+- ux_coordinator.py: PDF 파일 `analyze_file()` 직접 호출로 강화
+- ocr_engine.py: `_preprocess_for_ocr()` — AdaptiveThresholding + 노이즈 제거 전처리
+- 설계 문서: [`plans/vibezoo-v2-upgrade.md`](plans/vibezoo-v2-upgrade.md)
+- GitHub: 6 files changed, 481 insertions, push 완료 (commit 20b8943)
+- Cleanup: `_extract_pdf.py`, `_extract_pdf_v2.py` 삭제
 
 ---
 
