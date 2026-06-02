@@ -458,7 +458,10 @@ export class VisualVibePanels {
       try {
         const cp = require('child_process');
         const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
-        cp.exec(`start cmd /k "python \\"${analyzerScript}\\" \\"${destPath}\\""`);
+        cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
+          detached: true,
+          stdio: 'ignore'
+        }).unref();
       } catch (err) {
         console.error("Failed to spawn analyzer", err);
       }
@@ -511,11 +514,14 @@ export class VisualVibePanels {
       const buffer = Buffer.from(raw, 'base64');
       fs.writeFileSync(destPath, buffer);
 
-      // --- 터미널 분석기 팝업 띄우기 ---
+      // 터미널 팝업
       try {
         const cp = require('child_process');
         const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
-        cp.exec(`start cmd /k "python \\"${analyzerScript}\\" \\"${destPath}\\""`);
+        cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
+          detached: true,
+          stdio: 'ignore'
+        }).unref();
       } catch (err) {
         console.error("Failed to spawn analyzer", err);
       }
