@@ -454,34 +454,39 @@ export class VisualVibePanels {
       fs.copyFileSync(sourcePath, destPath);
       const stat = fs.statSync(destPath);
 
-      // 터미널 팝업 대신 QuickPick 선택지 제공
-      const options = ["🔍 Analyze Image with MiniCPM-V (llama.cpp)", "📄 Extract Text (OCR)", "❌ Cancel"];
-      const selection = await vscode.window.showQuickPick(options, { placeHolder: "What would you like to do with the uploaded file?" });
+      // 2. 확장자에 따른 지능형 팝업 제공
+      const isImage = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(fileName);
+      const fileTypeLabel = isImage ? "이미지" : "문서";
+      
+      const userChoice = await vscode.window.showInformationMessage(
+        `이 파일은 [${fileTypeLabel}]입니다. VibeZoo AI를 활용해 분석을 시작할까요?`,
+        "🚀 분석 시작", "❌ 취소"
+      );
 
-      if (selection === options[0]) {
-        try {
-          const cp = require('child_process');
-          let analyzerScript = '';
-          const workspaceFolders = vscode.workspace.workspaceFolders;
-          if (workspaceFolders && workspaceFolders.length > 0) {
-            analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
-          } else {
-            analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
-          }
-          
-          if (!fs.existsSync(analyzerScript)) {
-            console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
-          }
-          
-          cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
-            detached: true,
-            stdio: 'ignore'
-          }).unref();
-        } catch (err) {
-          console.error("Failed to spawn analyzer", err);
+      if (userChoice === "🚀 분석 시작") {
+        // 웹뷰에 로딩 상태 전달
+        this.dropzonePanel?.webview.postMessage({ type: 'analysisStart' });
+
+        const cp = require('child_process');
+        let analyzerScript = '';
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+          analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
+        } else {
+          analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
         }
-      } else if (selection === options[1]) {
-        vscode.window.showInformationMessage("OCR extraction feature coming soon!");
+
+        // 백그라운드 무음 실행
+        cp.exec(`python "${analyzerScript}" "${destPath}"`, (error: any, stdout: string, stderr: string) => {
+          if (error) {
+            this.dropzonePanel?.webview.postMessage({ type: 'analysisError', error: error.message || stderr });
+            vscode.window.showErrorMessage("VibeZoo AI 분석 실패: " + (error.message || stderr));
+            return;
+          }
+          // 분석 성공 -> 웹뷰에 결과 전송
+          this.dropzonePanel?.webview.postMessage({ type: 'analysisComplete', result: stdout });
+          vscode.window.showInformationMessage("VibeZoo AI 분석이 완료되었습니다!");
+        });
       }
 
       console.log(`[VibeZoo] Local Dropzone file copied: ${destPath} (${stat.size} bytes)`);
@@ -532,34 +537,39 @@ export class VisualVibePanels {
       const buffer = Buffer.from(raw, 'base64');
       fs.writeFileSync(destPath, buffer);
 
-      // 터미널 팝업 대신 QuickPick 선택지 제공
-      const options = ["🔍 Analyze Image with MiniCPM-V (llama.cpp)", "📄 Extract Text (OCR)", "❌ Cancel"];
-      const selection = await vscode.window.showQuickPick(options, { placeHolder: "What would you like to do with the uploaded file?" });
+      // 2. 확장자에 따른 지능형 팝업 제공
+      const isImage = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(fileName);
+      const fileTypeLabel = isImage ? "이미지" : "문서";
+      
+      const userChoice = await vscode.window.showInformationMessage(
+        `이 파일은 [${fileTypeLabel}]입니다. VibeZoo AI를 활용해 분석을 시작할까요?`,
+        "🚀 분석 시작", "❌ 취소"
+      );
 
-      if (selection === options[0]) {
-        try {
-          const cp = require('child_process');
-          let analyzerScript = '';
-          const workspaceFolders = vscode.workspace.workspaceFolders;
-          if (workspaceFolders && workspaceFolders.length > 0) {
-            analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
-          } else {
-            analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
-          }
+      if (userChoice === "🚀 분석 시작") {
+        // 웹뷰에 로딩 상태 전달
+        this.dropzonePanel?.webview.postMessage({ type: 'analysisStart' });
 
-          if (!fs.existsSync(analyzerScript)) {
-            console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
-          }
-
-          cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
-            detached: true,
-            stdio: 'ignore'
-          }).unref();
-        } catch (err) {
-          console.error("Failed to spawn analyzer", err);
+        const cp = require('child_process');
+        let analyzerScript = '';
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+          analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
+        } else {
+          analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
         }
-      } else if (selection === options[1]) {
-        vscode.window.showInformationMessage("OCR extraction feature coming soon!");
+
+        // 백그라운드 무음 실행
+        cp.exec(`python "${analyzerScript}" "${destPath}"`, (error: any, stdout: string, stderr: string) => {
+          if (error) {
+            this.dropzonePanel?.webview.postMessage({ type: 'analysisError', error: error.message || stderr });
+            vscode.window.showErrorMessage("VibeZoo AI 분석 실패: " + (error.message || stderr));
+            return;
+          }
+          // 분석 성공 -> 웹뷰에 결과 전송
+          this.dropzonePanel?.webview.postMessage({ type: 'analysisComplete', result: stdout });
+          vscode.window.showInformationMessage("VibeZoo AI 분석이 완료되었습니다!");
+        });
       }
       // ---------------------------------
 
@@ -1002,6 +1012,9 @@ export class VisualVibePanels {
   .actions button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
   .actions button.primary:hover { background: #1177bb; }
   input[type=file] { display: none; }
+  #resultBox { margin-top: 20px; padding: 16px; background: #252526; border-left: 4px solid #4ec9ff; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; width: 100%; max-width: 600px; color: #d4d4d4; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+  .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-bottom-color: transparent; border-radius: 50%; animation: rotation 1s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head><body>
 <div id="dropzone" onclick="document.getElementById('fileInput').click()">
@@ -1019,6 +1032,7 @@ export class VisualVibePanels {
   <button onclick="document.getElementById('fileInput').click()" class="primary">📂 Browse</button>
   <button onclick="clearDropzone()">🗑️ Clear</button>
 </div>
+<div id="resultBox"></div>
 <input type="file" id="fileInput" onchange="handleFiles(this.files)">
 <script>
   var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
@@ -1085,9 +1099,13 @@ export class VisualVibePanels {
     document.getElementById('preview').src = '';
     document.getElementById('preview').style.display = 'none';
     document.getElementById('dropzone').classList.remove('has-image');
+    document.getElementById('dropzone').classList.remove('dragover');
     document.getElementById('status').className = 'status';
+    document.getElementById('status').style.display = 'none';
     document.getElementById('fileInfo').textContent = '';
     document.getElementById('fileInput').value = '';
+    document.getElementById('resultBox').style.display = 'none';
+    document.getElementById('resultBox').innerHTML = '';
   }
 
   window.addEventListener('message', function(e) {
@@ -1105,6 +1123,25 @@ export class VisualVibePanels {
           img.style.display = 'block';
           document.getElementById('dropzone').classList.add('has-image');
         }
+        break;
+      case 'analysisStart':
+        setStatus('⏳ VibeZoo AI가 파일을 분석하고 있습니다... (로컬 모델 구동 중)', 'info');
+        var resBox = document.getElementById('resultBox');
+        resBox.style.display = 'block';
+        resBox.innerHTML = '<span class="loader"></span> 분석 중... 잠시만 기다려 주세요.';
+        break;
+      case 'analysisComplete':
+        setStatus('✨ 분석 완료!', 'success');
+        var resBox2 = document.getElementById('resultBox');
+        resBox2.style.display = 'block';
+        resBox2.textContent = msg.result; // STDOUT 결과 그대로 출력
+        break;
+      case 'analysisError':
+        setStatus('❌ 분석 실패', 'error');
+        var resBox3 = document.getElementById('resultBox');
+        resBox3.style.display = 'block';
+        resBox3.style.color = '#f44747';
+        resBox3.textContent = msg.error;
         break;
       case 'uploadError':
         setStatus('❌ Upload failed: ' + msg.error, 'error');
