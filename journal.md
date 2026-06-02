@@ -36,4 +36,8 @@
   3. The Webview UI now dynamically displays a loading spinner ("분석 중...").
   4. Once `analyzer.py` completes, the stdout (result text) is sent directly to the Webview and rendered natively inside a beautiful result box, achieving a seamless "report-back" experience.
 
+### Issue 5: Paradigm Shift - Dropzone as a Pure LLM Gateway
+* **Symptom**: The extension was autonomously launching analysis tools (`analyzer.py`) and displaying results in a webview. This isolated the LLM (Zoo Code/agy-cli) from the context, violating the core philosophy of VibeZoo where the LLM is the autonomous agent holding the tools.
+* **Resolution**: Completely stripped out all hardcoded `child_process.exec`, `showInformationMessage`, and webview `Result Box` logic. The Dropzone now acts strictly as an ingestion gateway. When a file is uploaded, the extension simply saves it and writes a structured prompt (including the file path) to the user's clipboard, instructing them to paste it into the LLM chat. This restores agency to the LLM, allowing it to dynamically ask the user what they want to do with the file (e.g., "This is an image, shall I extract text or build a UI?") and then execute the necessary tools on its own.
+
 *Note: Version bumped to 0.14.2 for cache breaking, but locked per user request.*
