@@ -32,6 +32,7 @@ PIP_OPTIONAL: dict[str, str] = {
     "mss": "크로스플랫폼 스크린샷",
     "html2text": "HTML→마크다운 변환",
     "requests": "HTTP 클라이언트 (Crow 연동)",
+    "huggingface-hub": "허깅페이스 모델 다운로더",
 }
 
 # 시스템 도구 정보
@@ -93,6 +94,7 @@ class SetupManager:
         system_tools: bool = False,
         configure_mcp: bool = True,
         configure_zoo: bool = True,
+        download_models: bool = True,
     ) -> dict:
         """통합 설치 실행 — SetupManager의 주 진입점
 
@@ -112,6 +114,7 @@ class SetupManager:
         report: dict = {
             "python_packages": {"success": [], "skipped": [], "failed": []},
             "system_tools": {"installed": [], "skipped": [], "manual": [], "failed": []},
+            "models_download": None,
             "mcp_config": None,
             "zoo_config": None,
             "summary": {},
@@ -139,7 +142,12 @@ class SetupManager:
             zoo_result = self.configure_zoo()
             report["zoo_config"] = zoo_result
 
-        # 5. 요약
+        # 5. 모델 다운로드
+        if download_models and target in ("recommended", "full"):
+            models_result = self.download_vision_models()
+            report["models_download"] = models_result
+
+        # 6. 요약
         elapsed = time.time() - self._start_time
         report["summary"] = self._build_summary(report, elapsed)
 
@@ -606,6 +614,55 @@ class SetupManager:
                 "detail": str(e),
             }
 
+    # ── AI 모델 다운로드 ────────────────────────────────────
+
+    def download_vision_models(self) -> dict:
+        """MiniCPM-V Vision 모델(GGUF) 다운로드"""
+        if self._dry_run:
+            self._results.append({
+                "action": "download_models",
+                "dry_run": True,
+            })
+            return {
+                "status": "dry_run",
+                "detail": "Would download MiniCPM-V-4_6-Q5_K_M.gguf and mmproj-model-f16.gguf (approx 6.5GB)",
+            }
+        
+        try:
+            from huggingface_hub import hf_hub_download
+        except ImportError:
+            return {
+                "status": "error",
+                "detail": "huggingface_hub package not installed. Skipping model download.",
+            }
+            
+        try:
+            models_dir = Path.cwd() / "models"
+            models_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 메인 LLM 다운로드 및 리네임
+            gguf_path = models_dir / "MiniCPM-V-4_6-Q5_K_M.gguf"
+            if not gguf_path.exists():
+                hf_hub_download(repo_id="openbmb/MiniCPM-V-2_6-gguf", filename="ggml-model-Q5_K_M.gguf", local_dir=str(models_dir))
+                orig_file = models_dir / "ggml-model-Q5_K_M.gguf"
+                if orig_file.exists():
+                    orig_file.rename(gguf_path)
+            
+            # 비전 프로젝터 다운로드
+            mmproj_path = models_dir / "mmproj-model-f16.gguf"
+            if not mmproj_path.exists():
+                hf_hub_download(repo_id="openbmb/MiniCPM-V-2_6-gguf", filename="mmproj-model-f16.gguf", local_dir=str(models_dir))
+                
+            return {
+                "status": "success",
+                "detail": "Vision AI models downloaded and verified successfully.",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "detail": f"Model download failed: {str(e)}",
+            }
+
     # ── 보고서 생성 ────────────────────────────────────
 
     def generate_report(self, report: dict) -> str:
@@ -688,6 +745,15 @@ class SetupManager:
         else:
             lines.append("\n## 🏠 Zoo Configuration\n")
             lines.append("| _(skipped)_ | — | — |")
+            
+        # Models Download
+        models = report.get("models_download")
+        if models:
+            lines.append("\n## 🧠 AI Models\n")
+            status_icon = {"success": "✅", "error": "❌", "dry_run": "🔍"}
+            icon = status_icon.get(models.get("status", ""), "❓")
+            lines.append(f"- **Status**: {icon} {models.get('status', 'unknown')}")
+            lines.append(f"- **Detail**: {models.get('detail', '')}")
 
         # Summary
         summary = report.get("summary", {})
@@ -721,6 +787,7 @@ class SetupManager:
             "manual_tools": len(sys_tools.get("manual", [])),
             "mcp_status": mcp.get("status", "skipped") if mcp else "skipped",
             "zoo_status": zoo.get("status", "skipped") if zoo else "skipped",
+            "models_status": report.get("models_download", {}).get("status", "skipped") if report.get("models_download") else "skipped",
             "elapsed": round(elapsed, 1),
         }
 
@@ -789,6 +856,7 @@ def register(mcp):
         system_tools: bool = False,
         configure_mcp: bool = True,
         configure_zoo: bool = True,
+        download_models: bool = True,
         dry_run: bool = False,
     ) -> str:
         """🚀 VibeZoo 통합 설치/설정 도구.
@@ -798,8 +866,8 @@ def register(mcp):
 
         **설치 대상 (target):**
         - `minimal`: 필수 코어 패키지만 (fastmcp, uvicorn, starlette)
-        - `recommended`: 코어 + 옵션 패키지 (OpenCV, Pillow, tree-sitter, pytesseract 등)
-        - `full`: recommended + 시스템 도구 (ripgrep, tesseract-ocr)
+        - `recommended`: 코어 + 옵션 패키지 (OpenCV, Pillow, tree-sitter, pytesseract 등) + 모델 다운로드
+        - `full`: recommended + 시스템 도구 (ripgrep, tesseract-ocr) + 모델 다운로드
 
         Args:
             target: 설치 대상 ("minimal", "recommended", "full")
@@ -807,6 +875,7 @@ def register(mcp):
             system_tools: 시스템 도구 설치 여부 (Windows: winget 필요)
             configure_mcp: .roo/mcp.json SSE MCP 설정 자동 구성 여부
             configure_zoo: .zoo/config.json 설정 자동 구성 여부
+            download_models: MiniCPM-V 등 대용량 AI 모델 자동 다운로드 여부 (target=recommended/full 일때만)
             dry_run: 실제 설치 없이 필요한 항목만 출력 (안전 확인)
 
         Returns:
@@ -858,6 +927,7 @@ def register(mcp):
             system_tools=system_tools,
             configure_mcp=configure_mcp,
             configure_zoo=configure_zoo,
+            download_models=download_models,
         )
 
         # 설치 완료 시 자동 learn_project (지연, 1회만)
