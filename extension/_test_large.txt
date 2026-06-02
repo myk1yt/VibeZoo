@@ -1,5 +1,0 @@
-Line 1: This file has been modified!
-Line 2: Testing if write_to_file can modify existing files with more content.
-Line 3: Adding a bit more text to make it longer.
-Line 4: Still testing.
-Line 5: Final modified line.
