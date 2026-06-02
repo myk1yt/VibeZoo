@@ -64,3 +64,4 @@ $null
 line*.txt
 global_*.txt
 check_*.txt
+models/
