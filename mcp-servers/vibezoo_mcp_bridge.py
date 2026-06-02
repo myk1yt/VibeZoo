@@ -91,7 +91,7 @@ input[type=file]{display:none}
 </style></head><body>
 <div id=dropzone onclick="document.getElementById('f').click()">
 <div class=icon>&#128247;</div>
-<div class=placeholder><h2>Drag & Drop Image Here</h2><p style="color:#888;margin-top:8px">or click to browse</p></div>
+<div class=placeholder><h2>Drag & Drop or Paste (Ctrl+V) Image Here</h2><p style="color:#888;margin-top:8px">or click to browse</p></div>
 <img id=prev><div class=status id=sta></div></div>
 <input type=file id=f accept=image/* onchange="u(this.files[0])">
 <script>
@@ -99,6 +99,7 @@ function u(f){if(!f)return;var fd=new FormData();fd.append('image',f);document.g
 document.getElementById('dropzone').addEventListener('dragover',function(e){e.preventDefault();this.classList.add('dragover')});
 document.getElementById('dropzone').addEventListener('dragleave',function(e){this.classList.remove('dragover')});
 document.getElementById('dropzone').addEventListener('drop',function(e){e.preventDefault();this.classList.remove('dragover');var f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))u(f)});
+document.addEventListener('paste',function(e){var i=e.clipboardData.items;for(var j=0;j<i.length;j++){if(i[j].type.indexOf('image')!==-1){u(i[j].getAsFile());break;}}});
 </script></body></html>"""
         return JSONResponse({"html": html})
     elif request.method == "POST":

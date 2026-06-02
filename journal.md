@@ -68,3 +68,20 @@
 * **Resolution**: Completely stripped out all hardcoded `child_process.exec`, `showInformationMessage`, and webview `Result Box` logic. The Dropzone now acts strictly as an ingestion gateway. When a file is uploaded, the extension simply saves it and writes a structured prompt (including the file path) to the user's clipboard, instructing them to paste it into the LLM chat. This restores agency to the LLM, allowing it to dynamically ask the user what they want to do with the file (e.g., "This is an image, shall I extract text or build a UI?") and then execute the necessary tools on its own.
 
 *Note: Version bumped to 0.14.1 for cache breaking, but locked per user request.*
+
+---
+
+## 2026-06-02: Dropzone 세션 인식 + PDF SSA 분석 제거
+
+### Summary
+- **버그 발견**: `check_uploaded_files()`가 이전 세션의 모든 업로드를 보여주고, PDF 문서에 SSA(이미지 공간 분석)가 실행됨
+- **Bug 1 수정 — 세션 인식 드롭존**:
+  - [`config.py`](mcp-servers/bridge/config.py): `DZ_SESSION_FILE` 상수 추가
+  - [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py): `_open_dropzone_in_webview()`에서 드롭존 오픈 시 `dz_session.json`에 `started_at` 타임스탬프 기록
+  - [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py): `check_uploaded_files()`에서 세션 이후 업로드만 필터링 (JS ms → Python s 변환)
+- **Bug 2 수정 — PDF SSA 제거**:
+  - [`file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py): `_analyze_pdf_as_image()`에서 SSA 블록 19줄 완전 제거, OCR + MiniCPM-V는 유지
+- **Feature 추가**:
+  - [`vibezoo_mcp_bridge.py`](mcp-servers/vibezoo_mcp_bridge.py): Dropzone 웹 UI에 클립보드 이미지 복사/붙여넣기(Ctrl+V) 기능 추가
+- **워크플로우**: Research → Architect → Code → Debug → Git commit/push → VSIX rebuild → Local reinstall
+- **GitHub**: 3 files changed, 41 insertions, 25 deletions, commit `90016d8`, tag `v0.14.2`
