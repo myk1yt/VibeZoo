@@ -127,13 +127,21 @@ export class VisualVibePanels {
     filePath: string,
     lastMtime: { current: number },
     onChange: (content: WatchFileContent) => void,
+    retries = 5
   ): Promise<void> {
     try {
+      if (!fs.existsSync(filePath)) return;
+      const stat = fs.statSync(filePath);
+      if (stat.mtimeMs <= lastMtime.current && retries === 5) return;
+
       const contentStr = await fs.promises.readFile(filePath, 'utf-8');
       const content: WatchFileContent = JSON.parse(contentStr);
+      lastMtime.current = stat.mtimeMs;
       onChange(content);
-    } catch {
-      // 파일이 아직 없거나 읽을 수 없음 — 무시
+    } catch (err) {
+      if (retries > 0) {
+        setTimeout(() => this.handleFileChange(filePath, lastMtime, onChange, retries - 1), 200);
+      }
     }
   }
 
@@ -165,9 +173,7 @@ export class VisualVibePanels {
     const lastDzMtime = { current: this.getCurrentMtime(dzAction) };
 
     // ── whiteboard-action.json 감시 (open_whiteboard MCP 도구) ──
-    fs.watchFile(wbAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastActionMtime.current) return;
-      lastActionMtime.current = curr.mtimeMs;
+    fs.watchFile(wbAction, { interval: WATCH_INTERVAL_MS }, () => {
       this.handleFileChange(wbAction, lastActionMtime, (content) => {
         if (content.action === 'open') {
           this.openWhiteboard();
@@ -179,9 +185,7 @@ export class VisualVibePanels {
     });
 
     // ── ui-action.json 감시 (open_ui_preview MCP 도구) ──
-    fs.watchFile(uiAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastUiMtime.current) return;
-      lastUiMtime.current = curr.mtimeMs;
+    fs.watchFile(uiAction, { interval: WATCH_INTERVAL_MS }, () => {
       this.handleFileChange(uiAction, lastUiMtime, (content) => {
         if (content.action === 'open_ui') {
           this.openUIPreview(content.code || '', content.framework || 'react');
@@ -190,9 +194,7 @@ export class VisualVibePanels {
     });
 
     // ── dropzone-action.json 감시 (open_dropzone MCP 도구) ──
-    fs.watchFile(dzAction, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastDzMtime.current) return;
-      lastDzMtime.current = curr.mtimeMs;
+    fs.watchFile(dzAction, { interval: WATCH_INTERVAL_MS }, () => {
       this.handleFileChange(dzAction, lastDzMtime, (content) => {
         if (content.action === 'open') {
           this.openDropzone();
@@ -204,9 +206,7 @@ export class VisualVibePanels {
     });
 
     // ── whiteboard.json 감시 (draw_on_whiteboard MCP 도구) ──
-    fs.watchFile(wbFile, { interval: WATCH_INTERVAL_MS }, (curr) => {
-      if (curr.mtimeMs <= lastWbMtime.current) return;
-      lastWbMtime.current = curr.mtimeMs;
+    fs.watchFile(wbFile, { interval: WATCH_INTERVAL_MS }, () => {
       this.handleFileChange(wbFile, lastWbMtime, (content) => {
         // canvasState에서 쓴 내용은 건너뜀 (무한 루프 방지)
         if (content._source === 'canvasState') return;
