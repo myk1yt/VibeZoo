@@ -470,11 +470,8 @@ export class VisualVibePanels {
       // --- 터미널 분석기 팝업 띄우기 ---
       try {
         const cp = require('child_process');
-        const os = require('os');
         const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
-        if (os.platform() === 'win32') {
-          cp.exec(`start cmd /k "python \\"${analyzerScript}\\" \\"${destPath}\\""`);
-        }
+        cp.exec(`start cmd /k "python \\"${analyzerScript}\\" \\"${destPath}\\""`);
       } catch (err) {
         console.error("Failed to spawn analyzer", err);
       }
@@ -1021,6 +1018,7 @@ export class VisualVibePanels {
   });
   dz.addEventListener('drop', function(e) {
     e.preventDefault();
+    e.stopPropagation();
     this.classList.remove('dragover');
     var files = e.dataTransfer.files;
     if (files && files.length > 0) {
