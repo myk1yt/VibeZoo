@@ -960,15 +960,16 @@ export class VisualVibePanels {
   .status.error { color: #f44747; border: 1px solid #f44747; }
   .status.info { color: #4ec9ff; border: 1px solid #4ec9ff; }
   .file-info { font-size: 12px; color: #888; margin-top: 4px; }
-  .actions { margin-top: 16px; display: flex; gap: 8px; }
+  .actions { margin-top: 16px; display: flex; gap: 8px; position: relative; z-index: 20; }
   .actions button { padding: 8px 20px; background: #3c3c3c; color: #ccc; border: 1px solid #555; border-radius: 6px; cursor: pointer; font-size: 13px; }
   .actions button:hover { background: #505050; }
   .actions button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
   .actions button.primary:hover { background: #1177bb; }
-  input[type=file] { display: none; }
+  input[type=file] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
 </style>
 </head><body>
-<div id="dropzone" onclick="document.getElementById('fileInput').click()">
+<div id="dropzone">
+  <input type="file" id="fileInput" onchange="handleFiles(this.files)" title="Drag & drop or click here">
   <div class="icon">📷</div>
   <div class="placeholder">
     <h2>VibeZoo Drop Zone</h2>
@@ -980,10 +981,10 @@ export class VisualVibePanels {
 <div class="status" id="status"></div>
 <div class="file-info" id="fileInfo"></div>
 <div class="actions">
-  <button onclick="document.getElementById('fileInput').click()" class="primary">📂 Open File</button>
+  <!-- 버튼은 투명 인풋 바깥(아래)에 둡니다. 하지만 z-index로 띄웁니다. -->
+  <button onclick="document.getElementById('fileInput').click()" class="primary">📂 Browse</button>
   <button onclick="clearDropzone()">🗑️ Clear</button>
 </div>
-<input type="file" id="fileInput" onchange="handleFiles(this.files)">
 <script>
   var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
 
@@ -1076,41 +1077,13 @@ export class VisualVibePanels {
     }
   });
 
-  window.addEventListener('dragover', function(e) { e.preventDefault(); e.stopPropagation(); }, false);
-  window.addEventListener('drop', function(e) { e.preventDefault(); e.stopPropagation(); }, false);
-
+  // 투명 Input Overlay가 네이티브 이벤트를 완벽하게 처리하므로 복잡한 JS 방어막 불필요
+  var fi = document.getElementById('fileInput');
   var dz = document.getElementById('dropzone');
   
-  dz.addEventListener('dragenter', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    this.classList.add('dragover');
-  }, false);
-
-  dz.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'copy';
-    this.classList.add('dragover');
-  }, false);
-
-  dz.addEventListener('dragleave', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    this.classList.remove('dragover');
-  }, false);
-
-  dz.addEventListener('drop', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    this.classList.remove('dragover');
-    var files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      // 마치 Open File 버튼을 눌러서 선택한 것처럼 input 태그에 직접 파일 객체 할당
-      try { document.getElementById('fileInput').files = files; } catch(err) {}
-      handleFiles(files);
-    }
-  }, false);
+  fi.addEventListener('dragenter', function() { dz.classList.add('dragover'); });
+  fi.addEventListener('dragleave', function() { dz.classList.remove('dragover'); });
+  fi.addEventListener('drop', function() { dz.classList.remove('dragover'); });
 
   document.addEventListener('paste', function(e) {
     var items = e.clipboardData && e.clipboardData.items;
