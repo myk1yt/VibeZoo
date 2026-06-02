@@ -24,7 +24,7 @@ def _make_request(url: str):
     except Exception as e:
         return {"error": f"Request failed: {str(e)}"}
 
-def github_search_repositories(query: str, limit: int = 5) -> str:
+def _search(query: str, limit: int = 5) -> str:
     """GitHub에서 키워드로 오픈소스 리포지토리를 검색합니다. (별점, 설명, 풀네임 반환)
     
     Args:
@@ -52,7 +52,7 @@ def github_search_repositories(query: str, limit: int = 5) -> str:
     result.append("\n💡 Tip: Use `github_explore_repository(repo_name)` to view its file structure.")
     return "\n".join(result)
 
-def github_explore_repository(repo_name: str) -> str:
+def _explore(repo_name: str) -> str:
     """특정 리포지토리의 핵심 폴더/파일 트리(뼈대) 구조를 스캔합니다.
     
     Args:
@@ -102,7 +102,7 @@ def github_explore_repository(repo_name: str) -> str:
     result.append("\n💡 Tip: Use `github_read_file(repo_name, file_path)` to extract the code.")
     return "\n".join(result)
 
-def github_read_file(repo_name: str, file_path: str) -> str:
+def _read(repo_name: str, file_path: str) -> str:
     """GitHub 리포지토리에서 특정 파일의 소스코드를 그대로 읽어옵니다.
     
     Args:
@@ -138,7 +138,23 @@ def github_read_file(repo_name: str, file_path: str) -> str:
     except Exception as e:
         return f"❌ Failed to read file: {str(e)}"
 
+
+def explore_github(query: str = "", repo: str = "", file_path: str = "") -> str:
+    """GitHub 통합 탐색 도구. 단 하나로 검색, 구조 스캔, 코드 추출을 모두 수행합니다.
+    
+    사용 예시:
+    1. 리포지토리 검색: query="fastapi websocket" (repo, file_path는 비움)
+    2. 레포 구조 스캔: repo="tiangolo/fastapi" (query, file_path는 비움)
+    3. 특정 파일 읽기: repo="tiangolo/fastapi", file_path="src/main.py"
+    """
+    if repo and file_path:
+        return _read(repo, file_path)
+    elif repo:
+        return _explore(repo)
+    elif query:
+        return _search(query, limit=5)
+    else:
+        return "❌ Error: You must provide either 'query', 'repo', or both 'repo' and 'file_path'."
+
 def register(mcp):
-    mcp.tool()(github_search_repositories)
-    mcp.tool()(github_explore_repository)
-    mcp.tool()(github_read_file)
+    mcp.tool()(explore_github)
