@@ -443,7 +443,7 @@ export class VisualVibePanels {
   }
 
   /** 드랍존 절대 경로 파일 복사 (VS Code 샌드박스 우회 근본 해결책) */
-  private handleLocalFileDrop(sourcePath: string, fileName: string): void {
+  private async handleLocalFileDrop(sourcePath: string, fileName: string): Promise<void> {
     try {
       const cacheDir = DROPZONE_CACHE_DIR();
       fs.mkdirSync(cacheDir, { recursive: true });
@@ -454,27 +454,34 @@ export class VisualVibePanels {
       fs.copyFileSync(sourcePath, destPath);
       const stat = fs.statSync(destPath);
 
-      // 터미널 팝업
-      try {
-        const cp = require('child_process');
-        let analyzerScript = '';
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (workspaceFolders && workspaceFolders.length > 0) {
-          analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
-        } else {
-          analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+      // 터미널 팝업 대신 QuickPick 선택지 제공
+      const options = ["🔍 Analyze Image with MiniCPM-V (llama.cpp)", "📄 Extract Text (OCR)", "❌ Cancel"];
+      const selection = await vscode.window.showQuickPick(options, { placeHolder: "What would you like to do with the uploaded file?" });
+
+      if (selection === options[0]) {
+        try {
+          const cp = require('child_process');
+          let analyzerScript = '';
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (workspaceFolders && workspaceFolders.length > 0) {
+            analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
+          } else {
+            analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+          }
+          
+          if (!fs.existsSync(analyzerScript)) {
+            console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
+          }
+          
+          cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
+            detached: true,
+            stdio: 'ignore'
+          }).unref();
+        } catch (err) {
+          console.error("Failed to spawn analyzer", err);
         }
-        
-        if (!fs.existsSync(analyzerScript)) {
-          console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
-        }
-        
-        cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
-          detached: true,
-          stdio: 'ignore'
-        }).unref();
-      } catch (err) {
-        console.error("Failed to spawn analyzer", err);
+      } else if (selection === options[1]) {
+        vscode.window.showInformationMessage("OCR extraction feature coming soon!");
       }
 
       console.log(`[VibeZoo] Local Dropzone file copied: ${destPath} (${stat.size} bytes)`);
@@ -498,7 +505,7 @@ export class VisualVibePanels {
   }
 
   /** 드랍존 파일 업로드 처리 — Temp 폴더에 저장 */
-  private handleDropzoneUpload(fileName: string, dataBase64: string, mimeType: string): void {
+  private async handleDropzoneUpload(fileName: string, dataBase64: string, mimeType: string): Promise<void> {
     try {
       const cacheDir = DROPZONE_CACHE_DIR();
       fs.mkdirSync(cacheDir, { recursive: true });
@@ -525,27 +532,34 @@ export class VisualVibePanels {
       const buffer = Buffer.from(raw, 'base64');
       fs.writeFileSync(destPath, buffer);
 
-      // 터미널 팝업
-      try {
-        const cp = require('child_process');
-        let analyzerScript = '';
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (workspaceFolders && workspaceFolders.length > 0) {
-          analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
-        } else {
-          analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
-        }
+      // 터미널 팝업 대신 QuickPick 선택지 제공
+      const options = ["🔍 Analyze Image with MiniCPM-V (llama.cpp)", "📄 Extract Text (OCR)", "❌ Cancel"];
+      const selection = await vscode.window.showQuickPick(options, { placeHolder: "What would you like to do with the uploaded file?" });
 
-        if (!fs.existsSync(analyzerScript)) {
-          console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
-        }
+      if (selection === options[0]) {
+        try {
+          const cp = require('child_process');
+          let analyzerScript = '';
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (workspaceFolders && workspaceFolders.length > 0) {
+            analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
+          } else {
+            analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+          }
 
-        cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
-          detached: true,
-          stdio: 'ignore'
-        }).unref();
-      } catch (err) {
-        console.error("Failed to spawn analyzer", err);
+          if (!fs.existsSync(analyzerScript)) {
+            console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
+          }
+
+          cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
+            detached: true,
+            stdio: 'ignore'
+          }).unref();
+        } catch (err) {
+          console.error("Failed to spawn analyzer", err);
+        }
+      } else if (selection === options[1]) {
+        vscode.window.showInformationMessage("OCR extraction feature coming soon!");
       }
       // ---------------------------------
 
