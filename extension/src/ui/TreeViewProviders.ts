@@ -162,19 +162,7 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
     this.startHealthCheck();
   }
 
-  /** FileGuard 토글 상태 업데이트 — 노드는 항상 존재, 상태만 변경 */
-  setFileGuardStatus(enabled: boolean): void {
-    this.nodes.set('_fileguard', {
-      id: '_fileguard',
-      name: 'FileGuard',
-      status: enabled ? 'running' : 'idle',
-      currentTask: enabled ? 'Protecting files' : 'Disabled (click to enable)',
-      port: 0,
-      startTime: Date.now(),
-    });
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
+  // setFileGuardStatus removed
   /** CIM 감시 상태 업데이트 */
   setCimStatus(watching: boolean): void {
     const existing = this.nodes.get('_cim');
@@ -208,12 +196,10 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
       return Promise.resolve([placeholder as any]);
     }
     const items = nodes.map((node) => new SubagentTreeItem(node, this._bridgeOk, this._crowOk));
-    // Bridge -> FileGuard -> 이름순 정렬
+    // Bridge -> 이름순 정렬
     items.sort((a, b) => {
       if (a.node.id === '_bridge') return -1;
       if (b.node.id === '_bridge') return 1;
-      if (a.node.id === '_fileguard') return -1;
-      if (b.node.id === '_fileguard') return 1;
       return a.node.name.localeCompare(b.node.name);
     });
     return Promise.resolve(items);
@@ -266,19 +252,7 @@ class SubagentTreeItem extends vscode.TreeItem {
       return;
     }
 
-    // FileGuard toggle special node (always shown, never deleted)
-    if (node.id === '_fileguard') {
-      const enabled = node.status === 'running';
-      this.label = enabled ? '$(shield) FileGuard' : '$(unlock) FileGuard';
-      this.description = enabled ? 'ON' : 'OFF';
-      this.contextValue = 'fileguard';
-      this.tooltip = enabled ? 'FileGuard: 보호 중 - 클릭하여 OFF' : 'FileGuard: 꺼짐 - 클릭하여 ON';
-      this.command = {
-        command: 'vibezoo.toggleFileGuard',
-        title: 'Toggle FileGuard',
-      };
-      return;
-    }
+    // FileGuard node removed
 
     // Regular agent nodes
     const iconMap: Record<string, string> = {

@@ -16,7 +16,7 @@ import { activateBuildFeedback } from './flow/BuildFeedback';
 import { activateProjectDetector } from './flow/ProjectDetector';
 import { ProjectTreeScanner } from './flow/ProjectTreeScanner';
 import { YoctoManager } from './safety/YoctoManager';
-import { FileGuard } from './safety/FileGuard';
+// FileGuard removed
 import { AutoBuildFix } from './safety/AutoBuildFix';
 import { GitStashManager } from './safety/GitStashManager';
 import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetector } from './context/ContextIntelligence';
@@ -64,7 +64,7 @@ const _activeExtensions = new Set<string>();
 let crowServer: CrowServerManager;
 let statusBar: StatusBarManager;
 let yocto: YoctoManager;
-let fileGuard: FileGuard;
+// fileGuard removed
 let autoBuildFix: AutoBuildFix;
 let gitStash: GitStashManager;
 let treeScanner: ProjectTreeScanner;
@@ -131,9 +131,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     yocto = new YoctoManager();
     yocto.activate(context);
 
-    fileGuard = new FileGuard(yocto);
-    fileGuard.activate(context);
-
+    // FileGuard removed
     autoBuildFix = new AutoBuildFix();
     gitStash = new GitStashManager();
   }
@@ -193,8 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider('vibezoo.sessionResume', sessionResumeProvider)
   );
 
-  // FileGuard 초기 상태를 Sidebar에 반영 (fileGuard 유/무 관계없이 노드 표시)
-  subagentsProvider.setFileGuardStatus(fileGuard ? fileGuard.isEnabled() : false);
+  // FileGuard removed
 
   // SubagentManager onChange → ActiveSubagentsProvider
   subagentManager.onChange((node) => subagentsProvider.updateNode(node));
@@ -415,22 +412,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 2000);
   }
 
-  // FileGuard 토글 커맨드
-  context.subscriptions.push(
-    vscode.commands.registerCommand('vibezoo.toggleFileGuard', async () => {
-      if (!fileGuard) {
-        vscode.window.showWarningMessage('VibeZoo: YOLO 안전망이 비활성화되어 있어 FileGuard를 사용할 수 없습니다.');
-        return;
-      }
-      const newState = fileGuard.toggle();
-      subagentsProvider.setFileGuardStatus(newState);
-      if (newState) {
-        vscode.window.showInformationMessage('VibeZoo: FileGuard 켜짐');
-      } else {
-        vscode.window.showWarningMessage('VibeZoo: FileGuard 꺼짐');
-      }
-    })
-  );
+  // FileGuard toggle removed
 
   // AutoBuildFix 내부 커맨드
   context.subscriptions.push(
@@ -592,7 +574,7 @@ export function deactivate(): void {
   crowServer?.onDeactivate();
   treeScanner?.dispose();
   yocto?.dispose();
-  fileGuard?.dispose();
+  // fileGuard removed
   sessionResume?.dispose();
   visualPanels?.dispose();
   subagentManager?.terminate();
