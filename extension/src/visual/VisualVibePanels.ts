@@ -457,7 +457,18 @@ export class VisualVibePanels {
       // 터미널 팝업
       try {
         const cp = require('child_process');
-        const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+        let analyzerScript = '';
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+          analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
+        } else {
+          analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+        }
+        
+        if (!fs.existsSync(analyzerScript)) {
+          console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
+        }
+        
         cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
           detached: true,
           stdio: 'ignore'
@@ -517,7 +528,18 @@ export class VisualVibePanels {
       // 터미널 팝업
       try {
         const cp = require('child_process');
-        const analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+        let analyzerScript = '';
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+          analyzerScript = path.join(workspaceFolders[0].uri.fsPath, 'mcp-servers', 'tools', 'analyzer.py');
+        } else {
+          analyzerScript = path.join(__dirname, '..', '..', '..', 'mcp-servers', 'tools', 'analyzer.py');
+        }
+
+        if (!fs.existsSync(analyzerScript)) {
+          console.error("[VibeZoo] Error: analyzer.py not found at", analyzerScript);
+        }
+
         cp.spawn('cmd.exe', ['/c', 'start', 'VibeZoo Vision', 'cmd.exe', '/k', 'python', analyzerScript, destPath], {
           detached: true,
           stdio: 'ignore'
