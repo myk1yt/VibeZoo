@@ -657,6 +657,9 @@ gantt
     Full Integration Stabilization  :2026-09-01, 30d
 ```
 
+**2026-06-02: UX Workflow 구현 완료 (Quick Win Q6)** — [`intent_detector.py`](../mcp-servers/bridge/intent_detector.py) + [`ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) (3 tools: `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard`). MiniCPM 우선 사용 피드백 반영. 설계→구현→테스트→GitHub 전체 완료.
+
+
 ### 9.2 Milestone Details
 
 | Milestone | Timeline | Key Achievements | Success Metrics |

@@ -1,5 +1,18 @@
 # VibeZoo Development Journal
 
+## 2026-06-02: UX Workflow 구현 (의도 감지 + 자동 도구 체인)
+
+### Summary
+- **신규**: [`intent_detector.py`](../mcp-servers/bridge/intent_detector.py) — 키워드 기반 자연어 의도 감지 모듈 (`file_share`, `drawing_request`, `whiteboard_input`, `code_analysis`, `general_question`)
+- **신규**: [`ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) — UX 코디네이터 (3개 도구: `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard`)
+- **수정**: [`tools/__init__.py`](../mcp-servers/bridge/tools/__init__.py), [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py), [`vibezoo_mcp_bridge_v2.py`](../mcp-servers/vibezoo_mcp_bridge_v2.py)
+- **설계 문서**: [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md)
+- **결정 사항**: MiniCPM 우선 사용 (GGUF, llama-cpp-python)
+- **GitHub**: 7 files changed, 918 insertions, push 완료
+- **도구 수**: 31 → 34
+
+---
+
 ## 2026-06-02: Dropzone & Vision AI Pipeline Refactoring
 
 ### Issue 1: Drag & Drop Failure in VS Code Webview

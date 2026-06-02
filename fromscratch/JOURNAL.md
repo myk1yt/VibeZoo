@@ -5,6 +5,7 @@
 
 ---
 
+- [2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)](#2026-06-02---v0140-ux-workflow-구현-의도-감지--자동-도구-체인)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
 - [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
@@ -13,6 +14,18 @@
 - [2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal](#2026-05-27-v0100-python-mcp-bridge-migration--go-removal)
 - [2026-05-27 - v0.10.0: Initial implementation complete (26 files)](#2026-05-27-v0100-initial-implementation-complete-26-files)
 - [2026-05-27 - Architecture design started](#2026-05-27-architecture-design-started)
+
+---
+
+## 2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)
+
+**Changes**:
+- 신규: [`bridge/intent_detector.py`](../mcp-servers/bridge/intent_detector.py) — 키워드 기반 자연어 의도 감지 모듈 (`file_share`, `drawing_request`, `whiteboard_input`, `code_analysis`, `general_question`)
+- 신규: [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) — UX 코디네이터 (3개 도구: `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard`)
+- 수정: [`tools/__init__.py`](../mcp-servers/bridge/tools/__init__.py), [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py), [`vibezoo_mcp_bridge_v2.py`](../mcp-servers/vibezoo_mcp_bridge_v2.py)
+- 설계 문서: [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md)
+- GitHub: 7 files changed, 918 insertions, push 완료
+- MiniCPM 우선 사용 피드백 반영
 
 ---
 

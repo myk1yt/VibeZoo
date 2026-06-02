@@ -1,7 +1,7 @@
-# VibeZoo Implementation Plan — v0.12.0
+# VibeZoo Implementation Plan — v0.14.0
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision)
-> **Baseline Version**: v0.12.0
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.0 UX Workflow)
+> **Baseline Version**: v0.14.0
 > **Base Documents**: [Architecture.md](./Architecture.md), [ROADMAP.md](./ROADMAP.md), [JOURNAL.md](./JOURNAL.md)
 
 ---
@@ -10,6 +10,7 @@
 
 | Version | Date | Key Changes | Notes |
 |:---|:---|:---|:---|
+| **v0.14.0** | 2026-06-02 (Current) | UX Workflow: intent_detector + ux_coordinator (3 tools) + 문서 업데이트 | Current |
 | **v0.10.0** | 2026-05-27 AM | Initial implementation complete (26 files). 4 Go MCP servers. AutoBuildFix empty loop. | Design → Implementation |
 | **v0.10.0** | 2026-05-27 PM | Switched to Python MCP bridge. All Go servers removed. Single `vibezoo_mcp_bridge.py` file. | Go→Python |
 | **v0.10.0** | 2026-05-27 PM | AI auto Whiteboard + UI Preview integration. 4 new MCP tools including `draw_on_whiteboard`. | `setInterval` polling |
@@ -71,7 +72,12 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard + UI Preview + Diagram
 │
 ├── mcp-servers/
-│   └── vibezoo_mcp_bridge.py         # 31 MCP tools (2,331 lines)
+│   ├── vibezoo_mcp_bridge_v2.py      # 34 MCP tools (v2)
+│   ├── vibezoo_mcp_bridge.py         # Legacy bridge
+│   └── bridge/
+│       ├── intent_detector.py        # UX Intent Detection
+│       └── tools/
+│           └── ux_coordinator.py     # UX Coordinator (3 tools)
 │
 ├── fromscratch/                      # Design documents
 │   ├── Architecture.md               # Architecture document
@@ -80,7 +86,8 @@ VibeZoo_forZoocode/
 │   └── JOURNAL.md                    # Development journal
 │
 ├── plans/
-│   └── autonomous-fix-loop.md        # FixLoopManager detailed design (701 lines)
+│   ├── autonomous-fix-loop.md        # FixLoopManager detailed design (701 lines)
+│   └── ux-workflow-design.md         # UX Workflow design document
 │
 └── templates/
     ├── yoloignore
@@ -204,6 +211,21 @@ VibeZoo_forZoocode/
 
 ---
 
+---
+
+### 3.11 UX Workflow — Completed ✅
+
+| # | Item | File | Status |
+|:---:|:---|:---|:---:|
+| UX-1 | intent_detector.py (의도 감지) | [`bridge/intent_detector.py`](../mcp-servers/bridge/intent_detector.py) | ✅ |
+| UX-2 | ux_coordinator.py (UX 코디네이터) | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
+| UX-3 | ux_coordinator, auto_analyze_after_drop, auto_analyze_whiteboard | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
+| UX-4 | capture_screen/analyze_uploaded_file/get_whiteboard_state 설명 개선 | [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py) | ✅ |
+| UX-5 | vibezoo_mcp_bridge_v2.py list_subagents/health check 업데이트 | [`vibezoo_mcp_bridge_v2.py`](../mcp-servers/vibezoo_mcp_bridge_v2.py) | ✅ |
+| UX-6 | 설계 문서 작성 | [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md) | ✅ |
+
+---
+
 ## 4. Remaining Work (Based on ROADMAP.md)
 
 ### 4.1 Priority Matrix
@@ -310,7 +332,7 @@ gantt
 
 | Metric | M0 (Completed) | M1 (Completed) | M3 (Completed) | M6 (Target) |
 |:---|:---:|:---:|:---:|:---:|
-| **MCP Tool Count** | 16 | 23 | 31 | 35+ |
+| **MCP Tool Count** | 16 | 23 | 34 | 35+ |
 | **Auto Resolution Rate** (build errors) | 0% | 40%+ (HITL) | 60%+ (CIM) | 80%+ |
 | **Extension Activation Time** | < 500ms | < 500ms | < 500ms | < 300ms |
 | **Crow Past Resolution Reuse Rate** | 0% | 10%+ | 30%+ | 50%+ |

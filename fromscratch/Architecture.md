@@ -1,7 +1,7 @@
-# VibeZoo Architecture — v0.13.0
+# VibeZoo Architecture — v0.14.0
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision)
-> **Baseline Version**: v0.13.0
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.0 UX Workflow)
+> **Baseline Version**: v0.14.0
 > **Project**: VibeZoo — Standalone Companion Extension for Zoo Code
 > **Core Constraint**: Do not modify Zoo Code source code. All features are implemented via VibeZoo Extension + MCP Bridge + configuration changes.
 
@@ -17,7 +17,7 @@
 | 2 | **MCP Server** | 4 Go binaries (Scout:9022, Reviewer:9023, Tester:9024, Deep:9026) | Single Python bridge [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) (port 9020) |
 | 3 | **AutoBuildFix** | [`extension/src/safety/AutoBuildFix.ts`](../extension/src/safety/AutoBuildFix.ts) — empty loop (rebuild only) | [`extension/src/orchestra/FixLoopManager.ts`](../extension/src/orchestra/FixLoopManager.ts) — autonomous fix state machine + CIM + HITL |
 | 4 | **Session Resume** | Webview panel | Integrated into TreeView ([`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) `SessionResumeProvider`) |
-| 5 | **MCP Tool Count** | 15 | 31 (tree-sitter AST-based semantic analysis) |
+| 5 | **MCP Tool Count** | 15 | 34 (tree-sitter AST-based semantic analysis) |
 | 6 | **Autonomous Fix Loop** | Design only | Implemented — `FixLoopManager` + `auto_fix_status` + `retry_build` + `check_intervention` |
 | 7 | **Self-healing CIM** | Design only | Implemented — `FixLoopManager.startWatching()` (file save → tsc → auto fix) |
 | 8 | **HITL Intervention** | Design only | Implemented — `pause/resume/abort` + Whiteboard·Chat intervention channels |
@@ -46,7 +46,7 @@ VibeZoo is a VS Code Companion Extension that assists Zoo Code **without modifyi
 - **Safety Net**: yocto real-time backup, `.yoloignore` File Guard, automated Git Stash
 - **Autonomous Fix**: Build failure → LLM analysis → code fix → rebuild (max 3 attempts, oscillation detection)
 - **Continuous Monitoring**: CIM (Continuous Improvement Mode) — automatic tsc check on file save
-- **MCP Tools**: 31 tools (tree-sitter AST-based code search·review·analysis·reverse engineering·PR review·refactoring·preference learning)
+- **MCP Tools**: 34 tools (tree-sitter AST-based code search·review·analysis·reverse engineering·PR review·refactoring·preference learning + UX Workflow)
 - **Visual Collaboration**: Whiteboard, UI Preview, Diagram Engine
 - **Memory Integration**: Crow Memory (Zoo Code built-in) + Crow tools for learning error patterns, project knowledge, coding preferences
 
@@ -100,7 +100,7 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 │ (Zoo Code built-in)      │    │ vibezoo_mcp_bridge.py            │
 │ localhost:9020           │    │ localhost:9020/sse               │
 │                          │    │                                  │
-│ • crow_recall            │    │ • 31 MCP tools                  │
+│ • crow_recall            │    │ • 34 MCP tools                  │
 │ • crow_ingest            │    │ • tree-sitter AST parsing        │
 │ • crow_compact           │    │ • Crow Memory integration        │
 │ • crow_evolve_propose    │    │   (crow_recall/ingest wrappers)  │
@@ -160,7 +160,41 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard (fs.watchFile) + UI Preview + Diagram panels
 │
 ├── mcp-servers/
-│   └── vibezoo_mcp_bridge.py         # Single file, 31 MCP tools, FastMCP + SSE, port 9020
+│   ├── vibezoo_mcp_bridge_v2.py      # MCP Bridge v2, 34 MCP tools, FastMCP + SSE, port 9027
+│   ├── vibezoo_mcp_bridge.py         # Legacy bridge
+│   └── bridge/
+│       ├── __init__.py
+│       ├── config.py
+│       ├── intent_detector.py        # UX Intent Detection (keyword-based NLP)
+│       ├── ast_engine.py
+│       ├── search_engine.py
+│       ├── llm_pipeline.py
+│       ├── ocr_engine.py
+│       ├── crow_client.py
+│       ├── file_cache.py
+│       ├── result_ranker.py
+│       ├── tool_context.py
+│       ├── utils.py
+│       ├── vision/
+│       │   └── minicpm.py            # MiniCPM Vision AI pipeline
+│       └── tools/
+│           ├── __init__.py
+│           ├── _base.py
+│           ├── scout.py
+│           ├── reviewer.py
+│           ├── tester.py
+│           ├── deep_analyzer.py
+│           ├── integrated.py
+│           ├── analysis.py
+│           ├── fix_loop.py
+│           ├── knowledge.py
+│           ├── web.py
+│           ├── whiteboard.py
+│           ├── file_analyzer.py
+│           ├── github_diver.py
+│           ├── ssa.py
+│           ├── setup.py
+│           └── ux_coordinator.py     # UX Coordinator (3 tools)
 │
 ├── fromscratch/                      # Design documents
 │   ├── Architecture.md               # ← This document
@@ -171,7 +205,8 @@ VibeZoo_forZoocode/
 │   └── zoo_code_upgrade.agent.final.md
 │
 ├── plans/
-│   └── autonomous-fix-loop.md        # FixLoopManager detailed design
+│   ├── autonomous-fix-loop.md        # FixLoopManager detailed design
+│   └── ux-workflow-design.md         # UX Workflow design document
 │
 └── templates/
     ├── yoloignore                    # .yoloignore template
@@ -253,7 +288,7 @@ When `startWatching()` is called at [`extension/src/orchestra/FixLoopManager.ts`
 
 ### 4.3 [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — MCP Bridge
 
-**31 MCP Tools** (FastMCP + tree-sitter AST):
+**34 MCP Tools** (FastMCP + tree-sitter AST):
 
 | Category | Tool | AST Usage |
 |:---|:---|:---|
@@ -270,6 +305,7 @@ When `startWatching()` is called at [`extension/src/orchestra/FixLoopManager.ts`
 | **Refactoring (M3-C)** | `refactor_across_files` | — |
 | **Knowledge (M3-D)** | `learn_project`, `recall_project` | Crow arch·style·life_context integration |
 | **Preferences (M3-E)** | `learn_preference`, `get_preferences` | Crow life_context integration |
+| **UX Workflow** | `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard` | Intent detection + auto tool chain |
 
 **Crow Integration**: `try_crow_ingest()` / `try_crow_recall()` wrappers enable optional integration with Crow Memory (9020) from all tools. Tool operation is unaffected even if Crow connection fails.
 
@@ -396,7 +432,7 @@ User:                                                   │
 
 ---
 
-## 6. Full MCP Tool List (31)
+## 6. Full MCP Tool List (34)
 
 | # | Tool Name | Category | AST | Description |
 |:---:|:---|:---|:---:|:---|
@@ -413,8 +449,8 @@ User:                                                   │
 | 11 | `analyze_coverage` | Tester | — | vitest coverage execution |
 | 12 | `draw_on_whiteboard` | Whiteboard | — | Fabric.js drawing command transmission |
 | 13 | `get_whiteboard_state` | Whiteboard | — | Query user modifications |
-| 14 | `open_whiteboard` | Whiteboard | — | Open whiteboard panel |
-| 15 | `capture_screen` | Whiteboard | — | Screen capture → whiteboard |
+| 14 | `capture_screen` | Whiteboard | — | Screen capture / dropzone open |
+| 15 | `open_whiteboard` | Whiteboard | — | Open whiteboard panel |
 | 16 | `open_ui_preview` | UI Preview | — | React/Vue real-time preview |
 | 17 | `auto_fix_status` | Fix Loop | — | Fix request query + Crow past patterns |
 | 18 | `retry_build` | Fix Loop | — | Build re-execution + result recording |
@@ -431,6 +467,9 @@ User:                                                   │
 | 29 | `recall_project` | Knowledge (M3-D) | — | Recall project knowledge from Crow |
 | 30 | `learn_preference` | Preferences (M3-E) | — | Save user coding preferences |
 | 31 | `get_preferences` | Preferences (M3-E) | — | Retrieve saved preferences |
+| 32 | `ux_coordinator` | UX (신규) | — | 사용자 의도 분석 + 도구 체인 제안 |
+| 33 | `auto_analyze_after_drop` | UX (신규) | — | 드롭존 업로드 후 자동 분석 파이프라인 (SSA→OCR→MiniCPM) |
+| 34 | `auto_analyze_whiteboard` | UX (신규) | — | 화이트보드 자동 분석 |
 
 ---
 
@@ -439,13 +478,14 @@ User:                                                   │
 | Component | Technology | Description |
 |:---|:---|:---|
 | **Extension** | TypeScript 5.x | VS Code Extension API |
-| **MCP Bridge** | Python 3.x + FastMCP | SSE transport, port 9020 |
+| **MCP Bridge** | Python 3.x + FastMCP + intent_detector | SSE transport, port 9027 |
 | **AST Parsing** | tree-sitter + tree-sitter-typescript | TS/JS structure analysis (regex fallback when not installed) |
 | **Communication** | MCP/SSE (JSON-RPC 2.0) | Zoo Code ↔ Bridge |
 | **Whiteboard** | Fabric.js | HTML5 Canvas drawing |
 | **UI Preview** | iframe sandbox + Babel standalone | React/Vue real-time rendering |
 | **Diagram** | Mermaid.js + D3.js | ERD, call graph, dependency map |
 | **Crow Memory** | Zoo Code built-in | Python FastMCP, port 9020 |
+| **Vision AI** | MiniCPM-V (GGUF) + llama-cpp-python | OCR + Vision Analysis pipeline |
 
 ---
 
@@ -477,15 +517,16 @@ User:                                                   │
 
 ## 10. Conclusion
 
-VibeZoo v0.12.0 achieved the following **without modifying a single line of Zoo Code source code**:
+VibeZoo v0.14.0 achieved the following **without modifying a single line of Zoo Code source code**:
 
-- **31 MCP Tools**: tree-sitter AST based semantic code analysis
+- **34 MCP Tools**: tree-sitter AST based semantic code analysis + UX Workflow
+- **UX Workflow**: Intent detection + automatic tool chain orchestration (intent_detector + ux_coordinator)
 - **Autonomous Fix Loop**: Build failure → LLM analysis → fix → rebuild (oscillation detection + HITL)
 - **Continuous Improvement Mode (CIM)**: File save → auto tsc check → Auto-Fix
 - **Integrated Safety Net**: yocto backup + File Guard + Git Stash + Instant Rewind
 - **3 TreeViews**: Active Subagents, YOLO History, Session Resume (Crow·local·yocto triple fallback)
 - **Unified StatusBar**: Bridge·Crow·YOLO·CIM status displayed in a single item
-- **Visual Collaboration**: Whiteboard (fs.watchFile), UI Preview
+- **Visual Collaboration**: Whiteboard (fs.watchFile), UI Preview, Vision AI Pipeline
 
 **Core Principles**:
 1. Zero Zoo Code source modification — all features implemented via VibeZoo Extension + MCP Bridge + Config
