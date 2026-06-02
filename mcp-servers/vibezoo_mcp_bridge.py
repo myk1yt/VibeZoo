@@ -1,4 +1,4 @@
-# VibeZoo MCP Bridge — 통합 MCP 서버 (v0.14.0)
+# VibeZoo MCP Bridge — 통합 MCP 서버 (v0.14.1)
 # 모듈화된 bridge/ 패키지 기반, 진입점 90줄
 # Scout(코드 검색) + Reviewer(리뷰) + Tester(테스트) + DeepAnalyzer(분석)
 # Crow Memory(Python)와 동일한 FastMCP 기반

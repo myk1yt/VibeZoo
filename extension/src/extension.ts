@@ -367,7 +367,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.showHelp', async () => {
       const help = [
-        '# 🚀 VibeZoo v0.11.1',
+        '# 🚀 VibeZoo v0.14.1',
         '',
         '## 단축키',
         '| 키 | 기능 |',

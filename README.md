@@ -2,7 +2,7 @@
   <img src="https://github.com/myk1yt/VibeZoo/raw/main/Logo/logo.png" alt="VibeZoo Logo" width="128">
   <h1>VibeZoo 🐾</h1>
   <p><strong>A Next-Generation Coding Assistant Extension for Zoo Code (VS Code)</strong></p>
-  <a href="https://teamsunplaza.gumroad.com/l/vibezoo"><img src="https://img.shields.io/badge/Sponsor-☕_Buy_me_a_coffee-FFDD00?style=for-the-badge&logo=gumroad&logoColor=black" alt="Sponsor VibeZoo"></a>
+  <a href="https://teamsunplaza.gumroad.com/l/vibezoo" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/badge/Sponsor-☕_Buy_me_a_coffee-FFDD00?style=for-the-badge&logo=gumroad&logoColor=black" alt="Sponsor VibeZoo"></a>
 </div>
 
 ![VibeZoo Demo](https://raw.githubusercontent.com/myk1yt/VibeZoo/main/test_output.png)
