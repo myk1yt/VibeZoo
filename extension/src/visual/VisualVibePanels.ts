@@ -125,18 +125,29 @@ export class VisualVibePanels {
    */
   private async handleFileChange(
     filePath: string,
-    lastMtime: { current: number },
+    lastMtime: { current: number, hash?: string },
     onChange: (content: WatchFileContent) => void,
     retries = 5
   ): Promise<void> {
     try {
       if (!fs.existsSync(filePath)) return;
-      const stat = fs.statSync(filePath);
-      if (stat.mtimeMs <= lastMtime.current && retries === 5) return;
 
       const contentStr = await fs.promises.readFile(filePath, 'utf-8');
+      if (!contentStr.trim()) throw new Error("Empty file");
+      
       const content: WatchFileContent = JSON.parse(contentStr);
-      lastMtime.current = stat.mtimeMs;
+      
+      // Use stringified content as hash to avoid mtimeMs flakiness on Windows
+      const currentHash = JSON.stringify(content);
+      if (lastMtime.hash === currentHash) return;
+      
+      lastMtime.hash = currentHash;
+      
+      try {
+        const stat = fs.statSync(filePath);
+        lastMtime.current = stat.mtimeMs;
+      } catch { /* ignore */ }
+
       onChange(content);
     } catch (err) {
       if (retries > 0) {
