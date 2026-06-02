@@ -19,6 +19,24 @@ Your support helps us develop new features and keep the AI coding revolution mov
 
 VibeZoo now fully supports global internationalization (i18n). Built on top of the native `vscode.l10n` API, VibeZoo automatically detects your VS Code display language. It currently provides a base English locale along with a fully translated Korean (`ko`) language pack, ensuring a native experience regardless of your region.
 
+
+---
+
+## 🚀 Out-of-the-Box Setup (Universal UX)
+
+Getting started with VibeZoo is easier than ever. We provide a one-click bootstrapper to set up the Python environment, install dependencies, and build the frontend extension all at once.
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/VibeZoo_forZoocode.git
+   cd VibeZoo_forZoocode
+   ```
+2. **Run the bootstrapper:**
+   - **Windows:** Double-click `init_vibezoo.bat` or run it in the terminal.
+   - **macOS/Linux:** Run `bash init_vibezoo.sh`.
+3. **Auto-Bootstrap Agent:** 
+   Once the setup is done, open the workspace in your MCP client (like Zoo Code or VS Code). Run the AI Agent, and thanks to the `.zoo/Agent.md` protocol, it will intelligently guide you and configure your `mcp.json` automatically!
+
 ---
 
 ## 1. VibeZoo MCP Bridge — Tool Overview (34 Tools)

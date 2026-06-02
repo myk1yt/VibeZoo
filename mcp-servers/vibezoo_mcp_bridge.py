@@ -5,10 +5,8 @@
 # 포트 9027에서 SSE transport로 실행
 
 import argparse
-import json
 import os
 import time
-from pathlib import Path
 
 from fastmcp import FastMCP
 from starlette.responses import JSONResponse
@@ -44,6 +42,7 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Web", "status": "ready", "tools": ["fetch_page", "web_search"]},
             {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
             {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
+            {"name": "Feedback", "status": "ready", "tools": ["vibezoo_feedback"]},
         ]
     })
 
