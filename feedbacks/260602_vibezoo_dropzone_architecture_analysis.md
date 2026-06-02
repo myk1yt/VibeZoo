@@ -197,8 +197,8 @@ TS Extension → Python MCP 서버에 분석 요청
 ```bash
 # 1. MiniCPM-V 모델 다운로드 (Phase 3)
 mkdir models
-# HuggingFace: openbmb/MiniCPM-V-4_6-GGUF
-# - MiniCPM-V-4_6-Q5_K_M.gguf
+# HuggingFace: openbmb/MiniCPM-V-4.6-gguf (578MB)
+# - ggml-model-Q5_K_M.gguf (Renamed to MiniCPM-V-4_6-Q5_K_M.gguf)
 # - mmproj-model-f16.gguf
 
 # 2. Tesseract OCR 설치 (Phase 2)

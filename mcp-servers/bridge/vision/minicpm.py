@@ -11,6 +11,10 @@ def _get_model_dir():
     return Path(__file__).parent.parent.parent.parent / "models"
 
 def _get_model_path():
+    # 우선적으로 4.6 오리지널 파일명 확인, 없으면 리네임된 파일명
+    original_name = _get_model_dir() / "ggml-model-Q5_K_M.gguf"
+    if original_name.exists():
+        return original_name
     return _get_model_dir() / "MiniCPM-V-4_6-Q5_K_M.gguf"
 
 def _get_mmproj_path():

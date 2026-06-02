@@ -185,7 +185,7 @@ analyze_uploaded_file(path)
 ## 7. 예상 용량/성능
 | 항목 | 예상치 |
 |------|--------|
-| MiniCPM-V GGUF | 850MB |
+| MiniCPM-V GGUF | 578MB |
 | llama-cpp-python | 50MB |
 | PyMuPDF + 의존성 | 30MB |
 | python-docx | 5MB |
