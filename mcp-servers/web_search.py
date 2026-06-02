@@ -1,88 +1,74 @@
 import asyncio
-import aiohttp
+import httpx
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
-from googlesearch import search as google_search
+from curl_cffi.requests import AsyncSession
+from selectolax.parser import HTMLParser
 from fastmcp import FastMCP
 
 mcp = FastMCP(name="vibezoo-web-search")
 
-async def search_ddg(query: str, max_results: int = 5):
-    def _search():
-        try:
-            with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=max_results))
-        except Exception:
-            return []
-
-    try:
-        raw_results = await asyncio.to_thread(_search)
-        results = []
-        for r in raw_results:
-            results.append({
-                "url": r.get("href"),
-                "title": r.get("title"),
-                "snippet": r.get("body"),
-                "engine": "DuckDuckGo"
-            })
-        return results
-    except Exception as e:
-        return []
-
-async def search_google_async(query: str, max_results: int = 5):
-    def _search():
-        try:
-            return list(google_search(query, num_results=max_results, advanced=True))
-        except Exception:
-            return []
-    raw_results = await asyncio.to_thread(_search)
+async def search_curl_cffi(query: str, max_results: int = 5):
+    """Search DuckDuckGo using curl_cffi"""
     results = []
-    for r in raw_results:
-        results.append({
-            "url": r.url,
-            "title": r.title,
-            "snippet": r.description,
-            "engine": "Google"
-        })
+    try:
+        async with AsyncSession(impersonate="chrome") as session:
+            r = await session.get(f"https://html.duckduckgo.com/html/?q={query}", timeout=10)
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.select(".result__title .result__a")[:max_results]:
+                snippet_elem = a.find_next(class_="result__snippet")
+                snippet = snippet_elem.text.strip() if snippet_elem else ""
+                url = a.get("href")
+                # DuckDuckGo sometimes prepends a redirect url like "//duckduckgo.com/l/?uddg="
+                if url and "uddg=" in url:
+                    import urllib.parse
+                    parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                    if "uddg" in parsed:
+                        url = parsed["uddg"][0]
+                
+                results.append({
+                    "url": url,
+                    "title": a.text.strip(),
+                    "snippet": snippet,
+                    "engine": "DuckDuckGo (curl_cffi)"
+                })
+    except Exception as e:
+        print(f"curl_cffi error: {e}")
     return results
 
-async def search_yahoo(query: str, max_results: int = 5):
+async def search_selectolax(query: str, max_results: int = 5):
+    """Search Yahoo using httpx and selectolax"""
     results = []
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    url = f"https://search.yahoo.com/search?p={query}"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=10) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, "html.parser")
-                    for div in soup.select(".algo-sr")[:max_results]:
-                        title_a = div.select_one("h3.title a")
-                        snippet_div = div.select_one(".compText")
-                        if title_a and snippet_div:
-                            results.append({
-                                "url": title_a.get("href"),
-                                "title": title_a.text.strip(),
-                                "snippet": snippet_div.text.strip(),
-                                "engine": "Yahoo"
-                            })
-    except Exception:
-        pass
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        async with httpx.AsyncClient(headers=headers, timeout=10) as client:
+            r = await client.get(f"https://search.yahoo.com/search?p={query}")
+            tree = HTMLParser(r.text)
+            for div in tree.css(".algo-sr")[:max_results]:
+                title_a = div.css_first("h3.title a")
+                snippet_div = div.css_first(".compText")
+                if title_a and snippet_div:
+                    results.append({
+                        "url": title_a.attributes.get("href"),
+                        "title": title_a.text(strip=True),
+                        "snippet": snippet_div.text(strip=True),
+                        "engine": "Yahoo (selectolax+httpx)"
+                    })
+    except Exception as e:
+        print(f"selectolax error: {e}")
     return results
 
 @mcp.tool()
 async def web_search(query: str, max_results: int = 5, time_range: str = "") -> str:
     """
-    Search the web using DuckDuckGo, Google, and Yahoo in parallel.
+    Search the web using surviving async methods (curl_cffi, selectolax+httpx) in parallel.
     Args:
         query (str): The search query.
         max_results (int): Maximum number of results to return per engine.
         time_range (str): Unused in this version, kept for compatibility.
     """
     tasks = [
-        search_ddg(query, max_results),
-        search_google_async(query, max_results),
-        search_yahoo(query, max_results)
+        search_curl_cffi(query, max_results),
+        search_selectolax(query, max_results)
     ]
     results_lists = await asyncio.gather(*tasks, return_exceptions=True)
     deduped = {}
@@ -97,7 +83,9 @@ async def web_search(query: str, max_results: int = 5, time_range: str = "") -> 
             else:
                 item["engines"] = [item["engine"]]
                 deduped[url] = item
+                
     if not deduped: return f"'{query}'에 대한 검색 결과를 찾을 수 없습니다."
+    
     md_lines = [f"## 🔍 '{query}' Search Results\n"]
     for url, data in deduped.items():
         engines_str = ", ".join(data["engines"])
