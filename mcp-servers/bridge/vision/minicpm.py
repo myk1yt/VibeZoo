@@ -88,15 +88,22 @@ def describe_image(image_path: str, question: Optional[str] = None) -> str:
         prompt = question or "Describe this image in detail in Korean."
         
         response = model.create_chat_completion(
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                    {"type": "text", "text": prompt}
-                ]
-            }],
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert visual analysis assistant. Keep your answers factual, concise, and do not hallucinate."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ],
             max_tokens=512,
-            temperature=0.7,
+            temperature=0.1,  # 소형 모델 환각 방지를 위해 온도를 대폭 낮춤
+            top_p=0.8,
         )
         
         return response["choices"][0]["message"]["content"]
