@@ -23,3 +23,17 @@
 - [x] Action Selection (QuickPick) appears after successful upload.
 - [x] Selecting "Analyze Image" spawns the terminal securely using `child_process.spawn`.
 - [x] `analyzer.py` connects correctly to the local `llama.cpp` OpenAI-compatible API on port 8080 and streams Vision output.
+
+### Issue 4: Clear Button Bug & AI Pipeline UX Overhaul
+* **Symptom 1**: Clicking the "Clear" button broke subsequent drag-and-drop actions.
+* **Root Cause 1**: The `clearDropzone()` function failed to remove the `dragover` class and neglected to reset the newly introduced result UI components, leaving the dropzone in an invalid state.
+* **Resolution 1**: Updated `clearDropzone()` to comprehensively reset all CSS classes (including `dragover`) and hide/empty the result box.
+* **Symptom 2**: The user correctly pointed out that showing a programming-style "Terminal Command" or QuickPick menu is poor UX for a companion tool. The system should automatically detect the file type and act naturally, reporting results back to the LLM/UI rather than popping up a raw CMD window.
+* **Root Cause 2**: The implementation relied on `child_process.spawn` launching a visible CMD window, which breaks immersion and prevents Node.js from capturing the output natively.
+* **Resolution 2**: Overhauled the architecture:
+  1. Replaced `showQuickPick` with a natural `showInformationMessage` dialog: *"이 파일은 [이미지]입니다. VibeZoo AI를 활용해 분석을 시작할까요?"* based on dynamic regex file extension checking.
+  2. Replaced intrusive `child_process.spawn(cmd.exe...)` with silent, background `child_process.exec`.
+  3. The Webview UI now dynamically displays a loading spinner ("분석 중...").
+  4. Once `analyzer.py` completes, the stdout (result text) is sent directly to the Webview and rendered natively inside a beautiful result box, achieving a seamless "report-back" experience.
+
+*Note: Version bumped to 0.14.2 for cache breaking, but locked per user request.*
