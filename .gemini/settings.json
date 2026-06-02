@@ -1,0 +1,23 @@
+{
+  "ui": {
+    "language": "us",
+    "footer": {
+      "items": [
+        "model-name",
+        "quota",
+        "context-used",
+        "memory-usage",
+        "token-count",
+        "quota-reset-countdown",
+        "git-branch",
+        "project-path",
+        "project-full-path"
+      ]
+    }
+  },
+  "statusLine": {
+    "enabled": true,
+    "type": "command",
+    "command": "node C:\\Users\\k1yt\\.gemini\\antigravity-cli\\hooks\\statusline-quota.mjs"
+  }
+}
