@@ -591,6 +591,14 @@ async def health_check(request: Request) -> JSONResponse:
         pass
     # tree-sitter 상태 확인 (lazy init 시도 후)
     _init_tree_sitter()
+    # intent_detector 상태 확인
+    intent_ok = False
+    try:
+        from bridge.intent_detector import detect_intent
+        result = detect_intent("test")
+        intent_ok = len(result) > 0
+    except Exception:
+        pass
     return JSONResponse({
         "status": "ok",
         "crow": crow_ok,
@@ -600,6 +608,7 @@ async def health_check(request: Request) -> JSONResponse:
             "available": _ts_available,
             "languages": ["typescript", "javascript"] if _ts_available else [],
         },
+        "intent_detector": intent_ok,
     })
 
 
@@ -622,6 +631,7 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Web", "status": "ready", "tools": ["fetch_page", "web_search"]},
             {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
             {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
+            {"name": "UXCoordinator", "status": "ready", "tools": ["ux_coordinator", "auto_analyze_after_drop", "auto_analyze_whiteboard"]},
         ]
     })
 

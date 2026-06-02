@@ -859,7 +859,15 @@ def register(mcp):
 
     @mcp.tool
     def capture_screen(source: str = "screen") -> str:
-        """화면을 캡처하여 화이트보드에 자동으로 붙여넣습니다. AI가 시각적 분석이 필요할 때 호출합니다.
+        """화면을 캡처하거나 드롭존을 엽니다.
+
+        사용자가 "파일 보여줄게", "이것 좀 봐줘" 등의 표현을 쓸 때
+        source="dropzone"으로 호출하여 파일 업로드 UI를 띄우세요.
+
+        드롭존에서 파일 업로드 후에는 auto_analyze_after_drop()을 호출하여
+        자동 분석을 실행하세요.
+
+        AI가 시각적 분석이 필요할 때 호출합니다.
         source="dropzone" 시 VS Code Webview 드롭존을 열어 이미지를 업로드할 수 있습니다.
 
         Args:
@@ -934,6 +942,7 @@ def register(mcp):
                           + f"Raw JSON (truncated):\n"
                           + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
                 try_crow_ingest(f"Whiteboard state: screenshot {width}x{height}", register="context")
+                output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analyze_whiteboard()`를 호출하세요.\n"
                 output += _markdown_footer()
                 return output
 
@@ -948,6 +957,7 @@ def register(mcp):
                               + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
                     try_crow_ingest(f"Whiteboard state: analyzed {len(data['commands'])} commands",
                                     register="context")
+                    output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analyze_whiteboard()`를 호출하세요.\n"
                     output += _markdown_footer()
                     return output
                 except Exception as conv_err:
@@ -959,6 +969,7 @@ def register(mcp):
             output = (_markdown_header("Whiteboard State")
                       + f"Whiteboard has {commands_count} objects.\n\n"
                       + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
+            output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analyze_whiteboard()`를 호출하세요.\n"
             output += _markdown_footer()
             return output
 

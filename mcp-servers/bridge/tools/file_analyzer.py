@@ -273,8 +273,14 @@ def register(mcp):
     @mcp.tool
     def analyze_uploaded_file(file_path: str) -> str:
         """드롭존에 업로드된 파일을 분석합니다.
-        파일 타입(이미지/PDF/DOCX/TXT/코드 등)을 자동 감지하여 적절한 분석 수행.
-        
+
+        파일 타입 자동 감지 → 분석 파이프라인 실행:
+        - 이미지: SSA 공간 분석 → OCR 텍스트 추출 → MiniCPM-V 비전 분석
+        - 코드: 내용 읽기 → 구문 분석 제안
+        - 문서: PDF/DOCX 텍스트 추출
+
+        분석 완료 후 사용자에게 "무엇을 해드릴까요?" 후속 질문을 제안합니다.
+
         Args:
             file_path: 업로드된 파일의 전체 경로
         Returns:
