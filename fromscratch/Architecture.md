@@ -160,7 +160,7 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard (fs.watchFile) + UI Preview + Diagram panels
 │
 ├── mcp-servers/
-│   ├── vibezoo_mcp_bridge_v2.py      # MCP Bridge v2, 34 MCP tools, FastMCP + SSE, port 9027
+│   ├── vibezoo_mcp_bridge.py         # MCP Bridge, 34+ MCP tools, FastMCP + SSE, port 9027
 │   ├── vibezoo_mcp_bridge.py         # Legacy bridge
 │   └── bridge/
 │       ├── __init__.py

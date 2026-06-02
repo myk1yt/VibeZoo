@@ -73,7 +73,7 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard + UI Preview + Diagram
 │
 ├── mcp-servers/
-│   ├── vibezoo_mcp_bridge_v2.py      # 34 MCP tools (v2)
+│   ├── vibezoo_mcp_bridge.py         # 34+ MCP tools (모듈형)
 │   ├── vibezoo_mcp_bridge.py         # Legacy bridge
 │   └── bridge/
 │       ├── intent_detector.py        # UX Intent Detection
@@ -222,7 +222,7 @@ VibeZoo_forZoocode/
 | UX-2 | ux_coordinator.py (UX 코디네이터) | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
 | UX-3 | ux_coordinator, auto_analyze_after_drop, auto_analyze_whiteboard | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
 | UX-4 | capture_screen/analyze_uploaded_file/get_whiteboard_state 설명 개선 | [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py) | ✅ |
-| UX-5 | vibezoo_mcp_bridge_v2.py list_subagents/health check 업데이트 | [`vibezoo_mcp_bridge_v2.py`](../mcp-servers/vibezoo_mcp_bridge_v2.py) | ✅ |
+| UX-5 | vibezoo_mcp_bridge.py list_subagents/health check 업데이트 | [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) | ✅ |
 | UX-6 | 설계 문서 작성 | [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md) | ✅ |
 
 ---

@@ -9,7 +9,7 @@
 ### 1.1 전체 구조
 
 ```
-vibezoo_mcp_bridge_v2.py (4049줄, FastMCP @9027 SSE)
+vibezoo_mcp_bridge.py + bridge/ 패키지 (모듈형, FastMCP @9027 SSE)
 ├── bridge/
 │   ├── config.py              ── 상수/경로 중앙 관리
 │   ├── tool_context.py        ── ToolContext + Manifest 레지스트리
@@ -265,7 +265,7 @@ stateDiagram-v2
 | 파일 | 변경 내용 | 영향 범위 | 우선순위 |
 |------|-----------|----------|----------|
 | `bridge/tools/__init__.py` | `ux_coordinator` 등록 추가 (1줄) | 최소 | 🔴 필수 |
-| `vibezoo_mcp_bridge_v2.py` | `tools/__init__.py`의 `register_all_tools()` 호출 추가 (또는 중복 제거) | 중간 | 🟡 권장 |
+| `vibezoo_mcp_bridge.py` | `tools/__init__.py`의 `register_all_tools()` 호출 추가 (v2는 _archive/로 이동됨) | 중간 | ✅ 완료 |
 | `bridge/tools/whiteboard.py` | `get_whiteboard_state()` 결과에 분석 제안 힌트 추가 | 최소 | 🟡 권장 |
 | `bridge/tools/file_analyzer.py` | `analyze_uploaded_file()` 후속 질문 제안 추가 | 최소 | 🟡 권장 |
 | `bridge/tools/integrated.py` | `generate_docs()`에 `mode="workflow"` 추가 | 최소 | 🟢 선택 |
@@ -467,8 +467,8 @@ output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analy
 | 단계 | 작업 | 파일 | 설명 |
 |------|------|------|------|
 | 4.1 | 도구 등록 확인 | `bridge/tools/__init__.py` | 모든 도구 정상 등록 확인 |
-| 4.2 | `list_subagents` 업데이트 | `vibezoo_mcp_bridge_v2.py:608` | UX Coordinator 에이전트 추가 |
-| 4.3 | health check 업데이트 | `vibezoo_mcp_bridge_v2.py:582` | intent_detector 상태 포함 |
+| 4.2 | `list_subagents` 업데이트 | `vibezoo_mcp_bridge.py` | UX Coordinator 에이전트 추가 (v2는 _archive/로 이동) |
+| 4.3 | health check 업데이트 | `vibezoo_mcp_bridge.py` | intent_detector 상태 포함 |
 
 ---
 
@@ -516,7 +516,7 @@ output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analy
 ### 8.1 핵심 변경 사항
 
 1. **신규 파일 2개**: `bridge/intent_detector.py`, `bridge/tools/ux_coordinator.py`
-2. **기존 파일 수정 4개**: `__init__.py`(1줄), `whiteboard.py`(설명만), `file_analyzer.py`(설명만), `vibezoo_mcp_bridge_v2.py`(list_subagents만)
+2. **기존 파일 수정 4개**: `__init__.py`(1줄), `whiteboard.py`(설명만), `file_analyzer.py`(설명만), `vibezoo_mcp_bridge.py`(list_subagents만) — v2는 _archive/로 이동됨
 3. **총 코드 변경량**: 약 300~400줄 (신규) + 약 30줄 (기존 수정)
 
 ### 8.2 최소 변경 원칙 준수
