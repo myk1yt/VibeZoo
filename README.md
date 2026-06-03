@@ -36,6 +36,8 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
    - **macOS/Linux:** Run `bash init_vibezoo.sh`.
 3. **Auto-Bootstrap Agent:** 
    Once the setup is done, open the workspace in your MCP client (like Zoo Code or VS Code). Run the AI Agent, and thanks to the `.zoo/Agent.md` protocol, it will intelligently guide you and configure your `mcp.json` automatically!
+4. **Global Mode Installation (Recommended):**
+   VibeZoo and Crow Memory are designed to be OS-wide MCP servers. Do NOT keep custom modes confined to a single project. Copy the template from `global_install_templates/vibezoo_mode.yaml` and install it globally in your AI extension (e.g., Zoo Code/Cline) so you can use VibeZoo across all your projects!
 
 ---
 
