@@ -28,7 +28,7 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/VibeZoo_forZoocode.git
+   git clone https://github.com/vibezoo/VibeZoo_forZoocode.git
    cd VibeZoo_forZoocode
    ```
 2. **Run the bootstrapper:**
@@ -101,7 +101,7 @@ VibeZoo includes a built-in Vision AI pipeline for image analysis:
 
 ## 3. Crow Memory Overview
 
-You can find the standalone Crow Memory repository and core engine here: **[myk1yt/crowmemory](https://github.com/myk1yt/crowmemory)**
+You can find the standalone Crow Memory repository and core engine here: **[vibezoo/crowmemory](https://github.com/vibezoo/crowmemory)**
 
 ### 3.1 Philosophy — "Crow remembers not the code, but the hand that wrote it."
 
@@ -133,14 +133,14 @@ Includes tools like `crow_recall`, `crow_ingest`, `crow_diagnostics`, `crow_mana
 ### 4.2 Installation
 **Windows (PowerShell):**
 ```powershell
-git clone https://github.com/myk1yt/crowmemory.git
+git clone https://github.com/vibezoo/crowmemory.git
 cd crowmemory
 .\install.ps1
 ```
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/myk1yt/crowmemory.git
+git clone https://github.com/vibezoo/crowmemory.git
 cd crowmemory
 python install.py
 ```
@@ -199,7 +199,7 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 - 📊 **Enterprise Analytics** (Memory usage dashboards, drift alerts)
 
 > **Contact us for enterprise, secure, or custom-tailored Crow Memory development:**
-📧 **myk1yt@gmail.com**
+📧 **support@vibezoo.dev**
 
 ---
 *VibeZoo v0.14.2 — June 2026*

@@ -12,10 +12,13 @@ from typing import Optional
 
 # ── Tesseract 윈도우 기본 설치 경로 ─────────────────────
 
-_TESSERACT_WINDOWS_PATHS = [
+_TESSERACT_WINDOWS_PATHS = []
+if os.environ.get("TESSERACT_PATH"):
+    _TESSERACT_WINDOWS_PATHS.append(os.environ["TESSERACT_PATH"])
+_TESSERACT_WINDOWS_PATHS.extend([
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-]
+])
 
 # 사용자 환경변수 PATH에서 tesseract 찾기
 _TESSERACT_PATH: Optional[str] = None

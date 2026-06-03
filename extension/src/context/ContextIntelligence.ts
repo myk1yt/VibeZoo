@@ -44,12 +44,12 @@ export class ExplainLessSuggestor {
       this.recentMessages.shift();
     }
 
-    // 반복되는 키워드 감지
+    // Detect recurring keywords
     const patterns = [
-      { keywords: ['zustand', 'redux', '상태관리'], suggestion: '상태관리: Zustand 사용' },
-      { keywords: ['try-catch', '에러', 'error handling'], suggestion: '에러 핸들링: try-catch 래핑' },
-      { keywords: ['tailwind', 'css', '스타일'], suggestion: '스타일: Tailwind CSS 사용' },
-      { keywords: ['async', 'await', '비동기'], suggestion: '비동기: async/await 패턴' },
+      { keywords: ['zustand', 'redux', 'state management'], suggestion: 'State management: use Zustand' },
+      { keywords: ['try-catch', 'error', 'error handling'], suggestion: 'Error handling: try-catch wrapping' },
+      { keywords: ['tailwind', 'css', 'style'], suggestion: 'Style: use Tailwind CSS' },
+      { keywords: ['async', 'await', 'asynchronous'], suggestion: 'Async: use async/await pattern' },
     ];
 
     for (const pattern of patterns) {
@@ -58,7 +58,7 @@ export class ExplainLessSuggestor {
       ).length;
 
       if (count >= 3) {
-        return `💡 반복 설명 감지: '${pattern.suggestion}'. system_prompt.md에 추가할까요?`;
+        return `💡 Repetitive explanation detected: '${pattern.suggestion}'. Should we add this to system_prompt.md?`;
       }
     }
 
@@ -176,27 +176,27 @@ export class SessionResume {
 
 export class EmotionalDetector {
   private rejectionPatterns = [
-    { keywords: ['아니', '아니야', '아닌데', 'no', 'nope'], weight: 0.6 },
-    { keywords: ['그렇게 하지 마', '하지 마', "don't", 'stop'], weight: 0.8 },
-    { keywords: ['다시 해', '다시', 'retry', 'again'], weight: 0.5 },
-    { keywords: ['이건 아니야', '이게 아닌데', 'wrong', 'not this'], weight: 0.9 },
+    { keywords: ['no', 'nope', 'incorrect', 'not what i meant'], weight: 0.6 },
+    { keywords: ['don\'t do that', 'stop', "don't", 'halt'], weight: 0.8 },
+    { keywords: ['do it again', 'retry', 'again', 'redo'], weight: 0.5 },
+    { keywords: ['this is wrong', 'wrong', 'not this'], weight: 0.9 },
   ];
 
   private consecutiveRejections: number = 0;
 
-  /** 사용자 메시지의 감정 신호 분석 */
+  /** Analyze emotional signals in user message */
   analyze(message: string): { tone: 'neutral' | 'frustrated' | 'satisfied' | 'urgent'; rejectionStreak: number } {
     const isRejection = this.rejectionPatterns.some((pattern) =>
       pattern.keywords.some((kw) => message.toLowerCase().includes(kw.toLowerCase()))
     );
 
-    // 긍정 키워드가 우선: 거절+긍정 중첩 시 긍정으로 분류
+    // Positive keywords override rejections
     if (this.isPositive(message)) {
       this.consecutiveRejections = 0;
     } else if (isRejection) {
       this.consecutiveRejections++;
     } else {
-      // 중립 메시지는 카운터 유지 (급격한 리셋 방지)
+      // Keep neutral messages from resetting streak instantly
       if (this.consecutiveRejections > 0) {
         this.consecutiveRejections = Math.max(0, this.consecutiveRejections - 1);
       }
@@ -211,7 +211,7 @@ export class EmotionalDetector {
   }
 
   private isPositive(message: string): boolean {
-    const positive = ['좋아', '굿', 'good', 'thanks', 'perfect', 'exactly', 'great', '감사', '고마워'];
+    const positive = ['good', 'thanks', 'perfect', 'exactly', 'great', 'awesome', 'thank you'];
     return positive.some((p) => message.toLowerCase().includes(p.toLowerCase()));
   }
 }
