@@ -276,6 +276,7 @@ export class SubagentManager {
 
   private async waitForReady(port: number, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
+    let delay = 100;
     while (Date.now() < deadline) {
       try {
         const controller = new AbortController();
@@ -289,7 +290,8 @@ export class SubagentManager {
       } catch {
         // Connection refused or timeout — not ready yet
       }
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 1.5, 1000);
     }
   }
 }

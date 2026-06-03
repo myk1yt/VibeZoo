@@ -621,20 +621,17 @@ function autoConfigureMCP(port: number): void {
 
   const existingServers = existing.mcpServers || {};
 
-  // 이미 vibezoo가 등록되어 있으면 덮어쓰지 않음
-  if (!existingServers.vibezoo) {
-    fs.mkdirSync(zooMCPDir, { recursive: true });
-    const merged = {
-      mcpServers: {
-        ...existingServers,
-        ...mcpConfig.mcpServers,
-      },
-    };
-    fs.writeFileSync(zooMCPPath, JSON.stringify(merged, null, 2), 'utf-8');
-    console.log(`[VibeZoo] Zoo Code MCP 설정 완료: ${zooMCPPath}`);
-  } else {
-    console.log('[VibeZoo] Zoo Code MCP 설정이 이미 존재합니다. 건드리지 않습니다.');
-  }
+  // 항상 덮어쓰기 (Touch) 하여 Zoo Code의 파일 감시자(File Watcher)가 
+  // 파이썬 서버가 켜진 완벽한 타이밍에 즉시 재연결을 시도하도록 강제 유도함
+  fs.mkdirSync(zooMCPDir, { recursive: true });
+  const merged = {
+    mcpServers: {
+      ...existingServers,
+      ...mcpConfig.mcpServers,
+    },
+  };
+  fs.writeFileSync(zooMCPPath, JSON.stringify(merged, null, 2), 'utf-8');
+  console.log(`[VibeZoo] Zoo Code MCP 설정 강제 업데이트 완료 (연결 Hand-off): ${zooMCPPath}`);
 }
 
 // ── Helpers ─────────────────────────────────────────────────
