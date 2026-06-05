@@ -1,18 +1,25 @@
 # VibeZoo MCP Bridge — 통합 MCP 서버 (v0.14.2)
-# 모듈화된 bridge/ 패키지 기반, 진입점 90줄
+# 모듈화된 bridge/ 패키지 기반, 진입점 70줄
 # Scout(코드 검색) + Reviewer(리뷰) + Tester(테스트) + DeepAnalyzer(분석)
 # Crow Memory(Python)와 동일한 FastMCP 기반
 # 포트 9027에서 SSE transport로 실행
+# VS Code Webview 드랍존만 사용 (브라우저 드랍존 제거됨)
 
 import argparse
-import os
+import sys
 import time
+from pathlib import Path
+
+# Pylance: ensure the extension root is in package search path
+_EXT_ROOT = str(Path(__file__).resolve().parent)
+if _EXT_ROOT not in sys.path:
+    sys.path.insert(0, _EXT_ROOT)
 
 from fastmcp import FastMCP
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 
-from bridge.config import VERSION, CROW_URL, CROW_TIMEOUT, IMAGE_CACHE_DIR, UPLOADED_IMAGE_PATH
+from bridge.config import VERSION, CROW_URL, CROW_TIMEOUT
 from bridge.crow_client import crow_health_check
 from bridge.tools import register_all_tools
 
@@ -42,7 +49,6 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Web", "status": "ready", "tools": ["fetch_page", "web_search"]},
             {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
             {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
-            {"name": "Feedback", "status": "ready", "tools": ["vibezoo_feedback"]},
             {"name": "Editor", "status": "ready", "tools": ["apply_patch", "read_project_file"]},
             {"name": "FileAnalyzer", "status": "ready", "tools": ["analyze_uploaded_file", "check_uploaded_files"]},
         ]
@@ -63,60 +69,6 @@ async def health_check(request: Request) -> JSONResponse:
     })
 
 
-# ── Image Upload ─────────────────────────────────────────
-
-os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
-
-
-@mcp.custom_route("/upload", methods=["GET", "POST"])
-async def image_upload_handler(request: Request) -> JSONResponse:
-    """이미지 드래그앤드롭 업로드 엔드포인트"""
-    if request.method == "GET":
-        html = """<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<title>VibeZoo Image Upload</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#1e1e1e;color:#ccc;font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
-#dropzone{width:600px;height:400px;border:3px dashed #555;border-radius:16px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:20px;cursor:pointer;transition:all .3s;text-align:center;padding:20px}
-#dropzone:hover,#dropzone.dragover{border-color:#4ec9ff;background:rgba(78,201,255,.1)}
-#dropzone.dragover{border-color:#6acb6a;background:rgba(106,203,106,.1)}
-#dropzone img{max-width:90%;max-height:70%;border-radius:8px;display:none}
-#dropzone.has-image img{display:block}
-#dropzone.has-image .placeholder{display:none}
-.icon{font-size:64px;opacity:.5}
-.hint{font-size:14px;color:#888}
-.status{font-size:16px;color:#6acb6a;margin-top:12px}
-input[type=file]{display:none}
-</style></head><body>
-<div id=dropzone onclick="document.getElementById('f').click()">
-<div class=icon>&#128247;</div>
-<div class=placeholder><h2>Drag & Drop or Paste (Ctrl+V) Image Here</h2><p style="color:#888;margin-top:8px">or click to browse</p></div>
-<img id=prev><div class=status id=sta></div></div>
-<input type=file id=f accept=image/* onchange="u(this.files[0])">
-<script>
-function u(f){if(!f)return;var fd=new FormData();fd.append('image',f);document.getElementById('sta').textContent='Uploading...';var x=new XMLHttpRequest();x.open('POST','/upload',true);x.onload=function(){if(x.status==200){var d=JSON.parse(x.responseText);document.getElementById('sta').innerHTML='&#x2705; Uploaded! Path: <code>'+d.path+'</code>';var r=new FileReader();r.onload=function(e){document.getElementById('prev').src=e.target.result;document.getElementById('dropzone').classList.add('has-image')};r.readAsDataURL(f)}else{document.getElementById('sta').textContent='&#x274c; Upload failed'}};x.onerror=function(){document.getElementById('sta').textContent='&#x274c; Network error'};x.send(fd)}
-document.getElementById('dropzone').addEventListener('dragover',function(e){e.preventDefault();this.classList.add('dragover')});
-document.getElementById('dropzone').addEventListener('dragleave',function(e){this.classList.remove('dragover')});
-document.getElementById('dropzone').addEventListener('drop',function(e){e.preventDefault();this.classList.remove('dragover');var f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))u(f)});
-document.addEventListener('paste',function(e){var i=e.clipboardData.items;for(var j=0;j<i.length;j++){if(i[j].type.indexOf('image')!==-1){u(i[j].getAsFile());break;}}});
-</script></body></html>"""
-        return JSONResponse({"html": html})
-    elif request.method == "POST":
-        try:
-            form = await request.form()
-            file = form.get("image")
-            if not file:
-                return JSONResponse({"error": "No file"}, status_code=400)
-            content_bytes = await file.read()
-            with open(UPLOADED_IMAGE_PATH, "wb") as f:
-                f.write(content_bytes)
-            return JSONResponse({"status": "ok", "path": UPLOADED_IMAGE_PATH, "size": len(content_bytes)})
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-
-
 # ═══════════════════════════════════════════════════════════
 # 메인 — SSE 서버 시작
 # ═══════════════════════════════════════════════════════════
@@ -128,5 +80,6 @@ if __name__ == "__main__":
 
     print(f"\U0001f680 VibeZoo MCP Bridge v{VERSION} starting on port {args.port}...")
     print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
+    print(f"   Dropzone: Webview only (browser dropzone removed)")
 
     mcp.run(transport="sse", host="127.0.0.1", port=args.port)
