@@ -32,14 +32,18 @@ BACKUP_DIR = Path.home() / ".vibezoo-backup"
 
 
 def _parse_diff(diff: str) -> list[dict]:
-    """diff 파싱: SEARCH/REPLACE 블록 추출"""
+    """diff 파싱: SEARCH/REPLACE 블록 추출
+
+    상호 운용성: `=======` (apply_diff) 및 `-------` (apply_patch) 모두 지원.
+    `:start_line:` 메타데이터는 무시하고 건너뛰는 라인을 생략함.
+    """
     blocks = []
-    # 줄바꿈 정규화: \r\n, \r, \n, literal \n 모두 처리
+    # 줄바꿈 정규화: \r\n, \r, \n, literal \\n 모두 처리
     diff = diff.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
     lines = diff.split("\n")
     search_lines = []
     replace_lines = []
-    current = None  # 'search' or 'replace'
+    current = None  # 'search' | 'replace' | 'meta' (선택적)
     for line in lines:
         raw = line
         stripped = line.strip()
@@ -48,7 +52,12 @@ def _parse_diff(diff: str) -> list[dict]:
             search_lines = []
             replace_lines = []
             continue
-        if stripped == "-------":
+        # 양쪽 구분자 모두 지원: ======= (apply_diff) + ------- (apply_patch)
+        if stripped in ("-------", "======="):
+            if current == "meta":
+                # :start_line: 다음의 ------- → search 모드로 전환
+                current = "search"
+                continue
             current = "replace"
             continue
         if stripped == ">>>>>>> REPLACE":
@@ -61,11 +70,17 @@ def _parse_diff(diff: str) -> list[dict]:
             replace_lines = []
             current = None
             continue
+        # :start_line: 메타데이터 처리 (선택적 무시)
+        if stripped.startswith(":start_line:"):
+            if current == "search":
+                current = "meta"  # 다음 ------- 까지 메타 모드
+            continue
         if current == "search":
             search_lines.append(raw)
         elif current == "replace":
             replace_lines.append(raw)
-    # Handle case where no trailing newline
+        # current == "meta" or None → 라인 무시
+    # 미완료 블록 처리
     if search_lines and replace_lines:
         blocks.append({
             "search": "\n".join(search_lines).strip(),
