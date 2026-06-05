@@ -54,8 +54,9 @@ export class GuardGitManager {
   /**
    * GuardGitManager 초기화
    * H6: activate() 시작 시 cleanupResidualACL() 호출
+   * Bug #4: yocto가 null이어도 Yocto 기능만 skip하고 ACL/Watcher는 정상 동작
    */
-  async activate(context: vscode.ExtensionContext, yocto: YoctoManager): Promise<void> {
+  async activate(context: vscode.ExtensionContext, yocto: YoctoManager | null): Promise<void> {
     this.yocto = yocto;
 
     // C4: 워크스페이스 폴더 순회하여 .git 경로 탐색 (먼저 gitDirPaths 채움)
@@ -179,6 +180,12 @@ export class GuardGitManager {
   async enable(): Promise<GuardGitACLResult> {
     // 1. 워크스페이스 재스캔 (새 폴더 반영)
     this.rescanWorkspaceFolders();
+
+    // Bug #2: gitDirPaths가 비어있으면 허위 성공 반환 방지
+    if (this.gitDirPaths.length === 0) {
+      console.warn('[Guard.git] 워크스페이스에 .git 디렉토리 없음 — enable 실패');
+      return { success: false, error: 'No .git directory found in workspace' };
+    }
 
     // 2. 모든 gitDir에 대해 ACL 적용
     let allSuccess = true;

@@ -202,21 +202,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     guardGit.bindStatusBar(statusBar);
     setGuardGitManager(guardGit);
 
-    // H6: activate() 시작 시 cleanupResidualACL() 호출됨
-    guardGit.activate(context, yocto!).catch(err => {
-      console.warn('[Guard.git] 활성화 실패:', err);
-    });
-
-    // TreeView에 Guard 노드 등록
+    // TreeView에 Guard 노드 등록 (activate 성공 여부와 무관)
     guardGit.onChange((summary) => {
       subagentsProvider.setGuardGitStatus(summary.overall);
     });
 
+    // Bug #1: await 추가하여 activate → enable 순차 실행 보장
+    // H6: activate() 시작 시 cleanupResidualACL() 호출됨
+    try {
+      await guardGit.activate(context, yocto);
+    } catch (err: any) {
+      console.warn('[Guard.git] 활성화 실패:', err);
+    }
+
     // autoEnable: Guard 설정 + YOLO 진입 시 자동 활성화
+    // Bug #3: enable() 실패 시 사용자에게 알림
     if (ConfigService.getGuardAutoEnable()) {
-      guardGit.enable().catch(err =>
-        console.warn('[Guard.git] 자동 활성화 실패:', err)
-      );
+      try {
+        const result = await guardGit.enable();
+        if (!result.success) {
+          vscode.window.showWarningMessage(
+            vscode.l10n.t('Guard.git auto-activation failed: {0}', result.error || 'Unknown error')
+          );
+        }
+      } catch (err: any) {
+        console.warn('[Guard.git] 자동 활성화 실패:', err);
+      }
     }
   }
 
