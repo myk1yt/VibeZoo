@@ -58,7 +58,8 @@ def _get_search_engine(root: Path) -> SearchEngine:
 
 def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
                           max_results: int = 10, mode: str = "auto",
-                          context_lines: int = 3) -> str:
+                          context_lines: int = 3,
+                          target_path: Optional[str] = None) -> str:
     """search_codebase의 실제 구현 (모듈 레벨)"""
     err = _validate_string(query, "query")
     if err:
@@ -67,7 +68,7 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
     # max_results 상한: mode="exact"일 때 500까지 허용
     upper_limit = 500 if mode == "exact" else 200
     max_results = max(1, min(max_results, upper_limit))
-    root = Path(os.getcwd())
+    root = Path(get_project_root(target_path)) if target_path else Path(os.getcwd())
 
     # ── ripgrep 미설치 노트 ──
     rg_note = ""
@@ -75,9 +76,12 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
         import subprocess
         rg_check = subprocess.run(["rg", "--version"], capture_output=True, timeout=2)
         if rg_check.returncode != 0:
-            rg_note = "<!-- NOTE: ripgrep not installed. Install with vibezoo_setup(target=\"recommended\") -->\n"
+            rg_note = "<!-- NOTE: ripgrep not installed. Install with vibezoo_setup(target=\"full\") -->\n"
     except Exception:
-        rg_note = "<!-- NOTE: ripgrep not installed. Install with vibezoo_setup(target=\"recommended\") -->\n"
+        rg_note = "<!-- NOTE: ripgrep not installed. Install with vibezoo_setup(target=\"full\") -->\n"
+
+    if target_path and not Path(target_path).exists():
+        rg_note += f"<!-- WARNING: target_path '{target_path}' not found, using current directory -->\n"
 
     # SearchEngine 사용 (ripgrep 우선)
     engine = _get_search_engine(root)
@@ -266,13 +270,13 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
     return output
 
 
-def _find_references_impl(symbol: str) -> str:
+def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str:
     """find_references의 실제 구현 (모듈 레벨)"""
     err = _validate_string(symbol, "symbol")
     if err:
         return _markdown_header("Find References Error", "❌") + f"**{err}**\n" + _markdown_footer()
 
-    root = Path(os.getcwd())
+    root = Path(get_project_root(target_path)) if target_path else Path(os.getcwd())
     definitions = []
     usages = []
     exclude = DEFAULT_EXCLUDE_DIRS
@@ -710,7 +714,8 @@ def register(mcp):
     @mcp.tool
     def search_codebase(query: str, file_patterns: Optional[str] = None,
                         max_results: int = 10, mode: str = "auto",
-                        context_lines: int = 3) -> str:
+                        context_lines: int = 3,
+                        target_path: Optional[str] = None) -> str:
         """프로젝트 코드베이스에서 쿼리와 관련된 코드를 검색합니다.
         tree-sitter AST 파싱을 우선 시도하고, 실패 시 regex로 폴백합니다.
 
@@ -720,18 +725,20 @@ def register(mcp):
             max_results: 최대 결과 수 (기본: 10)
             mode: 검색 모드 ("auto", "exact", "fuzzy", "ast", "semantic"). 기본: "auto"
             context_lines: 컨텍스트 라인 수 (기본: 3)
+            target_path: 검색 대상 디렉토리 경로 (기본: 현재 워크스페이스)
         """
-        return _search_codebase_impl(query, file_patterns, max_results, mode, context_lines)
+        return _search_codebase_impl(query, file_patterns, max_results, mode, context_lines, target_path)
 
     @mcp.tool
-    def find_references(symbol: str) -> str:
+    def find_references(symbol: str, target_path: Optional[str] = None) -> str:
         """주어진 심볼(함수, 클래스, 변수)의 모든 참조를 찾습니다.
         정의와 사용 위치를 구분하여 반환합니다.
 
         Args:
             symbol: 찾을 심볼 이름
+            target_path: 검색 대상 디렉토리 경로 (기본: 현재 워크스페이스)
         """
-        return _find_references_impl(symbol)
+        return _find_references_impl(symbol, target_path)
 
     @mcp.tool
     def summarize_architecture(target_path: Optional[str] = None, streaming: bool = True,

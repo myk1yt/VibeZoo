@@ -871,8 +871,8 @@ def register(mcp):
 
         **설치 대상 (target):**
         - `minimal`: 필수 코어 패키지만 (fastmcp, uvicorn, starlette)
-        - `recommended`: 코어 + 옵션 패키지 (OpenCV, Pillow, tree-sitter, pytesseract 등) + 모델 다운로드
-        - `full`: recommended + 시스템 도구 (ripgrep, tesseract-ocr) + 모델 다운로드
+        - `recommended`: 코어 + 옵션 패키지 (OpenCV, Pillow, tree-sitter, pytesseract 등)
+        - `full`: recommended + 시스템 도구 (ripgrep, tesseract-ocr)
 
         Args:
             target: 설치 대상 ("minimal", "recommended", "full")
