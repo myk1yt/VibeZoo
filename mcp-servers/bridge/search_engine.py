@@ -70,8 +70,8 @@ class SearchEngine:
         else:
             return self._fallback_to_walk(query, file_patterns, max_results)
 
-    def search_fast(self, query: str, max_results: int = 10) -> List[dict]:
-        """점진적 검색 — 먼저 10개 결과를 빠르게 반환"""
+    def search_fast(self, query: str, max_results: int = 50) -> List[dict]:
+        """점진적 검색 — 먼저 50개 결과를 빠르게 반환"""
         return self.search(query, max_results=max_results, context_lines=0)
 
     # ── ripgrep ──────────────────────────────────────

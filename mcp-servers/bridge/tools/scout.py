@@ -57,7 +57,7 @@ def _get_search_engine(root: Path) -> SearchEngine:
 
 
 def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
-                          max_results: int = 10, mode: str = "auto",
+                          max_results: int = 50, mode: str = "auto",
                           context_lines: int = 3,
                           target_path: Optional[str] = None) -> str:
     """search_codebase의 실제 구현 (모듈 레벨)"""
@@ -713,7 +713,7 @@ def register(mcp):
 
     @mcp.tool
     def search_codebase(query: str, file_patterns: Optional[str] = None,
-                        max_results: int = 10, mode: str = "auto",
+                        max_results: int = 50, mode: str = "auto",
                         context_lines: int = 3,
                         target_path: Optional[str] = None) -> str:
         """프로젝트 코드베이스에서 쿼리와 관련된 코드를 검색합니다.
