@@ -178,75 +178,82 @@ export class GuardGitManager {
    * 모든 workspace root에 대해 ACL 적용 + watcher 시작 + 스냅샷 + 주기 진단
    */
   async enable(): Promise<GuardGitACLResult> {
-    // 1. 워크스페이스 재스캔 (새 폴더 반영)
-    this.rescanWorkspaceFolders();
+    try {
+      // 1. 워크스페이스 재스캔 (새 폴더 반영)
+      this.rescanWorkspaceFolders();
 
-    // Bug #2: gitDirPaths가 비어있으면 허위 성공 반환 방지
-    if (this.gitDirPaths.length === 0) {
-      console.warn('[Guard.git] 워크스페이스에 .git 디렉토리 없음 — enable 실패');
-      return { success: false, error: 'No .git directory found in workspace' };
-    }
-
-    // 2. 모든 gitDir에 대해 ACL 적용
-    let allSuccess = true;
-    let lastResult: GuardGitACLResult = { success: true };
-
-    for (const gitDir of this.gitDirPaths) {
-      // 2a. checkProtection — 이미 적용됐으면 skip
-      const alreadyProtected = await this.acl.checkProtection(gitDir);
-      if (alreadyProtected) {
-        console.log(`[Guard.git] 이미 보호됨: ${gitDir} — skip`);
-        this.stateMap.set(gitDir, 'active');
-        this.startWatcher(gitDir);
-        continue;
+      // Bug #2: gitDirPaths가 비어있으면 허위 성공 반환 방지
+      if (this.gitDirPaths.length === 0) {
+        console.warn('[Guard.git] 워크스페이스에 .git 디렉토리 없음 — enable 실패');
+        return { success: false, error: 'No .git directory found in workspace' };
       }
 
-      // 2b. Linux: ConfigService.getGuardLinuxUseChattr() 확인
-      if (process.platform === 'linux' && !ConfigService.getGuardLinuxUseChattr()) {
-        console.log(`[Guard.git] Linux chattr 비활성화 — Watcher+Yocto only: ${gitDir}`);
-        this.stateMap.set(gitDir, 'active'); // Watcher+Yocto 모드
-        this.startWatcher(gitDir);
-        continue;
+      // 2. 모든 gitDir에 대해 ACL 적용
+      let allSuccess = true;
+      let lastResult: GuardGitACLResult = { success: true };
+
+      for (const gitDir of this.gitDirPaths) {
+        // 2a. checkProtection — 이미 적용됐으면 skip
+        const alreadyProtected = await this.acl.checkProtection(gitDir);
+        if (alreadyProtected) {
+          console.log(`[Guard.git] 이미 보호됨: ${gitDir} — skip`);
+          this.stateMap.set(gitDir, 'active');
+          this.startWatcher(gitDir);
+          continue;
+        }
+
+        // 2b. Linux: ConfigService.getGuardLinuxUseChattr() 확인
+        if (process.platform === 'linux' && !ConfigService.getGuardLinuxUseChattr()) {
+          console.log(`[Guard.git] Linux chattr 비활성화 — Watcher+Yocto only: ${gitDir}`);
+          this.stateMap.set(gitDir, 'active'); // Watcher+Yocto 모드
+          this.startWatcher(gitDir);
+          continue;
+        }
+
+        // 2c. ACL 적용
+        const result = await this.acl.applyProtection(gitDir);
+        if (result.success) {
+          this.stateMap.set(gitDir, 'active');
+          this.startWatcher(gitDir);
+        } else {
+          console.warn(`[Guard.git] ACL 적용 실패: ${gitDir}`, result.error);
+          this.stateMap.set(gitDir, 'error');
+          allSuccess = false;
+          lastResult = result;
+        }
       }
 
-      // 2c. ACL 적용
-      const result = await this.acl.applyProtection(gitDir);
-      if (result.success) {
-        this.stateMap.set(gitDir, 'active');
-        this.startWatcher(gitDir);
-      } else {
-        console.warn(`[Guard.git] ACL 적용 실패: ${gitDir}`, result.error);
-        this.stateMap.set(gitDir, 'error');
-        allSuccess = false;
-        lastResult = result;
+      // 3. Yocto 스냅샷 (guard-enable)
+      this.createGitSnapshot('guard-enable').catch(err =>
+        console.warn('[Guard.git] Yocto 스냅샷 실패:', err)
+      );
+
+      // 4. 주기적 진단 시작 (H5)
+      const intervalMin = ConfigService.getGuardIntegrityCheckIntervalMin();
+      this.startPeriodicIntegrityCheck(intervalMin * 60 * 1000);
+
+      // 5. Yocto 백업 시작
+      if (ConfigService.getGuardYoctoBackupEnabled()) {
+        const backupIntervalMin = ConfigService.getGuardYoctoBackupIntervalMin();
+        this.startYoctoBackup(backupIntervalMin * 60 * 1000);
       }
+
+      // 6. 상태바 업데이트
+      this.statusBar?.setGuardMode(allSuccess ? 'active' : 'warning');
+
+      // 7. onChange 알림
+      this.notifyListeners();
+
+      if (allSuccess) {
+        return { success: true, command: 'enable()' };
+      }
+      return lastResult;
+    } catch (err: any) {
+      // 실패 시에도 TreeView 업데이트
+      this.stateMap.forEach((_, key) => this.stateMap.set(key, 'error'));
+      this.notifyListeners();
+      return { success: false, error: err.message, command: 'enable()' };
     }
-
-    // 3. Yocto 스냅샷 (guard-enable)
-    this.createGitSnapshot('guard-enable').catch(err =>
-      console.warn('[Guard.git] Yocto 스냅샷 실패:', err)
-    );
-
-    // 4. 주기적 진단 시작 (H5)
-    const intervalMin = ConfigService.getGuardIntegrityCheckIntervalMin();
-    this.startPeriodicIntegrityCheck(intervalMin * 60 * 1000);
-
-    // 5. Yocto 백업 시작
-    if (ConfigService.getGuardYoctoBackupEnabled()) {
-      const backupIntervalMin = ConfigService.getGuardYoctoBackupIntervalMin();
-      this.startYoctoBackup(backupIntervalMin * 60 * 1000);
-    }
-
-    // 6. 상태바 업데이트
-    this.statusBar?.setGuardMode(allSuccess ? 'active' : 'warning');
-
-    // 7. onChange 알림
-    this.notifyListeners();
-
-    if (allSuccess) {
-      return { success: true, command: 'enable()' };
-    }
-    return lastResult;
   }
 
   /**

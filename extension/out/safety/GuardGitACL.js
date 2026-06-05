@@ -23,41 +23,46 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createGuardGitACL = createGuardGitACL;
+exports.createGuardGitACL = void 0;
 const child_process = __importStar(require("child_process"));
 // ── 공통 상수 ─────────────────────────────────────────────────
-/** C1: 경로 검증 정규식 — 허용 문자만 통과 */
-const SAFE_PATH_REGEX = /^[a-zA-Z0-9_\-\\:. \/@]+$/;
+/**
+ * C1: 위험 문자 정규식 — 유니코드 문자 허용, 쉘 메타문자 + 제어문자만 차단
+ *
+ * Windows에서 execFile() + shell: false를 사용하므로 주입 경로는
+ * exec()를 썼을 때의 쉘 메타문자(<>"|?*)와 제어문자만 차단하면 충분.
+ * 유니코드 문자(한글, 중국어, 일본어 등)는 Windows 파일시스템에서
+ * 정상적인 경로 문자이므로 허용해야 한다.
+ */
+const DANGEROUS_PATH_REGEX = /[<>"|?*\x00-\x1f]/;
 /** C1/C2: 기본 타임아웃 (10초) */
 const DEFAULT_TIMEOUT_MS = 10000;
 // ── 공통 유틸리티 ─────────────────────────────────────────────
 /**
- * C1: 경로 검증 — 안전하지 않은 문자 포함 시 예외 발생
+ * C1: 경로 검증 — 위험 문자/제어문자 포함 시 예외 발생
+ *
+ * - null/빈 문자열 차단
+ * - 최대 2000자 (Windows PATH_MAX ≈ 260, NTFS 최대 32767)
+ * - 쉘 메타문자(<>"|?*) 및 제어문자(\x00-\x1f) 차단
+ * - 유니코드 문자(한글, 중국어, 일본어 등)는 정상 허용
  */
 function validatePath(gitDir) {
-    if (!SAFE_PATH_REGEX.test(gitDir)) {
-        throw new Error(`Guard.git: 안전하지 않은 경로 문자 포함 — "${gitDir}"`);
+    if (!gitDir || gitDir.length === 0) {
+        throw new Error('Guard.git: 경로가 비어있음');
     }
-    if (gitDir.length > 250) {
+    if (gitDir.length > 2000) {
         throw new Error(`Guard.git: 경로가 너무 깁니다 (${gitDir.length}자)`);
+    }
+    if (DANGEROUS_PATH_REGEX.test(gitDir)) {
+        throw new Error(`Guard.git: 경로에 금지된 문자 포함: <>\"|?*`);
     }
 }
 /**
@@ -108,8 +113,8 @@ class WindowsGuardGitACL {
         }
     }
     async applyProtection(gitDir) {
-        validatePath(gitDir);
         try {
+            validatePath(gitDir);
             const result = await execFileSafe('icacls', [gitDir, '/deny', '*S-1-1-0:(DE)']);
             return {
                 success: true,
@@ -123,8 +128,8 @@ class WindowsGuardGitACL {
         }
     }
     async removeProtection(gitDir) {
-        validatePath(gitDir);
         try {
+            validatePath(gitDir);
             const result = await execFileSafe('icacls', [gitDir, '/remove:d', '*S-1-1-0']);
             return {
                 success: true,
@@ -195,8 +200,8 @@ class LinuxGuardGitACL {
         }
     }
     async applyProtection(gitDir) {
-        validatePath(gitDir);
         try {
+            validatePath(gitDir);
             // C2: sudo 없이 chattr 시도
             const result = await execFileSafe('chattr', ['+a', gitDir]);
             return {
@@ -215,8 +220,8 @@ class LinuxGuardGitACL {
         }
     }
     async removeProtection(gitDir) {
-        validatePath(gitDir);
         try {
+            validatePath(gitDir);
             const result = await execFileSafe('chattr', ['-a', gitDir]);
             return {
                 success: true,
@@ -268,8 +273,8 @@ class MacOSGuardGitACL {
         }
     }
     async applyProtection(gitDir) {
-        validatePath(gitDir);
         try {
+            validatePath(gitDir);
             const result = await execFileSafe('chmod', ['+a', 'everyone deny delete', gitDir]);
             return {
                 success: true,
@@ -295,8 +300,8 @@ class MacOSGuardGitACL {
         }
     }
     async removeProtection(gitDir) {
-        validatePath(gitDir);
         try {
+            validatePath(gitDir);
             const result = await execFileSafe('chmod', ['-a', 'everyone deny delete', gitDir]);
             return {
                 success: true,
@@ -371,4 +376,5 @@ function createGuardGitACL() {
         default: return new NoopGuardGitACL();
     }
 }
+exports.createGuardGitACL = createGuardGitACL;
 //# sourceMappingURL=GuardGitACL.js.map

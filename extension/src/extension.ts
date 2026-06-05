@@ -217,16 +217,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // autoEnable: Guard 설정 + YOLO 진입 시 자동 활성화
     // Bug #3: enable() 실패 시 사용자에게 알림
+    // (enable()은 이제 항상 catch 내부에서 { success, error }를 반환하므로 try/catch 불필요)
     if (ConfigService.getGuardAutoEnable()) {
-      try {
-        const result = await guardGit.enable();
-        if (!result.success) {
-          vscode.window.showWarningMessage(
-            vscode.l10n.t('Guard.git auto-activation failed: {0}', result.error || 'Unknown error')
-          );
-        }
-      } catch (err: any) {
-        console.warn('[Guard.git] 자동 활성화 실패:', err);
+      const result = await guardGit.enable();
+      if (!result.success) {
+        console.warn('[Guard.git] 자동 활성화 실패:', result.error);
+        vscode.window.showWarningMessage(
+          vscode.l10n.t('Guard.git auto-activation failed: {0}', result.error || 'Unknown error')
+        );
       }
     }
   }

@@ -19,26 +19,15 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.activate = activate;
-exports.deactivate = deactivate;
+exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -225,15 +214,12 @@ async function activate(context) {
         }
         // autoEnable: Guard 설정 + YOLO 진입 시 자동 활성화
         // Bug #3: enable() 실패 시 사용자에게 알림
+        // (enable()은 이제 항상 catch 내부에서 { success, error }를 반환하므로 try/catch 불필요)
         if (ConfigService_1.ConfigService.getGuardAutoEnable()) {
-            try {
-                const result = await guardGit.enable();
-                if (!result.success) {
-                    vscode.window.showWarningMessage(vscode.l10n.t('Guard.git auto-activation failed: {0}', result.error || 'Unknown error'));
-                }
-            }
-            catch (err) {
-                console.warn('[Guard.git] 자동 활성화 실패:', err);
+            const result = await guardGit.enable();
+            if (!result.success) {
+                console.warn('[Guard.git] 자동 활성화 실패:', result.error);
+                vscode.window.showWarningMessage(vscode.l10n.t('Guard.git auto-activation failed: {0}', result.error || 'Unknown error'));
             }
         }
     }
@@ -541,6 +527,7 @@ async function activate(context) {
     }));
     console.log('[VibeZoo] ✅ 활성화 완료');
 }
+exports.activate = activate;
 // ── Deactivate ───────────────────────────────────────────────
 function deactivate() {
     console.log('[VibeZoo] 비활성화 — Crow 서버는 Zoo Code가 계속 관리합니다.');
@@ -555,6 +542,7 @@ function deactivate() {
     subagentManager?.terminate();
     statusBar?.dispose();
 }
+exports.deactivate = deactivate;
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 function autoConfigureMCP(port) {
     // 전역 MCP 설정에 이미 vibezoo가 등록되어 있으면 프로젝트 레벨 설정 불필요
