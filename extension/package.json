@@ -154,18 +154,21 @@
           "id": "vibezoo.activeSubagents",
           "name": "%view.vibezoo.activeSubagents.name%",
           "type": "tree",
+          "icon": "$(extensions)",
           "contextualTitle": "VibeZoo Subagents"
         },
         {
           "id": "vibezoo.yoloHistory",
           "name": "%view.vibezoo.yoloHistory.name%",
           "type": "tree",
+          "icon": "$(history)",
           "contextualTitle": "VibeZoo YOLO Sessions"
         },
         {
           "id": "vibezoo.sessionResume",
           "name": "%view.vibezoo.sessionResume.name%",
           "type": "tree",
+          "icon": "$(debug-restart)",
           "contextualTitle": "VibeZoo Session Resume"
         }
       ]
