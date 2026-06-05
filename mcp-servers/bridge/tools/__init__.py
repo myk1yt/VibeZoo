@@ -21,8 +21,9 @@ def register_all_tools(mcp):
     from bridge.tools.ssa import register as reg_ssa
     from bridge.tools.ux_coordinator import register as reg_ux
     from bridge.tools.feedback import register as reg_feedback
+    from bridge.tools.editor import register as reg_editor
 
     for reg in [reg_setup, reg_scout, reg_reviewer, reg_deep, reg_tester, register_file_analyzer,
                 reg_wb, reg_fix, reg_integrated, reg_analysis,
-                reg_knowledge, reg_web, reg_ssa, reg_ux, reg_feedback]:
+                reg_knowledge, reg_web, reg_ssa, reg_ux, reg_feedback, reg_editor]:
         reg(mcp)
