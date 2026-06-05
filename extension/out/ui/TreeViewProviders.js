@@ -180,29 +180,20 @@ class ActiveSubagentsProvider {
     /** Guard.git 상태 업데이트 */
     setGuardGitStatus(state) {
         const nodeId = '_guard_git';
-        if (state === 'inactive') {
-            this.nodes.delete(nodeId);
-        }
-        else {
-            const statusIcons = {
-                active: '$(shield)',
-                inactive: '',
-                warning: '$(warning)',
-                error: '$(error)',
-            };
-            const guardManager = (0, SelfCheck_1.getGuardGitManager)();
-            const pathCount = guardManager?.getProtectedPathCount() ?? 1;
-            this.nodes.set(nodeId, {
-                id: nodeId,
-                name: 'Guard.git',
-                status: state === 'active' ? 'running' : state === 'warning' ? 'error' : 'idle',
-                currentTask: state === 'active' ? `.git Protected (${pathCount} roots)`
-                    : state === 'warning' ? '⚠️ .git Compromised'
-                        : 'Unknown',
-                port: 0,
-                startTime: Date.now(),
-            });
-        }
+        // 항상 노드 표시 (inactive여도 유지)
+        const guardManager = (0, SelfCheck_1.getGuardGitManager)();
+        const pathCount = guardManager?.getProtectedPathCount() ?? 1;
+        this.nodes.set(nodeId, {
+            id: nodeId,
+            name: 'Guard.git',
+            status: state === 'active' ? 'running' : state === 'warning' ? 'error' : 'idle',
+            currentTask: state === 'active' ? `.git Protected (${pathCount} roots)`
+                : state === 'warning' ? '⚠️ .git Compromised'
+                    : state === 'error' ? 'Error'
+                        : 'Off — Click to enable',
+            port: 0,
+            startTime: Date.now(),
+        });
         this._onDidChangeTreeData.fire(undefined);
     }
     /** CIM 감시 상태 업데이트 */
@@ -278,7 +269,9 @@ class SubagentTreeItem extends vscode.TreeItem {
             const stateLabel = node.status === 'running' ? 'Active'
                 : node.status === 'error' ? 'Warning'
                     : 'Inactive';
-            const statusIcon = node.status === 'running' ? '$(shield)' : '$(warning)';
+            const statusIcon = node.status === 'running' ? '$(shield)'
+                : node.status === 'error' ? '$(error)'
+                    : '$(circle-slash)';
             this.label = `${statusIcon} Guard.git`;
             this.description = node.currentTask;
             this.tooltip = new vscode.MarkdownString(`**Guard.git**\n\nStatus: ${stateLabel}\n.git directory: Protected\n\nClick to toggle Guard.git on/off.`);
@@ -468,12 +461,13 @@ class SessionResumeProvider {
 exports.SessionResumeProvider = SessionResumeProvider;
 class SessionResumeItem extends vscode.TreeItem {
     session;
-    children = [];
+    children;
     constructor(session, type, labelOverride, collapsibleState) {
         if (type && labelOverride) {
             // 하위 아이템
             super(labelOverride, collapsibleState ?? vscode.TreeItemCollapsibleState.None);
             this.session = session;
+            this.children = [];
             this.id = `${session.sessionId}-${type}`;
             this.description = '';
             this.iconPath = undefined;
@@ -486,6 +480,7 @@ class SessionResumeItem extends vscode.TreeItem {
                 : session.sessionId;
             super(displayName, vscode.TreeItemCollapsibleState.Collapsed);
             this.session = session;
+            this.children = [];
             this.id = session.sessionId;
             this.description = `${session.mode || '?'} • ${new Date(session.startedAt).toLocaleDateString('ko-KR')}`;
             this.iconPath = undefined;

@@ -165,28 +165,20 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
   /** Guard.git 상태 업데이트 */
   setGuardGitStatus(state: GuardGitState): void {
     const nodeId = '_guard_git';
-    if (state === 'inactive') {
-      this.nodes.delete(nodeId);
-    } else {
-      const statusIcons: Record<GuardGitState, string> = {
-        active: '$(shield)',
-        inactive: '',
-        warning: '$(warning)',
-        error: '$(error)',
-      };
-      const guardManager = getGuardGitManager();
-      const pathCount = guardManager?.getProtectedPathCount() ?? 1;
-      this.nodes.set(nodeId, {
-        id: nodeId,
-        name: 'Guard.git',
-        status: state === 'active' ? 'running' : state === 'warning' ? 'error' : 'idle',
-        currentTask: state === 'active' ? `.git Protected (${pathCount} roots)`
-          : state === 'warning' ? '⚠️ .git Compromised'
-          : 'Unknown',
-        port: 0,
-        startTime: Date.now(),
-      });
-    }
+    // 항상 노드 표시 (inactive여도 유지)
+    const guardManager = getGuardGitManager();
+    const pathCount = guardManager?.getProtectedPathCount() ?? 1;
+    this.nodes.set(nodeId, {
+      id: nodeId,
+      name: 'Guard.git',
+      status: state === 'active' ? 'running' : state === 'warning' ? 'error' : 'idle',
+      currentTask: state === 'active' ? `.git Protected (${pathCount} roots)`
+        : state === 'warning' ? '⚠️ .git Compromised'
+        : state === 'error' ? 'Error'
+        : 'Off — Click to enable',
+      port: 0,
+      startTime: Date.now(),
+    });
     this._onDidChangeTreeData.fire(undefined);
   }
 
@@ -269,7 +261,9 @@ class SubagentTreeItem extends vscode.TreeItem {
       const stateLabel = node.status === 'running' ? 'Active'
         : node.status === 'error' ? 'Warning'
         : 'Inactive';
-      const statusIcon = node.status === 'running' ? '$(shield)' : '$(warning)';
+      const statusIcon = node.status === 'running' ? '$(shield)'
+        : node.status === 'error' ? '$(error)'
+        : '$(circle-slash)';
       this.label = `${statusIcon} Guard.git`;
       this.description = node.currentTask;
       this.tooltip = new vscode.MarkdownString(
@@ -502,13 +496,14 @@ export class SessionResumeProvider implements vscode.TreeDataProvider<SessionRes
 
 class SessionResumeItem extends vscode.TreeItem {
   session: SessionSummary;
-  children: SessionResumeItem[] = [];
+  children: SessionResumeItem[];
 
   constructor(session: SessionSummary, type?: string, labelOverride?: string, collapsibleState?: vscode.TreeItemCollapsibleState) {
     if (type && labelOverride) {
       // 하위 아이템
       super(labelOverride, collapsibleState ?? vscode.TreeItemCollapsibleState.None);
       this.session = session;
+      this.children = [];
       this.id = `${session.sessionId}-${type}`;
       this.description = '';
       this.iconPath = undefined;
@@ -520,6 +515,7 @@ class SessionResumeItem extends vscode.TreeItem {
         : session.sessionId;
       super(displayName, vscode.TreeItemCollapsibleState.Collapsed);
       this.session = session;
+      this.children = [];
       this.id = session.sessionId;
       this.description = `${session.mode || '?'} • ${new Date(session.startedAt).toLocaleDateString('ko-KR')}`;
       this.iconPath = undefined;
