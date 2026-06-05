@@ -79,7 +79,7 @@ class SearchEngine:
     def _search_ripgrep(self, query: str, file_patterns: Optional[str],
                         max_results: int, context_lines: int) -> List[dict]:
         """ripgrep 호출 + 결과 파싱"""
-        cmd = ["rg", "--no-heading", "--line-number", "--color", "never",
+        cmd = ["rg", "--no-heading", "--line-number", "--column", "--color", "never",
                "--max-count", str(max_results)]
         if context_lines > 0:
             cmd.extend(["-C", str(context_lines)])
@@ -118,20 +118,34 @@ class SearchEngine:
                 continue
 
             # 매칭 라인 파싱: filename:line:column:content
+            # Format: filename:line:column:content (with --column flag)
+            # Fallback: filename:line:content (without column)
             m = re.match(r'^([^:]+):(\d+):(\d+):(.+)$', line)
+            if not m:
+                m = re.match(r'^([^:]+):(\d+):(.+)$', line)
             if m:
                 if current:
                     current["context_after"] = context_after
                     results.append(current)
-                current = {
-                    "file": m.group(1),
-                    "line": int(m.group(2)),
-                    "column": int(m.group(3)),
-                    "content": m.group(4).strip()[:200],
-                    "context_before": list(context_before),
-                    "context_after": [],
-                    "score": 1.0,
-                }
+                if m.lastindex == 4:
+                    # filename:line:column:content
+                    current = {
+                        "file": m.group(1),
+                        "line": int(m.group(2)),
+                        "column": int(m.group(3)),
+                        "content": m.group(4).strip()[:200],
+                    }
+                else:
+                    # filename:line:content (no column)
+                    current = {
+                        "file": m.group(1),
+                        "line": int(m.group(2)),
+                        "column": 1,
+                        "content": m.group(3).strip()[:200],
+                    }
+                current["context_before"] = list(context_before)
+                current["context_after"] = []
+                current["score"] = 1.0
                 context_before = []
                 context_after = []
                 collecting_after = False
