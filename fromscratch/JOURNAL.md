@@ -42,6 +42,22 @@
 **설계 문서**: [`plans/guard-git-design.md`](plans/guard-git-design.md)
 **GitHub**: commit & push 완료
 
+### 버그 수정
+
+1. **한글 경로 문제** (`DANGEROUS_PATH_REGEX`)
+   - 기존 `SAFE_PATH_REGEX`는 ASCII 경로만 허용하여 한글/유니코드 경로에서 Guard.git 활성화 실패
+   - `DANGEROUS_PATH_REGEX`로 변경하여 유니코드 문자(한글 포함)가 경로에 포함되어도 정상 작동하도록 수정
+   - 관련 파일: [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts)
+
+2. **Race condition 수정**
+   - `activate()`와 `enable()` 메서드에 `await` 누락으로 Guard.git 활성화 순서가 보장되지 않던 문제 수정
+   - 확장 로딩 초기에 Guard.git이 완전히 초기화되지 않은 상태에서 ACL 설정이 시도되는 버그 해결
+
+3. **확장 로딩 경로 문제 해결**
+   - VS Code Extension이 설치된 확장 디렉토리와 동기화되도록 TypeScript 컴파일 대상 경로 변경
+   - `out/` 디렉토리가 Git에 트래킹되도록 `.gitignore` 우회 설정
+   - 로컬 개발 환경과 설치된 확장 간의 Guard.git 동작 불일치 해소
+
 ---
 
 ## 2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)

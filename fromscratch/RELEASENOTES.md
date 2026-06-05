@@ -28,3 +28,13 @@ AI 에이전트가 실수로 `rm -rf *` / `rmdir /s /q` 등을 실행하여 프�
 - `vibezoo.guard.yoctoBackupIntervalMin`: 스냅샷 간격 (기본: 30분)
 - `vibezoo.guard.integrityCheckIntervalMin`: 무결성 진단 간격 (기본: 5분)
 - `vibezoo.guard.linuxUseChattr`: Linux에서 chattr 사용 (기본: false)
+
+### 🐛 Bug Fixes (v0.14.3)
+- **한글 경로 문제**: `SAFE_PATH_REGEX` → `DANGEROUS_PATH_REGEX`로 변경하여 유니코드 문자(한글 포함) 허용
+- **Race condition 수정**: `activate()`/`enable()`에 `await` 추가로 순차 실행 보장
+- **확장 로딩 경로 동기화**: TypeScript 컴파일 + 설치된 확장 디렉토리 동기화로 Guard.git 동작 불일치 해소
+- **Shell injection 방지**: `exec()` → `execFile()` 전환, 경로 검증 정규식 + 10초 타임아웃
+- **sudo hang 방지**: Linux `sudo` 사용 금지, Watcher+Yocto fallback 즉시 전환
+- **잔여 ACL 정리**: Extension crash 후 재시작 시 자동 정리 (`_cleanupResidualACL`)
+- **빈 gitDirPaths 허위 성공**: `.git` 없을 때 `{success:false}` 반환
+- **사용자 알림**: enable 실패 시 `showWarningMessage` 표시
