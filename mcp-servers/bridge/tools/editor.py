@@ -34,12 +34,44 @@ BACKUP_DIR = Path.home() / ".vibezoo-backup"
 def _parse_diff(diff: str) -> list[dict]:
     """diff 파싱: SEARCH/REPLACE 블록 추출"""
     blocks = []
-    pattern = r'<<<<<<< SEARCH\n(.*?)\n?-------\n(.*?)\n?>>>>>>> REPLACE'
-    for m in re.finditer(pattern, diff, re.DOTALL):
-        blocks.append({"search": m.group(1).strip(), "replace": m.group(2).strip()})
+    # 줄바꿈 정규화: \r\n, \r, \n, literal \n 모두 처리
+    diff = diff.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    lines = diff.split("\n")
+    search_lines = []
+    replace_lines = []
+    current = None  # 'search' or 'replace'
+    for line in lines:
+        raw = line
+        stripped = line.strip()
+        if stripped == "<<<<<<< SEARCH":
+            current = "search"
+            search_lines = []
+            replace_lines = []
+            continue
+        if stripped == "-------":
+            current = "replace"
+            continue
+        if stripped == ">>>>>>> REPLACE":
+            if search_lines and replace_lines:
+                blocks.append({
+                    "search": "\n".join(search_lines).strip(),
+                    "replace": "\n".join(replace_lines).strip(),
+                })
+            search_lines = []
+            replace_lines = []
+            current = None
+            continue
+        if current == "search":
+            search_lines.append(raw)
+        elif current == "replace":
+            replace_lines.append(raw)
+    # Handle case where no trailing newline
+    if search_lines and replace_lines:
+        blocks.append({
+            "search": "\n".join(search_lines).strip(),
+            "replace": "\n".join(replace_lines).strip(),
+        })
     return blocks
-
-
 def _find_file_by_content(content_sample: str, target_path: str, max_candidates: int = 5) -> list[Path]:
     """내용 샘플과 일치하는 파일 검색"""
     root = Path(get_project_root(target_path))
