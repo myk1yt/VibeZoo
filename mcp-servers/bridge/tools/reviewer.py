@@ -8,6 +8,11 @@ import re
 import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
+import sys
+# Pylance: ensure the extension root is in package search path
+_EXT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _EXT_ROOT not in sys.path:
+    sys.path.insert(0, _EXT_ROOT)
 from typing import Optional
 
 from bridge.config import (
@@ -85,16 +90,18 @@ def _compute_nesting_depth(content: str, ext: str, max_check: int = 100) -> int:
 # ── _review_project_core — review_project 내부 구현 ──
 
 
-def _review_project_core(target_path: str, mode: str = "quality") -> str:
+def _review_project_core(target_path: Optional[str] = None, mode: str = "quality") -> str:
     """review_project의 내부 구현 — mode="quality"로 품질 검사만 수행
 
     Args:
-        target_path: 분석 대상 경로
+        target_path: 분석 대상 경로 (생략 시 현재 작업 디렉토리 사용)
         mode: "quality" (품질 검사) | "full" (전체 리뷰)
 
     Returns:
         마크다운 보고서
     """
+    if target_path is None:
+        target_path = os.getcwd()
     root = Path(get_project_root(target_path))
     output = _markdown_header("Code Quality Check")
 

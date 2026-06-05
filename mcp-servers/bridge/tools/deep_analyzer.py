@@ -7,6 +7,11 @@ import re
 import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
+import sys
+# Pylance: ensure the extension root is in package search path
+_EXT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _EXT_ROOT not in sys.path:
+    sys.path.insert(0, _EXT_ROOT)
 from typing import Optional
 
 from bridge.config import (
@@ -346,13 +351,15 @@ def _run_map_dependencies(target_path: Optional[str] = None) -> str:
 # ── AST 기반 패턴 추출 (extract_patterns 핵심) ──────
 
 
-def _extract_patterns_ast(target_path: str, min_occurrences: int = 3) -> str:
+def _extract_patterns_ast(target_path: Optional[str] = None, min_occurrences: int = 3) -> str:
     """
     AST 서브트리 매칭으로 구조적 패턴 탐지.
 
     기존 키워드 카운팅(content.count("async ")) → tree-sitter AST 노드 타입 매칭 + regex 폴백.
     각 패턴의 발생 위치(list[dict])를 LLM이 활용 가능한 형태로 반환.
     """
+    if target_path is None:
+        target_path = os.getcwd()
     ast_engine = _get_ast_engine()
     root = Path(get_project_root(target_path))
     # 위치 정보 포함: 각 패턴의 occurrence에 file/line/column 정보 저장
