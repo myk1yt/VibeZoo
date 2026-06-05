@@ -195,19 +195,21 @@ def register(mcp):
     # ── 도구 등록 ──
 
     @mcp.tool
-    def review_project(target_path: str, streaming: bool = True,
+    def review_project(target_path: Optional[str] = None, streaming: bool = True,
                        mode: str = "summary", max_tokens: int = 500) -> str:
         """search_codebase + review_code + check_quality + extract_patterns 통합.
         프로젝트 전체를 종합 리뷰하여 하나의 마크다운 보고서로 반환합니다.
         streaming=True 시 각 단계별 진행 청크를 포함하여 LLM이 빠르게 첫 결과를 볼 수 있습니다.
 
         Args:
-            target_path: 분석 대상 디렉토리 경로
+            target_path: 분석 대상 디렉토리 경로 (생략 시 현재 작업 디렉토리 사용)
             streaming: True면 각 단계별 진행 청크 포함 (기본: True)
             mode: "summary" (기본) — 핵심 요약만 (파일 수, 주요 발견, 등급) 1000자 이내
                   "full" — 전체 상세 보고서 (기존 동작)
             max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
+        if target_path is None:
+            target_path = os.getcwd()
         err = _validate_string(target_path, "target_path")
         if err:
             return _markdown_header("Review Project Error", "❌") + f"**{err}**\n" + _markdown_footer()
@@ -337,17 +339,19 @@ def register(mcp):
         return result
 
     @mcp.tool
-    def find_bugs(target_path: str, mode: str = "summary", max_tokens: int = 500) -> str:
+    def find_bugs(target_path: Optional[str] = None, mode: str = "summary", max_tokens: int = 500) -> str:
         """extract_patterns + search_codebase(console.log|debugger|any) + Crow recall 통합.
         프로젝트에서 잠재적 버그를 찾아 마크다운으로 반환합니다.
         ESLint/tsc 결과를 LLM 분석용 데이터 구조로 변환하여 포함합니다.
 
         Args:
-            target_path: 분석 대상 디렉토리 경로
+            target_path: 분석 대상 디렉토리 경로 (생략 시 현재 작업 디렉토리 사용)
             mode: "summary" (기본) — 핵심 발견만 1000자 이내
                   "full" — 전체 상세 보고서
             max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
+        if target_path is None:
+            target_path = os.getcwd()
         err = _validate_string(target_path, "target_path")
         if err:
             return _markdown_header("Bug Finder Error", "❌") + f"**{err}**\n" + _markdown_footer()
@@ -524,16 +528,18 @@ def register(mcp):
         return result
 
     @mcp.tool
-    def suggest_refactor(target_path: str, mode: str = "summary", max_tokens: int = 500) -> str:
+    def suggest_refactor(target_path: Optional[str] = None, mode: str = "summary", max_tokens: int = 500) -> str:
         """map_dependencies + extract_patterns + analyze_call_graph 통합.
         프로젝트의 리팩터링 제안을 마크다운으로 반환합니다.
 
         Args:
-            target_path: 분석 대상 디렉토리 경로
+            target_path: 분석 대상 디렉토리 경로 (생략 시 현재 작업 디렉토리 사용)
             mode: "summary" (기본) — 핵심 제안 3~5개만 (각 50자 내외) + 등급
                   "full" — 전체 상세 보고서 (기존 동작)
             max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
+        if target_path is None:
+            target_path = os.getcwd()
         err = _validate_string(target_path, "target_path")
         if err:
             return _markdown_header("Refactoring Error", "❌") + f"**{err}**\n" + _markdown_footer()
@@ -651,19 +657,21 @@ def register(mcp):
         return result
 
     @mcp.tool
-    def generate_docs(target_path: str, output_format: str = "markdown",
+    def generate_docs(target_path: Optional[str] = None, output_format: str = "markdown",
                       mode: str = "summary", max_tokens: int = 500) -> str:
         """reverse_engineer + summarize_architecture + draw_on_whiteboard(architecture diagram) 통합.
         프로젝트 문서를 자동 생성하고 아키텍처 다이어그램을 화이트보드에 그립니다.
         format='mermaid' 시 ERD 다이어그램을 함께 생성합니다.
 
         Args:
-            target_path: 분석 대상 디렉토리 경로
+            target_path: 분석 대상 디렉토리 경로 (생략 시 현재 작업 디렉토리 사용)
             output_format: 출력 형식 (markdown, openapi, mermaid). 기본: markdown
             mode: "summary" (기본) — 핵심 요약만
                   "full" — 전체 상세 보고서 (기존 동작)
             max_tokens: LLM 컨텍스트 제한 (기본: 500). 0이면 전체.
         """
+        if target_path is None:
+            target_path = os.getcwd()
         err = _validate_string(target_path, "target_path")
         if err:
             return _markdown_header("Document Generation Error", "❌") + f"**{err}**\n" + _markdown_footer()
