@@ -6,8 +6,14 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+
+# Pylance: ensure the extension root is in package search path
+_EXT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _EXT_ROOT not in sys.path:
+    sys.path.insert(0, _EXT_ROOT)
 from typing import Optional
 
 from bridge.config import (
