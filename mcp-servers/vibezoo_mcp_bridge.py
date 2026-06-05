@@ -1,4 +1,4 @@
-# VibeZoo MCP Bridge — 통합 MCP 서버 (v0.14.1)
+# VibeZoo MCP Bridge — 통합 MCP 서버 (v0.14.2)
 # 모듈화된 bridge/ 패키지 기반, 진입점 90줄
 # Scout(코드 검색) + Reviewer(리뷰) + Tester(테스트) + DeepAnalyzer(분석)
 # Crow Memory(Python)와 동일한 FastMCP 기반
@@ -34,7 +34,7 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Reviewer", "status": "ready", "tools": ["review_code"]},
             {"name": "DeepAnalyzer", "status": "ready", "tools": ["analyze_call_graph", "map_dependencies", "extract_patterns", "reverse_engineer"]},
             {"name": "Tester", "status": "ready", "tools": ["generate_tests", "analyze_coverage"]},
-            {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen"]},
+            {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen", "check_uploaded_files"]},
             {"name": "FixLoop", "status": "ready", "tools": ["auto_fix_status", "retry_build", "check_intervention"]},
             {"name": "Integrated", "status": "ready", "tools": ["review_project", "find_bugs", "suggest_refactor", "generate_docs"]},
             {"name": "Analysis", "status": "ready", "tools": ["explain_code", "analyze_changes", "review_pr", "refactor_across_files"]},
@@ -43,6 +43,8 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
             {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
             {"name": "Feedback", "status": "ready", "tools": ["vibezoo_feedback"]},
+            {"name": "Editor", "status": "ready", "tools": ["apply_patch", "read_project_file"]},
+            {"name": "FileAnalyzer", "status": "ready", "tools": ["analyze_uploaded_file", "check_uploaded_files"]},
         ]
     })
 

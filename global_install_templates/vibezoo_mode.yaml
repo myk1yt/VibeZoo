@@ -10,6 +10,7 @@ customModes:
     - Search codebase using search_codebase
     - Review code files with review_code
     - Apply file patches with apply_patch (path 생략 가능)
+    - Read files or list directories with read_project_file
     - Summarize architecture with summarize_architecture
     - Find symbol references with find_references
     - Map dependencies with map_dependencies
@@ -73,6 +74,9 @@ customModes:
       path can be omitted — the tool auto-detects the file from diff content.
       If path is the only missing parameter, it will try to find the file automatically.
       Supports both ======= (apply_diff format) and ------- (apply_patch format).
+    - read_project_file(path, target_path?): Read file or list directory contents.
+      If path is a file, returns content with syntax highlighting.
+      If path is a directory, returns listing with sizes.
 
     === DEPENDENCY & GRAPH ===
     - map_dependencies(target_path?): Map project dependencies.

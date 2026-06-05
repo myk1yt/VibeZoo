@@ -1,6 +1,6 @@
 # VibeZoo — Intelligent Companion Extension for AI Coding Assistants
 
-> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-34-tools) (37 Tools)**
+> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-34-tools) (38 Tools)**
 
 VibeZoo is a Companion Extension for Zoo Code. Without modifying a single line of Zoo Code's source code, it enables the LLM to search, analyze, review, and document code more intelligently. It remembers your habits and preferences, and enables real-time visual collaboration (Whiteboard, Dropzone, Vision AI).
 
@@ -41,9 +41,9 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
 
 ---
 
-## 1. VibeZoo MCP Bridge — Tool Overview (37 Tools)
+## 1. VibeZoo MCP Bridge — Tool Overview (38 Tools)
 
-The VibeZoo MCP Bridge operates based on FastMCP + SSE, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/sse`. It provides a total of **36+ MCP tools** through a modular architecture (`bridge/tools/`).
+The VibeZoo MCP Bridge operates based on FastMCP + SSE, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/sse`. It provides a total of **37+ MCP tools** through a modular architecture (`bridge/tools/`).
 
 ### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
 The `web_search` tool leverages a **Quad-Core Async Search Engine** architecture (powered by `curl_cffi` for advanced bypassing and `selectolax` + `httpx` for high-speed parsing) to autonomously fetch real-time data and documentation. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
@@ -88,12 +88,14 @@ Used to reference external documentation or search for the latest technical info
 ### 1.13 SSA (1 Tool) — Spatial Statistical Analysis
 Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, including OCR.
 
-### 1.14 Editor (1 Tool) — AI-Safe File Editing
+### 1.14 Editor (2 Tools) — AI-Safe File Editing
 Apply patches to files without worrying about missing parameters. The `apply_patch` tool:
 - **`path` 생략 가능**: diff 내용으로 대상 파일 자동 감지
 - **Fuzzy 매칭**: 85% 유사도까지 자동 보정 (whitespace/indentation 차이 무시)
 - **자동 백업**: 수정 전 `~/.vibezoo-backup/`에 백업
 - **`=======` / `-------` 모두 지원**: `apply_diff` 호환
+
+- **`read_project_file`**: Read file or list directory contents. If path is a file, returns content with syntax highlighting. If path is a directory, returns listing with sizes.
 
 ### 1.15 Setup (1 Tool) — Automation
 Installs VibeZoo dependencies and auto-configures MCP/Zoo settings.
