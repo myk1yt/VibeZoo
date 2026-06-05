@@ -2,6 +2,7 @@
 # Phase A: 통합 설치/설정 관리자 (vibezoo_setup)
 # pip 패키지 설치, 시스템 도구 설치, MCP 설정, Zoo 설정을 한 번에 처리
 
+import io
 import json
 import os
 import platform
@@ -9,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Optional
 
@@ -379,6 +382,50 @@ class SetupManager:
                     return True
             except Exception:
                 pass
+
+        # 4. Direct download fallback (winget/choco/scoop 모두 실패 시)
+        if tool_name == "rg":
+            # ripgrep 전용: GitHub Release에서 zip 직접 다운로드
+            RG_URL = "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip"
+
+            # 사용자 PATH 디렉토리 후보
+            install_dirs = [
+                Path.home() / ".cargo" / "bin",
+                Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin",
+                Path(os.environ.get("USERPROFILE", "")) / ".cargo" / "bin",
+            ]
+            install_path = None
+            for d in install_dirs:
+                p = Path(d)
+                p.mkdir(parents=True, exist_ok=True)
+                if p.exists() and p.is_dir():
+                    install_path = p
+                    break
+
+            if install_path:
+                try:
+                    # 다운로드
+                    req = urllib.request.Request(RG_URL, headers={"User-Agent": "VibeZoo/1.0"})
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        zip_data = resp.read()
+                    # 압축 해제 — rg.exe만 추출
+                    with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+                        for member in zf.namelist():
+                            if member.endswith("rg.exe"):
+                                target_path = install_path / "rg.exe"
+                                with zf.open(member) as src, open(target_path, "wb") as dst:
+                                    dst.write(src.read())
+                                break
+                    result["installed"].append(tool_name)
+                    self._results.append({
+                        "action": "system_tool",
+                        "tool": tool_name,
+                        "method": "direct_download",
+                        "status": "installed",
+                    })
+                    return True
+                except Exception:
+                    pass
 
         return False
 
