@@ -18,6 +18,8 @@ import { ProjectTreeScanner } from './flow/ProjectTreeScanner';
 import { YoctoManager } from './safety/YoctoManager';
 import { ConfigService } from './config/ConfigService';
 // FileGuard removed
+import { GuardGitManager } from './safety/GuardGitManager';
+import { setGuardGitManager } from './safety/SelfCheck';
 import { AutoBuildFix } from './safety/AutoBuildFix';
 import { GitStashManager } from './safety/GitStashManager';
 import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetector } from './context/ContextIntelligence';
@@ -67,6 +69,7 @@ let crowServer: CrowServerManager;
 let statusBar: StatusBarManager;
 let yocto: YoctoManager;
 // fileGuard removed
+let guardGit: GuardGitManager | undefined;
 let autoBuildFix: AutoBuildFix;
 let gitStash: GitStashManager;
 let treeScanner: ProjectTreeScanner;
@@ -193,7 +196,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider('vibezoo.sessionResume', sessionResumeProvider)
   );
 
-  // FileGuard removed
+  // ── Wave 2.5: Guard.git ────────────────────────────────
+  if (ConfigService.getGuardEnabled()) {
+    guardGit = new GuardGitManager();
+    guardGit.bindStatusBar(statusBar);
+    setGuardGitManager(guardGit);
+
+    // H6: activate() 시작 시 cleanupResidualACL() 호출됨
+    guardGit.activate(context, yocto!).catch(err => {
+      console.warn('[Guard.git] 활성화 실패:', err);
+    });
+
+    // TreeView에 Guard 노드 등록
+    guardGit.onChange((summary) => {
+      subagentsProvider.setGuardGitStatus(summary.overall);
+    });
+
+    // autoEnable: Guard 설정 + YOLO 진입 시 자동 활성화
+    if (ConfigService.getGuardAutoEnable()) {
+      guardGit.enable().catch(err =>
+        console.warn('[Guard.git] 자동 활성화 실패:', err)
+      );
+    }
+  }
 
   // SubagentManager onChange → ActiveSubagentsProvider
   subagentManager.onChange((node) => subagentsProvider.updateNode(node));
@@ -411,7 +436,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 2000);
   }
 
-  // FileGuard toggle removed
+  // ── Guard.git 명령어 등록 ──────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.toggleGuardGit', async () => {
+      if (!guardGit) {
+        vscode.window.showWarningMessage(vscode.l10n.t('VibeZoo: Guard.git is not initialized.'));
+        return;
+      }
+      if (guardGit.isEnabled()) {
+        const result = await guardGit.disable();
+        if (result.success) {
+          vscode.window.showInformationMessage(vscode.l10n.t('🛡️ Guard.git: Protection disabled.'));
+        } else {
+          vscode.window.showErrorMessage(vscode.l10n.t('Guard.git disable failed: {0}', result.error || 'Unknown error'));
+        }
+      } else {
+        const result = await guardGit.enable();
+        if (result.success) {
+          vscode.window.showInformationMessage(vscode.l10n.t('🛡️ Guard.git: .git directory is now protected.'));
+        } else {
+          vscode.window.showErrorMessage(vscode.l10n.t('Guard.git enable failed: {0}', result.error || 'Unknown error'));
+        }
+      }
+    })
+  );
 
   // AutoBuildFix 내부 커맨드
   context.subscriptions.push(
@@ -574,6 +622,10 @@ export function deactivate(): void {
   treeScanner?.dispose();
   yocto?.dispose();
   // fileGuard removed
+  // Guard.git ACL 원복
+  guardGit?.disable().catch(err =>
+    console.warn('[Guard.git] deactivate 원복 실패:', err)
+  );
   sessionResume?.dispose();
   visualPanels?.dispose();
   subagentManager?.terminate();

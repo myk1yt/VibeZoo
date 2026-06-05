@@ -34,4 +34,36 @@ export class ConfigService {
             { id: 'deepAnalyzer', name: 'Deep Analyzer', port: config.get('deepAnalyzer.port', 9026) },
         ];
     }
+
+    // ── Guard.git 설정 ──────────────────────────────────────
+
+    /** Guard.git 전체 활성화 */
+    public static getGuardEnabled(): boolean {
+        return vscode.workspace.getConfiguration('vibezoo').get('guard.enabled', true);
+    }
+
+    /** YOLO 모드 진입 시 자동 활성화 */
+    public static getGuardAutoEnable(): boolean {
+        return vscode.workspace.getConfiguration('vibezoo').get('guard.autoEnable', true);
+    }
+
+    /** .git 핵심 파일을 yocto에 주기적으로 스냅샷 */
+    public static getGuardYoctoBackupEnabled(): boolean {
+        return vscode.workspace.getConfiguration('vibezoo').get('guard.yoctoBackupEnabled', true);
+    }
+
+    /** .git 스냅샷 간격 (분) */
+    public static getGuardYoctoBackupIntervalMin(): number {
+        return vscode.workspace.getConfiguration('vibezoo').get('guard.yoctoBackupIntervalMin', 30);
+    }
+
+    /** .git 무결성 자동 진단 간격 (분) — H5 대응 */
+    public static getGuardIntegrityCheckIntervalMin(): number {
+        return vscode.workspace.getConfiguration('vibezoo').get('guard.integrityCheckIntervalMin', 5);
+    }
+
+    /** Linux에서 chattr +a 사용 (내부 파일 삭제도 방지 → git gc 실패 가능) — H2 대응 */
+    public static getGuardLinuxUseChattr(): boolean {
+        return vscode.workspace.getConfiguration('vibezoo').get('guard.linuxUseChattr', false);
+    }
 }

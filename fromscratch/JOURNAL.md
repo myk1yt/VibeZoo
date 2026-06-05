@@ -6,6 +6,7 @@
 ---
 
 - [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
+- [2026-06-05 - v0.14.3: Guard.git — .git 폴더 삭제 방지 기능](#2026-06-05---v0143-guardgit----git-폴더-삭제-방지-기능)
 - [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
 - [2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)](#2026-06-02---v0140-ux-workflow-구현-의도-감지--자동-도구-체인)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
@@ -16,6 +17,30 @@
 - [2026-05-27 - v0.10.0: Python MCP bridge migration + Go removal](#2026-05-27-v0100-python-mcp-bridge-migration--go-removal)
 - [2026-05-27 - v0.10.0: Initial implementation complete (26 files)](#2026-05-27-v0100-initial-implementation-complete-26-files)
 - [2026-05-27 - Architecture design started](#2026-05-27-architecture-design-started)
+
+---
+
+## 2026-06-05 - v0.14.3: Guard.git — .git 폴더 삭제 방지 기능
+
+**Changes**:
+- 신규: [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) — 멀티 루트 워크스페이스, Git Worktree 대응, 잔여 ACL 자동 정리
+- 신규: [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) — OS 레벨 ACL 보호 (Windows `icacls` / Linux `chattr` / macOS `chmod`)
+- 신규: [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) — `.git` 핵심 파일(HEAD, config, refs) 스냅샷 (`yoctoBackupEnabled`)
+- 수정: [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) — `.git` 무결성 자가진단 통합
+- 수정: [`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) — Guard.git On/Off 토글 노드 추가
+- 수정: [`extension/src/extension.ts`](../extension/src/extension.ts) — `toggleGuardGit` 명령어 등록, Guard.git 초기화
+- 수정: [`extension/package.json`](../extension/package.json) — 6개 Guard.git 설정, `toggleGuardGit` command 추가
+- l10n: 영문/한글 로컬라이제이션 (`bundle.l10n.json`, `bundle.l10n.ko.json`)
+
+**주요 결정 사항**:
+- OS ACL(icacls/chattr/chmod) 사용 — VS Code Extension은 `sudo` 불가, Linux `capabilities`도 불가능하므로 프로세스 권한 내에서 최선의 방어
+- 멀티 루트 지원 — `workspace.workspaceFolders` 순회하여 각 폴더의 `.git` 보호
+- Worktree 대응 — `git rev-parse --git-common-dir`로 실제 git 디렉토리 추적
+- Shell injection 방어 — `execFile()`만 사용, Shell 절대 사용 금지, 경로 정규식 검증 + 10초 타임아웃
+- 잔여 ACL 정리 — Extension crash 시 남은 ACL 자동 복구 (`_cleanupResidualACL`)
+
+**설계 문서**: [`plans/guard-git-design.md`](plans/guard-git-design.md)
+**GitHub**: commit & push 완료
 
 ---
 

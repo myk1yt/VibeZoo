@@ -1,7 +1,7 @@
-# VibeZoo Implementation Plan — v0.14.1
+# VibeZoo Implementation Plan — v0.14.3
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade)
-> **Baseline Version**: v0.14.1
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git)
+> **Baseline Version**: v0.14.3
 > **Base Documents**: [Architecture.md](./Architecture.md), [ROADMAP.md](./ROADMAP.md), [JOURNAL.md](./JOURNAL.md)
 
 ---
@@ -10,7 +10,9 @@
 
 | Version | Date | Key Changes | Notes |
 |:---|:---|:---|:---|
-| **v0.14.1** | 2026-06-02 (Current) | VibeZoo v2 업그레이드: 드랍존 범용화 + PDF 파이프라인 + OCR 전처리 + 문서 최신화 | Current |
+| **v0.14.3** | 2026-06-05 (Current) | Guard.git: OS ACL(.git 삭제 방지), 멀티 루트/Worktree 대응, Shell injection 방어, Yocto 스냅샷, SelfCheck 통합 | Current |
+| **v0.14.2** | 2026-06-03 | Guard.git l10n 번들, TreeView 토글, 설정 추가 | |
+| **v0.14.1** | 2026-06-02 | VibeZoo v2 업그레이드: 드랍존 범용화 + PDF 파이프라인 + OCR 전처리 + 문서 최신화 | |
 | **v0.14.0** | 2026-06-02 | UX Workflow: intent_detector + ux_coordinator (3 tools) + 문서 업데이트 |
 | **v0.10.0** | 2026-05-27 AM | Initial implementation complete (26 files). 4 Go MCP servers. AutoBuildFix empty loop. | Design → Implementation |
 | **v0.10.0** | 2026-05-27 PM | Switched to Python MCP bridge. All Go servers removed. Single `vibezoo_mcp_bridge.py` file. | Go→Python |
@@ -43,7 +45,7 @@
 ```
 VibeZoo_forZoocode/
 ├── extension/                        # VS Code Extension (TypeScript, 16 source files)
-│   ├── package.json                  # v0.12.0, 26 commands, 18 settings, 3 TreeViews
+│   ├── package.json                  # v0.14.3, 27 commands, 24 settings, 3 TreeViews
 │   ├── tsconfig.json
 │   └── src/
 │       ├── extension.ts              # Entry point (663 lines, activate/deactivate)
@@ -63,6 +65,8 @@ VibeZoo_forZoocode/
 │       ├── safety/
 │       │   ├── FileGuard.ts          # .yoloignore watch
 │       │   ├── GitStashManager.ts    # YOLO Git Stash
+│       │   ├── GuardGitACL.ts        # OS 레벨 ACL 보호 (icacls/chattr/chmod)
+│       │   ├── GuardGitManager.ts    # Guard.git 전체 관리 (멀티 루트, Worktree, 잔여 ACL 정리)
 │       │   └── YoctoManager.ts       # yocto backup·restore
 │       ├── types/
 │       │   └── index.ts              # Common type definitions
@@ -227,6 +231,22 @@ VibeZoo_forZoocode/
 
 ---
 
+### 3.12 Guard.git — Completed ✅
+
+| # | Item | File | Status |
+|:---:|:---|:---|:---:|
+| GG-1 | GuardGitManager — 멀티 루트·Worktree·잔여 ACL 정리 | [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) | ✅ |
+| GG-2 | GuardGitACL — OS 레벨 ACL (icacls/chattr/chmod) | [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) | ✅ |
+| GG-3 | Yocto 스냅샷 — .git 핵심 파일(HEAD, config, refs) 백업 | [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) | ✅ |
+| GG-4 | SelfCheck 통합 — .git 무결성 자가진단 | [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) | ✅ |
+| GG-5 | TreeView Guard.git On/Off 토글 노드 | [`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) | ✅ |
+| GG-6 | `toggleGuardGit` 명령어 등록 | [`extension/src/extension.ts`](../extension/src/extension.ts) | ✅ |
+| GG-7 | 설정 6개 (`guard.enabled`, `guard.autoEnable`, `guard.yoctoBackupEnabled`, `guard.yoctoBackupIntervalMin`, `guard.integrityCheckIntervalMin`, `guard.linuxUseChattr`) | [`extension/package.json`](../extension/package.json) | ✅ |
+| GG-8 | l10n 영문/한글 번들 | [`extension/l10n/bundle.l10n.json`](../extension/l10n/bundle.l10n.json), [`extension/l10n/bundle.l10n.ko.json`](../extension/l10n/bundle.l10n.ko.json) | ✅ |
+| GG-9 | 설계 문서 작성 | [`plans/guard-git-design.md`](plans/guard-git-design.md) | ✅ |
+
+---
+
 ## 4. Remaining Work (Based on ROADMAP.md)
 
 ### 4.1 Priority Matrix
@@ -339,7 +359,7 @@ gantt
 | **Crow Past Resolution Reuse Rate** | 0% | 10%+ | 30%+ | 50%+ |
 | **StatusBar Item Count** | 1 (unified) | 1 | 1 | 1 |
 | **TreeView Count** | 3 | 3 | 3 | 3 |
-| **VS Code Command Count** | 10 | 18 | 26 | 30+ |
+| **VS Code Command Count** | 10 | 18 | 27 | 30+ |
 
 ---
 

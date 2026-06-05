@@ -1,6 +1,6 @@
 # VibeZoo — Intelligent Companion Extension for AI Coding Assistants
 
-> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-34-tools) (38 Tools)**
+> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-38-tools) (38 Tools)**
 
 VibeZoo is a Companion Extension for Zoo Code. Without modifying a single line of Zoo Code's source code, it enables the LLM to search, analyze, review, and document code more intelligently. It remembers your habits and preferences, and enables real-time visual collaboration (Whiteboard, Dropzone, Vision AI).
 
@@ -183,7 +183,7 @@ python install.py
 │  │                      │    │                             │  │
 │  │  • LLM Reasoning     │    │  • FixLoopManager          │  │
 │  │  • Built-in Crow     │    │  • VisualVibePanels        │  │
-│  │    (localhost:9020)  │    │  • Safety Net              │  │
+│  │    (localhost:9020)  │    │  • Safety Net (Guard.git)  │  │
 │  │  • MCP Client        │    │                            │  │
 │  └──────────┬───────────┘    └─────────────┬──────────────┘  │
 │             │ MCP/SSE                      │ child_process    │
@@ -193,6 +193,8 @@ python install.py
 │ Crow Memory (9020)      │  │ VibeZoo MCP Bridge (9027)       │
 └─────────────────────────┘  └─────────────────────────────────┘
 ```
+
+**Guard.git**: VibeZoo의 Guard.git 기능은 AI 에이전트가 실수로 `rm -rf *` / `rmdir /s /q` 등을 실행하여 `.git` 폴더가 삭제되는 것을 방지합니다. Windows `icacls`, Linux `chattr`, macOS `chmod`를 사용한 OS 레벨 ACL 보호, 멀티 루트 워크스페이스 지원, Git Worktree 대응, FileSystemWatcher 실시간 감시, Yocto 스냅샷 백업, SelfCheck 무결성 진단을 제공합니다.
 
 ---
 
@@ -215,5 +217,5 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 📧 **support@vibezoo.dev**
 
 ---
-*VibeZoo v0.14.2 — June 2026*
+*VibeZoo v0.14.3 — June 2026*
 *Co-designed by Stefano, Kim & AI*

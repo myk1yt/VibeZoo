@@ -1,7 +1,7 @@
-# VibeZoo Architecture — v0.14.1
+# VibeZoo Architecture — v0.14.3
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade)
-> **Baseline Version**: v0.14.1
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git)
+> **Baseline Version**: v0.14.3
 > **Project**: VibeZoo — Standalone Companion Extension for Zoo Code
 > **Core Constraint**: Do not modify Zoo Code source code. All features are implemented via VibeZoo Extension + MCP Bridge + configuration changes.
 
@@ -33,7 +33,8 @@
 | 18 | **Fabric.js Local Bundling** (v0.13.0) | CDN only | [`extension/media/fabric.min.js`](../extension/media/fabric.min.js) — local file + CDN fallback |
 | 19 | **Atomic Backup** (v0.13.0) | fs.copyFileSync | [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) — `atomicCopyFile()` temp file+crypto.randomUUID+rename |
 | 20 | **Crow Exponential Backoff** (v0.13.0) | Simple try/except | [`mcp-servers/vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — 150ms start, 2x increase, max 3 attempts, random jitter |
-
+| 21 | **Guard.git** (v0.14.3) | Not present | [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) + [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) — OS 레벨 ACL(icacls/chattr/chmod)로 `.git` 폴더 삭제 방지, 멀티 루트/Worktree 대응, Shell injection 방어, Yocto 스냅샷, SelfCheck 통합 |
+ 
 ---
 
 ## 1. Executive Summary
@@ -129,7 +130,7 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 ```
 VibeZoo_forZoocode/
 ├── extension/                        # VibeZoo VS Code Extension (TypeScript)
-│   ├── package.json                  # v0.12.0, 26 commands, 3 TreeViews, 18 settings
+│   ├── package.json                  # v0.14.3, 27 commands, 3 TreeViews, 24 settings
 │   ├── tsconfig.json
 │   ├── .vscodeignore
 │   └── src/
@@ -150,6 +151,8 @@ VibeZoo_forZoocode/
 │       ├── safety/
 │       │   ├── FileGuard.ts          # .yoloignore-based protected file watch·restore
 │       │   ├── GitStashManager.ts    # YOLO entry/exit Git Stash automation
+│       │   ├── GuardGitACL.ts        # OS 레벨 ACL 보호 (icacls/chattr/chmod)
+│       │   ├── GuardGitManager.ts    # Guard.git 전체 관리 (멀티 루트, Worktree, 잔여 ACL 정리)
 │       │   └── YoctoManager.ts       # yocto real-time backup·restore (FileSystemWatcher)
 │       ├── types/
 │       │   └── index.ts              # Common types (Diagnostic, SessionSummary, SubagentNode, etc.)
@@ -237,7 +240,7 @@ The `activate()` function initializes in the following order:
 12. Register 26 VS Code commands
 ```
 
-**26 Registered Commands**:
+**27 Registered Commands**:
 
 | Category | Command |
 |:---|:---|
@@ -251,6 +254,7 @@ The `activate()` function initializes in the following order:
 | **CIM (M3)** | `startWatching`, `stopWatching` |
 | **Analysis (M3-A/B/C)** | `explainCode`, `analyzeChanges`, `reviewPR`, `refactorAcrossFiles` |
 | **Learn·Recall (M3-D/E)** | `learnProject`, `recallProject`, `learnPreference`, `getPreferences` |
+| **Guard.git** | `toggleGuardGit` |
 | **Agent** | `showAgentInfo` |
 
 ### 4.2 [`FixLoopManager`](../extension/src/orchestra/FixLoopManager.ts) — Autonomous Fix Loop
@@ -344,8 +348,11 @@ All status information integrated into a single StatusBar item `$(zap) VibeZoo`:
 ### 4.7 Safety Net — 3-Layer Protection
 
 ```
-LAYER 1: Prevention (Config-based)
+LAYER 1: Prevention (Config-based + OS-level)
 ├── .yoloignore file → FileGuard watches
+├── Guard.git: OS ACL (icacls/chattr/chmod)로 `.git` 폴더 삭제 차단
+│   ├── GuardGitManager: 멀티 루트·Worktree·잔여 ACL 정리
+│   └── GuardGitACL: Windows icacls / Linux chattr / macOS chmod (execFile 전용)
 └── Zoo Code MCP tool permission settings
 
 LAYER 2: Real-time Detection & Recovery (VibeZoo)
@@ -517,13 +524,13 @@ User:                                                   │
 
 ## 10. Conclusion
 
-VibeZoo v0.14.1 achieved the following **without modifying a single line of Zoo Code source code**:
+VibeZoo v0.14.3 achieved the following **without modifying a single line of Zoo Code source code**:
 
 - **34 MCP Tools**: tree-sitter AST based semantic code analysis + UX Workflow
 - **UX Workflow**: Intent detection + automatic tool chain orchestration (intent_detector + ux_coordinator)
 - **Autonomous Fix Loop**: Build failure → LLM analysis → fix → rebuild (oscillation detection + HITL)
 - **Continuous Improvement Mode (CIM)**: File save → auto tsc check → Auto-Fix
-- **Integrated Safety Net**: yocto backup + File Guard + Git Stash + Instant Rewind
+- **Integrated Safety Net**: yocto backup + File Guard + Git Stash + Instant Rewind + **Guard.git** (OS ACL `.git` 삭제 방지)
 - **3 TreeViews**: Active Subagents, YOLO History, Session Resume (Crow·local·yocto triple fallback)
 - **Unified StatusBar**: Bridge·Crow·YOLO·CIM status displayed in a single item
 - **Visual Collaboration**: Whiteboard (fs.watchFile), UI Preview, Vision AI Pipeline

@@ -328,6 +328,217 @@ export class YoctoManager {
     }
   }
 
+  // ── Guard.git 연동 ───────────────────────────────────────
+
+  /**
+   * Guard.git 전용: .git 디렉토리의 핵심 파일들만 스냅샷
+   *
+   * H3: 내부적으로 createSnapshot('auto')를 호출하고, metadata.guardTrigger 필드로
+   * guard 전용 trigger 기록. 기존 YoctoSnapshot.trigger union 타입은 변경하지 않음.
+   *
+   * 대상 파일:
+   *   .git/HEAD          — 현재 브랜치 참조
+   *   .git/config        — 저장소 설정
+   *   .git/refs/heads/*  — 로컬 브랜치 refs
+   *   .git/refs/remotes/*— 리모트 refs
+   *   .git/refs/stash    — stash ref (있을 경우)
+   *   .git/index         — 스테이징 영역 (있을 경우)
+   *
+   * 스냅샷 저장 경로: ~/.zoo-code/yocto/{sessionId}/guard-git-{timestamp}/
+   */
+  async snapshotGitCore(metadata: { guardTrigger: 'guard-enable' | 'guard-periodic' | 'guard-pre-danger' }): Promise<YoctoSnapshot> {
+    // H3: createSnapshot('auto') 호출
+    const snapshot = await this.createSnapshot('auto');
+    const backupDir = path.join(this.snapshotsDir, this.currentSessionId, `guard-git-${snapshot.id}`);
+
+    // 워크스페이스 폴더에서 .git 경로 탐색
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return snapshot;
+
+    for (const folder of folders) {
+      const dotGitPath = path.join(folder.uri.fsPath, '.git');
+      let gitDir = dotGitPath;
+
+      // Worktree 지원: .git이 파일이면 내용 파싱
+      try {
+        if (fs.existsSync(dotGitPath)) {
+          const stat = fs.statSync(dotGitPath);
+          if (stat.isFile()) {
+            const content = fs.readFileSync(dotGitPath, 'utf-8').trim();
+            const match = content.match(/^gitdir:\s*(.+)$/);
+            if (match) {
+              const actualGitDir = match[1].trim();
+              gitDir = path.isAbsolute(actualGitDir) ? actualGitDir : path.resolve(folder.uri.fsPath, actualGitDir);
+            }
+          }
+        } else {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      // 스냅샷 대상 파일 패턴
+      const targetPatterns = [
+        'HEAD',
+        'config',
+        'refs/heads/**',
+        'refs/remotes/**',
+        'refs/stash',
+        'index',
+      ];
+
+      // glob 패턴으로 파일 수집
+      const filesToBackup: string[] = [];
+      for (const pattern of targetPatterns) {
+        const fullPattern = path.join(gitDir, pattern);
+        try {
+          if (pattern.includes('**')) {
+            // glob 패턴 — 디렉토리 탐색
+            const baseDir = path.dirname(fullPattern.replace('**', ''));
+            if (fs.existsSync(baseDir)) {
+              this.collectGitFiles(baseDir, filesToBackup);
+            }
+          } else {
+            if (fs.existsSync(fullPattern)) {
+              filesToBackup.push(fullPattern);
+            }
+          }
+        } catch {
+          // 패턴 매칭 실패는 무시
+        }
+      }
+
+      // 파일 복사
+      for (const srcPath of filesToBackup) {
+        try {
+          const relativeToGit = path.relative(gitDir, srcPath);
+          const destPath = path.join(backupDir, folder.uri.fsPath.replace(/[\\:]/g, '_'), relativeToGit);
+
+          const tmpDir = path.dirname(destPath);
+          fs.mkdirSync(tmpDir, { recursive: true });
+          const tmpFile = path.join(tmpDir, `.tmp-${crypto.randomUUID()}`);
+          await fs.promises.copyFile(srcPath, tmpFile);
+          await fs.promises.rename(tmpFile, destPath);
+
+          const stat = fs.statSync(destPath);
+          snapshot.files.push({
+            originalPath: srcPath,
+            backupPath: destPath,
+            hash: crypto.createHash('sha256').update(relativeToGit).digest('hex').substring(0, 16),
+            size: stat.size,
+            mtime: stat.mtimeMs,
+          });
+        } catch {
+          // 개별 파일 복사 실패는 무시
+        }
+      }
+    }
+
+    console.log(`[Yocto:Guard.git] ✅ .git 핵심 파일 스냅샷 완료 (${snapshot.files.length} files, trigger: ${metadata.guardTrigger})`);
+    return snapshot;
+  }
+
+  /** 디렉토리 내 파일 재귀 수집 */
+  private collectGitFiles(dir: string, result: string[]): void {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          this.collectGitFiles(fullPath, result);
+        } else if (entry.isFile()) {
+          result.push(fullPath);
+        }
+      }
+    } catch {
+      // 권한 문제 등 — 무시
+    }
+  }
+
+  /**
+   * Guard 감지: .git 내 파일 목록을 이전 스냅샷과 비교하여 변경 감지
+   */
+  async detectGitChanges(lastSnapshot: YoctoSnapshot): Promise<{
+    added: string[];
+    removed: string[];
+    modified: string[];
+  }> {
+    const result: { added: string[]; removed: string[]; modified: string[] } = {
+      added: [],
+      removed: [],
+      modified: [],
+    };
+
+    // 현재 .git 핵심 파일 목록 수집
+    const currentFiles = new Map<string, string>(); // path → hash
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return result;
+
+    for (const folder of folders) {
+      const dotGitPath = path.join(folder.uri.fsPath, '.git');
+      if (!fs.existsSync(dotGitPath)) continue;
+
+      const gitDir = (() => {
+        try {
+          const stat = fs.statSync(dotGitPath);
+          if (stat.isDirectory()) return dotGitPath;
+          if (stat.isFile()) {
+            const content = fs.readFileSync(dotGitPath, 'utf-8').trim();
+            const match = content.match(/^gitdir:\s*(.+)$/);
+            if (match) {
+              const actualGitDir = match[1].trim();
+              return path.isAbsolute(actualGitDir) ? actualGitDir : path.resolve(folder.uri.fsPath, actualGitDir);
+            }
+          }
+        } catch {}
+        return null;
+      })();
+
+      if (!gitDir) continue;
+
+      const targetPatterns = ['HEAD', 'config', 'refs/heads', 'refs/remotes', 'refs/stash', 'index'];
+      for (const pattern of targetPatterns) {
+        const fullPath = path.join(gitDir, pattern);
+        if (fs.existsSync(fullPath)) {
+          try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isFile()) {
+              const hash = crypto.createHash('sha256')
+                .update(fs.readFileSync(fullPath))
+                .digest('hex')
+                .substring(0, 16);
+              currentFiles.set(fullPath, hash);
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // 이전 스냅샷의 파일 목록과 비교
+    const lastFiles = new Map<string, string>();
+    for (const entry of lastSnapshot.files) {
+      lastFiles.set(entry.originalPath, entry.hash);
+    }
+
+    for (const [path, hash] of currentFiles) {
+      const lastHash = lastFiles.get(path);
+      if (lastHash === undefined) {
+        result.added.push(path);
+      } else if (lastHash !== hash) {
+        result.modified.push(path);
+      }
+    }
+
+    for (const [path] of lastFiles) {
+      if (!currentFiles.has(path)) {
+        result.removed.push(path);
+      }
+    }
+
+    return result;
+  }
+
   dispose(): void {
     this.watcher?.dispose();
     this.trackedFiles.clear();

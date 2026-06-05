@@ -11,7 +11,6 @@
   "vibezoo.openUIPreview.title": "VibeZoo: Open UI Preview",
   "vibezoo.openDashboard.title": "VibeZoo: Open Orchestra Dashboard",
   "vibezoo.openDropzone.title": "VibeZoo: Open Drop Zone",
-  "vibezoo.toggleFileGuard.title": "VibeZoo: Toggle FileGuard",
   "vibezoo.showSessionResume.title": "VibeZoo: Show Session Resume",
   "vibezoo.reviewProject.title": "VibeZoo: Review Project",
   "vibezoo.findBugs.title": "VibeZoo: Find Bugs",
@@ -49,5 +48,12 @@
   "vibezoo.session.autoResume.description": "Auto show previous session resume on startup",
   "vibezoo.visual.whiteboardEnabled.description": "Enable Whiteboard feature",
   "vibezoo.visual.uiPreviewEnabled.description": "Enable UI Preview feature",
-  "vibezoo.emotion.detectionEnabled.description": "Enable emotion signal detection (continuous rejection pattern analysis)"
+  "vibezoo.emotion.detectionEnabled.description": "Enable emotion signal detection (continuous rejection pattern analysis)",
+  "vibezoo.toggleGuardGit.title": "VibeZoo: Toggle Guard.git Protection",
+  "vibezoo.guard.enabled.description": "Guard.git: Prevent AI agent from accidentally deleting .git directory",
+  "vibezoo.guard.autoEnable.description": "Guard.git: Auto-enable when entering YOLO mode",
+  "vibezoo.guard.yoctoBackupEnabled.description": "Guard.git: Periodically snapshot .git core files to yocto",
+  "vibezoo.guard.yoctoBackupIntervalMin.description": "Guard.git: .git snapshot interval (minutes)",
+  "vibezoo.guard.integrityCheckIntervalMin.description": "Guard.git: .git integrity auto-check interval (minutes) — H5 response",
+  "vibezoo.guard.linuxUseChattr.description": "Guard.git: Use chattr +a on Linux (also prevents file deletion inside .git → may break git gc) — H2 response"
 }

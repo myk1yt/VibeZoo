@@ -106,5 +106,14 @@
   "VibeZoo Bridge: Connected (:{0})": "VibeZoo Bridge: 연결됨 (:{0})",
   "$(gear) Suggested: {0}": "$(gear) 권장: {0}",
   "VibeZoo: {0}\nClick to change mode": "VibeZoo: {0}\n클릭하여 모드 변경",
-  "Auto tsc check on file save": "파일 저장 시 자동 tsc 검사"
+  "Auto tsc check on file save": "파일 저장 시 자동 tsc 검사",
+  "VibeZoo: Guard.git is not initialized.": "VibeZoo: Guard.git이 초기화되지 않았습니다.",
+  "🛡️ Guard.git: Protection disabled.": "🛡️ Guard.git: 보호가 해제되었습니다.",
+  "🛡️ Guard.git: .git directory is now protected.": "🛡️ Guard.git: .git 폴더가 보호됩니다.",
+  "Guard.git disable failed: {0}": "Guard.git 해제 실패: {0}",
+  "Guard.git enable failed: {0}": "Guard.git 활성화 실패: {0}",
+  "⚠️ .git 폴더가 이름 변경되었습니다! (ACL bypass 가능) Yocto에서 복구하시겠습니까?": "⚠️ .git 폴더가 이름 변경되었습니다! (ACL 우회 가능) Yocto에서 복구하시겠습니까?",
+  "복구하기": "복구하기",
+  "무시": "무시",
+  "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?": "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?"
 }

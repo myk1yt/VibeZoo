@@ -127,3 +127,23 @@ export interface PermissionDecision {
   reason: string;
   requiresUserConfirm?: boolean;
 }
+
+// ── Guard.git (v0.14.3) ──────────────────────────────────
+
+export type GuardGitState = 'active' | 'inactive' | 'error' | 'warning';
+
+export interface GuardGitACLResult {
+  success: boolean;
+  error?: string;
+  command?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface GuardGitIntegrity {
+  exists: boolean;
+  protected: boolean;
+  headRef: string | null;
+  objectCount: number;
+  refCount: number;
+}

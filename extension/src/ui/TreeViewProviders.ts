@@ -7,8 +7,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { SubagentNode, SessionSummary } from '../types';
+import { SubagentNode, SessionSummary, GuardGitState } from '../types';
 import { ConfigService } from '../config/ConfigService';
+import { getGuardGitManager } from '../safety/SelfCheck';
 
 // ── Bridge Health Check ──────────────────────────────────────
 
@@ -161,7 +162,34 @@ export class ActiveSubagentsProvider implements vscode.TreeDataProvider<Subagent
     this.startHealthCheck();
   }
 
-  // setFileGuardStatus removed
+  /** Guard.git 상태 업데이트 */
+  setGuardGitStatus(state: GuardGitState): void {
+    const nodeId = '_guard_git';
+    if (state === 'inactive') {
+      this.nodes.delete(nodeId);
+    } else {
+      const statusIcons: Record<GuardGitState, string> = {
+        active: '$(shield)',
+        inactive: '',
+        warning: '$(warning)',
+        error: '$(error)',
+      };
+      const guardManager = getGuardGitManager();
+      const pathCount = guardManager?.getProtectedPathCount() ?? 1;
+      this.nodes.set(nodeId, {
+        id: nodeId,
+        name: 'Guard.git',
+        status: state === 'active' ? 'running' : state === 'warning' ? 'error' : 'idle',
+        currentTask: state === 'active' ? `.git Protected (${pathCount} roots)`
+          : state === 'warning' ? '⚠️ .git Compromised'
+          : 'Unknown',
+        port: 0,
+        startTime: Date.now(),
+      });
+    }
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
   /** CIM 감시 상태 업데이트 */
   setCimStatus(watching: boolean): void {
     const existing = this.nodes.get('_cim');
@@ -232,6 +260,25 @@ class SubagentTreeItem extends vscode.TreeItem {
       this.command = {
         command: 'vibezoo.verifyFoundation',
         title: 'Check Foundation',
+      };
+      return;
+    }
+
+    // Guard.git special node
+    if (node.id === '_guard_git') {
+      const stateLabel = node.status === 'running' ? 'Active'
+        : node.status === 'error' ? 'Warning'
+        : 'Inactive';
+      const statusIcon = node.status === 'running' ? '$(shield)' : '$(warning)';
+      this.label = `${statusIcon} Guard.git`;
+      this.description = node.currentTask;
+      this.tooltip = new vscode.MarkdownString(
+        `**Guard.git**\n\nStatus: ${stateLabel}\n.git directory: Protected\n\nClick to toggle Guard.git on/off.`
+      );
+      this.contextValue = 'guardGit';
+      this.command = {
+        command: 'vibezoo.toggleGuardGit',
+        title: 'Toggle Guard.git',
       };
       return;
     }

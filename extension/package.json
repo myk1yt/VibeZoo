@@ -2,7 +2,7 @@
   "name": "vibezoo",
   "displayName": "%vibezoo.displayName%",
   "description": "%vibezoo.description%",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -61,10 +61,6 @@
       {
         "command": "vibezoo.openDropzone",
         "title": "%vibezoo.openDropzone.title%"
-      },
-      {
-        "command": "vibezoo.toggleFileGuard",
-        "title": "%vibezoo.toggleFileGuard.title%"
       },
       {
         "command": "vibezoo.showSessionResume",
@@ -137,6 +133,10 @@
       {
         "command": "vibezoo.getPreferences",
         "title": "%vibezoo.getPreferences.title%"
+      },
+      {
+        "command": "vibezoo.toggleGuardGit",
+        "title": "%vibezoo.toggleGuardGit.title%"
       }
     ],
     "viewsContainers": {
@@ -252,6 +252,40 @@
           "type": "boolean",
           "default": true,
           "description": "%vibezoo.emotion.detectionEnabled.description%"
+        },
+        "vibezoo.guard.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.guard.enabled.description%"
+        },
+        "vibezoo.guard.autoEnable": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.guard.autoEnable.description%"
+        },
+        "vibezoo.guard.yoctoBackupEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.guard.yoctoBackupEnabled.description%"
+        },
+        "vibezoo.guard.yoctoBackupIntervalMin": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 1440,
+          "description": "%vibezoo.guard.yoctoBackupIntervalMin.description%"
+        },
+        "vibezoo.guard.integrityCheckIntervalMin": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "%vibezoo.guard.integrityCheckIntervalMin.description%"
+        },
+        "vibezoo.guard.linuxUseChattr": {
+          "type": "boolean",
+          "default": false,
+          "description": "%vibezoo.guard.linuxUseChattr.description%"
         }
       }
     },

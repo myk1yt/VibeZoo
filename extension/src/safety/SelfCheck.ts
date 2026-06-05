@@ -20,6 +20,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { ConfigService } from '../config/ConfigService';
 import { SelfCheckReport, SelfCheckItem } from '../types';
+import { GuardGitManager } from './GuardGitManager';
+import { GuardGitIntegrity } from '../types';
 
 // ── AlarmMonitor ──────────────────────────────────────────────
 
@@ -85,6 +87,20 @@ export class AlarmMonitor {
 
 export const alarmMonitor = new AlarmMonitor();
 
+// ── GuardGitManager 싱글톤 접근자 ──────────────────────────
+
+let _guardGitManager: GuardGitManager | null = null;
+
+/** GuardGitManager 인스턴스 등록 (extension.ts에서 호출) */
+export function setGuardGitManager(mgr: GuardGitManager | null): void {
+  _guardGitManager = mgr;
+}
+
+/** GuardGitManager 인스턴스 조회 */
+export function getGuardGitManager(): GuardGitManager | null {
+  return _guardGitManager;
+}
+
 // ── SelfChecker ───────────────────────────────────────────────
 
 export class SelfChecker {
@@ -107,6 +123,7 @@ export class SelfChecker {
       this.checkYoctoDirectory(),
       this.checkZooCodeCompatibility(),
       this.checkNotificationHealth(),
+      this.checkGitGuardIntegrity(),
     ]);
 
     for (const result of results) {
@@ -402,6 +419,49 @@ export class SelfChecker {
       base.message = `알람 시스템 확인 실패: ${err.message}`;
       return base;
     }
+  }
+
+  /** Git Guard 무결성 진단 */
+  async checkGitGuardIntegrity(): Promise<SelfCheckItem> {
+    const base: SelfCheckItem = {
+      name: 'Git Guard Integrity',
+      status: 'passed',
+      message: '.git 디렉토리 보호 상태 정상',
+    };
+
+    // 싱글톤 접근 (전역 변수 또는 import된 getter 사용)
+    const guardManager = _guardGitManager;
+
+    if (!guardManager) {
+      base.status = 'warning';
+      base.message = 'Guard.git이 초기화되지 않음';
+      return base;
+    }
+
+    const integrities = await guardManager.checkIntegrity();
+
+    // C4: 멀티 루트 — 모든 경로 검사
+    const failedPaths = integrities.filter((i: GuardGitIntegrity) => !i.exists);
+    const unprotectedPaths = integrities.filter((i: GuardGitIntegrity) => i.exists && !i.protected && guardManager!.isEnabled());
+
+    if (failedPaths.length > 0) {
+      base.status = 'failed';
+      base.message = `${failedPaths.length}개 .git 디렉토리가 존재하지 않음`;
+      base.autoRecoverable = true;
+      return base;
+    }
+
+    if (unprotectedPaths.length > 0) {
+      base.status = 'warning';
+      base.message = 'Guard가 활성화되어 있으나 ACL이 적용되지 않은 .git 경로 있음';
+      base.autoRecoverable = true;
+      return base;
+    }
+
+    base.detail = integrities.map((i: GuardGitIntegrity) =>
+      `${i.headRef} (objects:${i.objectCount}, refs:${i.refCount})`
+    ).join('; ');
+    return base;
   }
 
   /** 감지된 문제 자동 복구 시도 */

@@ -659,6 +659,8 @@ gantt
 
 **2026-06-02: UX Workflow 구현 완료 (Quick Win Q6)** — [`intent_detector.py`](../mcp-servers/bridge/intent_detector.py) + [`ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) (3 tools: `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard`). MiniCPM 우선 사용 피드백 반영. 설계→구현→테스트→GitHub 전체 완료.
 
+**2026-06-05: Guard.git 구현 완료 (v0.14.3)** — [`GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) + [`GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts). OS 레벨 ACL(icacls/chattr/chmod)로 `.git` 폴더 삭제 방지, 멀티 루트/Worktree 대응, Shell injection 방어, Yocto 스냅샷, SelfCheck 통합. TreeView On/Off 토글 노드. 설계→구현→문서→GitHub 전체 완료.
+
 
 ### 9.2 Milestone Details
 

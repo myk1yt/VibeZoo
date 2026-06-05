@@ -11,7 +11,6 @@
   "vibezoo.openUIPreview.title": "VibeZoo: Open UI Preview",
   "vibezoo.openDashboard.title": "VibeZoo: Open Orchestra Dashboard",
   "vibezoo.openDropzone.title": "VibeZoo: Open Drop Zone (파일 업로드)",
-  "vibezoo.toggleFileGuard.title": "VibeZoo: Toggle FileGuard (파일 보호 켜기/끄기)",
   "vibezoo.showSessionResume.title": "VibeZoo: Show Session Resume",
   "vibezoo.reviewProject.title": "VibeZoo: Review Project (통합 코드 리뷰)",
   "vibezoo.findBugs.title": "VibeZoo: Find Bugs (버그 찾기)",
@@ -49,5 +48,12 @@
   "vibezoo.session.autoResume.description": "세션 시작 시 이전 세션 요약 자동 표시",
   "vibezoo.visual.whiteboardEnabled.description": "Whiteboard 기능 활성화",
   "vibezoo.visual.uiPreviewEnabled.description": "UI Preview 기능 활성화",
-  "vibezoo.emotion.detectionEnabled.description": "감정 신호 감지 활성화 (연속 거절 패턴 분석)"
+  "vibezoo.emotion.detectionEnabled.description": "감정 신호 감지 활성화 (연속 거절 패턴 분석)",
+  "vibezoo.toggleGuardGit.title": "VibeZoo: Toggle Guard.git Protection (.git 보호 켜기/끄기)",
+  "vibezoo.guard.enabled.description": "Guard.git: AI 에이전트가 .git 폴더를 실수로 삭제하는 것을 방지합니다",
+  "vibezoo.guard.autoEnable.description": "Guard.git: YOLO 모드 진입 시 자동으로 Guard를 활성화합니다",
+  "vibezoo.guard.yoctoBackupEnabled.description": "Guard.git: .git 핵심 파일을 yocto에 주기적으로 스냅샷합니다",
+  "vibezoo.guard.yoctoBackupIntervalMin.description": "Guard.git: .git 스냅샷 간격 (분)",
+  "vibezoo.guard.integrityCheckIntervalMin.description": "Guard.git: .git 무결성 자동 진단 간격 (분) — H5 대응",
+  "vibezoo.guard.linuxUseChattr.description": "Guard.git: Linux에서 chattr +a 사용 (내부 파일 삭제도 방지 → git gc 실패 가능) — H2 대응"
 }
