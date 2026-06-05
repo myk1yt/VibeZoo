@@ -1,6 +1,6 @@
 # VibeZoo — Intelligent Companion Extension for AI Coding Assistants
 
-> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-34-tools) (34 Tools)**
+> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-34-tools) (37 Tools)**
 
 VibeZoo is a Companion Extension for Zoo Code. Without modifying a single line of Zoo Code's source code, it enables the LLM to search, analyze, review, and document code more intelligently. It remembers your habits and preferences, and enables real-time visual collaboration (Whiteboard, Dropzone, Vision AI).
 
@@ -41,7 +41,7 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
 
 ---
 
-## 1. VibeZoo MCP Bridge — Tool Overview (36 Tools)
+## 1. VibeZoo MCP Bridge — Tool Overview (37 Tools)
 
 The VibeZoo MCP Bridge operates based on FastMCP + SSE, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/sse`. It provides a total of **36+ MCP tools** through a modular architecture (`bridge/tools/`).
 
@@ -53,6 +53,7 @@ When you say "I'll show you a file", the Dropzone opens. Uploaded files are auto
 
 ### 1.2 Scout (3 Tools) — Code Search and Exploration
 Quickly grasp the project structure and find symbols or functions accurately using tree-sitter AST.
+**`target_path` 파라미터 추가**: 특정 디렉토리를 전역 검색 가능 (예: `search_codebase(query=..., target_path="C:/Projects/MyApp")`).
 
 ### 1.3 Reviewer (2 Tools) — Code Quality Check
 Automatically check code quality before submitting a PR. Integrates with ESLint and go vet.
@@ -87,8 +88,16 @@ Used to reference external documentation or search for the latest technical info
 ### 1.13 SSA (1 Tool) — Spatial Statistical Analysis
 Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, including OCR.
 
-### 1.14 Setup (1 Tool) — Automation
+### 1.14 Editor (1 Tool) — AI-Safe File Editing
+Apply patches to files without worrying about missing parameters. The `apply_patch` tool:
+- **`path` 생략 가능**: diff 내용으로 대상 파일 자동 감지
+- **Fuzzy 매칭**: 85% 유사도까지 자동 보정 (whitespace/indentation 차이 무시)
+- **자동 백업**: 수정 전 `~/.vibezoo-backup/`에 백업
+- **`=======` / `-------` 모두 지원**: `apply_diff` 호환
+
+### 1.15 Setup (1 Tool) — Automation
 Installs VibeZoo dependencies and auto-configures MCP/Zoo settings.
+**ripgrep 자동 설치**: `vibezoo_setup(target="full")` 실행 시 winget/choco/scoop 또는 직접 다운로드로 ripgrep 설치.
 
 ---
 
