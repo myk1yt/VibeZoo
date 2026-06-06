@@ -1,4 +1,3 @@
-/// <reference types="vscode" />
 export declare class NotificationThrottle {
     private static _history;
     private static _minuteCount;

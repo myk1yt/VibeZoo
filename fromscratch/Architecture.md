@@ -1,7 +1,7 @@
-# VibeZoo Architecture — v0.14.3
+# VibeZoo Architecture — v0.14.4
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git)
-> **Baseline Version**: v0.14.3
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 다국어 분석)
+> **Baseline Version**: v0.14.4
 > **Project**: VibeZoo — Standalone Companion Extension for Zoo Code
 > **Core Constraint**: Do not modify Zoo Code source code. All features are implemented via VibeZoo Extension + MCP Bridge + configuration changes.
 

@@ -1,8 +1,41 @@
-# VibeZoo v0.14.3 Release Notes
+# VibeZoo v0.14.4 Release Notes
 
-**Release Date**: 2026-06-05
+**Release Date**: 2026-06-06
 
-## 🆕 New Feature: Guard.git
+## 🆕 New Feature: 다국어 분석 엔진 고도화
+
+VibeZoo Bridge의 `review_code` 및 `find_bugs` 도구가 C++, Rust(완전 AST), Go(고도화), Shell, Dockerfile, YAML/JSON을 지원합니다.
+
+### C++ 지원 (AST 기반)
+- raw pointer 지양 검사, new/delete 불일치 감지, 경계검사 우회(`[]` vs `.at()`), RAII 락 누락, C-style cast, printf/scanf
+- config.py: SOURCE_EXTS에 C++ 확장자 추가
+
+### Rust AST 완전 분석
+- unsafe 블록 복잡도 제어, 묵살된 Result/Option, panic/unwrap!, clone 남용, `as` 캐스트, println! 디버그
+
+### Go 분석 고도화
+- 고루틴 루프 변수 캡처, defer 내 recover() 부재, unbuffered 채널 데드락, Mutex Unlock 누락, nil map 할당
+
+### 일반 소스 파일 지원
+- Shell Script: 따옴표 누락, `set -e`/`pipefail`, shellcheck 연동
+- Dockerfile: latest 태그, apt-get 캐시, USER 부재, ADD vs COPY
+- YAML/JSON: 중복 키, 하드코딩 시크릿
+
+### find_bugs 네이티브 린터 연동
+- Rust: `cargo clippy --frozen`
+- Go: `go vet -mod=readonly`
+- C++: `cppcheck --enable=all --xml`
+
+### 🐛 Bug Fixes
+- Dockerfile 리뷰 경로 차단 수정 (확장자 없는 파일 처리)
+- 정규식 개선: C++ raw pointer, Rust as cast, Go 고루틴 캡처, Shell 변수 등
+- 서브프로세스 타임아웃 증가 (cargo/cppcheck 120s, go vet 60s)
+- cppcheck XML 파싱 xml.etree.ElementTree 사용
+- 보안: cargo clippy --frozen, go vet -mod=readonly
+
+---
+
+## 🆕 New Feature: Guard.git (v0.14.3)
 
 AI 에이전트가 실수로 `rm -rf *` / `rmdir /s /q` 등을 실행하여 프로젝트의 `.git` 폴더가 통째로 삭제되는 것을 방지합니다.
 

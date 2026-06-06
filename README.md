@@ -219,5 +219,5 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 📧 **support@vibezoo.dev**
 
 ---
-*VibeZoo v0.14.3 — June 2026*
+*VibeZoo v0.14.4 — June 2026*
 *Co-designed by Stefano, Kim & AI*

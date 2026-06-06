@@ -1,4 +1,3 @@
-/// <reference types="node" />
 import { Diagnostic } from '../types';
 import { GuardMode } from '../ui/StatusBarManager';
 export type FixLoopState = 'idle' | 'pending' | 'in_progress' | 'building' | 'resolved' | 'abandoned' | 'awaiting_user' | 'user_override';

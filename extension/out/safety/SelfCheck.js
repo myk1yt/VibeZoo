@@ -30,15 +30,27 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SelfChecker = exports.getGuardGitManager = exports.setGuardGitManager = exports.alarmMonitor = exports.AlarmMonitor = void 0;
+exports.SelfChecker = exports.alarmMonitor = exports.AlarmMonitor = void 0;
+exports.setGuardGitManager = setGuardGitManager;
+exports.getGuardGitManager = getGuardGitManager;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -47,7 +59,7 @@ const ConfigService_1 = require("../config/ConfigService");
 // ── AlarmMonitor ──────────────────────────────────────────────
 class AlarmMonitor {
     alarmLog = [];
-    WINDOW_MS = 60000; // 60초 슬라이딩 윈도우
+    WINDOW_MS = 60_000; // 60초 슬라이딩 윈도우
     MAX_ALARMS = 30; // 분당 30회
     _throttled = false;
     _throttleUntil = 0;
@@ -68,7 +80,7 @@ class AlarmMonitor {
         // 임계값 초과 체크
         if (this.alarmLog.length > this.MAX_ALARMS) {
             this._throttled = true;
-            this._throttleUntil = now + 30000; // 30초 강제 throttle
+            this._throttleUntil = now + 30_000; // 30초 강제 throttle
             console.error(`[AlarmMonitor] CRITICAL: 분당 ${this.alarmLog.length}회 알람 발생! 30초간 throttle. 마지막 메시지: ${message}`);
             return true; // 무시됨
         }
@@ -100,12 +112,10 @@ let _guardGitManager = null;
 function setGuardGitManager(mgr) {
     _guardGitManager = mgr;
 }
-exports.setGuardGitManager = setGuardGitManager;
 /** GuardGitManager 인스턴스 조회 */
 function getGuardGitManager() {
     return _guardGitManager;
 }
-exports.getGuardGitManager = getGuardGitManager;
 // ── SelfChecker ───────────────────────────────────────────────
 class SelfChecker {
     version;
@@ -321,12 +331,12 @@ class SelfChecker {
                 const rootDir = path.parse(yoctoDir).root;
                 // Windows에서 디스크 공간 확인은 native addon 필요 — 간략 체크
                 const stats = fs.statSync(rootDir);
-                freeBytes = stats.size > 0 ? stats.size : 1073741824; // fallback 1GB
+                freeBytes = stats.size > 0 ? stats.size : 1_073_741_824; // fallback 1GB
             }
             catch {
-                freeBytes = 1073741824; // fallback
+                freeBytes = 1_073_741_824; // fallback
             }
-            if (freeBytes < 104857600) { // 100MB 미만
+            if (freeBytes < 104_857_600) { // 100MB 미만
                 base.status = 'warning';
                 base.message = `디스크 공간 부족: ${(freeBytes / 1024 / 1024).toFixed(0)}MB`;
                 return base;
