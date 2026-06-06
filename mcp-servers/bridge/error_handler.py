@@ -239,6 +239,10 @@ def capture_tool_errors(name: Optional[str] = None):
                 return func(*args, **kwargs)
             except Exception as e:
                 tool_name = name or func.__name__
+                
+                # === 신규: 동기적 fix 제안 생성 ===
+                fix_hint = _get_fix_hint_sync(tool_name, e, kwargs)
+                
                 # 비동기로 에러 기록 (ThreadPoolExecutor, non-blocking)
                 def _record():
                     try:
@@ -253,9 +257,42 @@ def capture_tool_errors(name: Optional[str] = None):
                 
                 _thread_pool.submit(_record)
                 
-                raise  # 원본 예외 재발생 (MCP 클라이언트로 전파)
+                # === 신규: fix 제안이 있으면 예외 메시지에 추가 ===
+                if fix_hint:
+                    new_msg = f"{str(e)}\n\n💡 **Auto Fix Suggestion**: {fix_hint}"
+                    raise type(e)(new_msg).with_traceback(e.__traceback__)
+                else:
+                    raise  # 원본 예외 재발생 (MCP 클라이언트로 전파)
         return wrapper
     return decorator
+
+
+# ── 동기적 Fix Hint 생성 ──────────────────────────────
+
+def _get_fix_hint_sync(tool_name: str, exception: Exception, params: dict = None) -> Optional[str]:
+    """동기적으로 알려진 에러 패턴의 fix hint 생성 (I/O 없음, 빠름)
+    
+    Args:
+        tool_name: 에러가 발생한 도구 이름
+        exception: 발생한 예외 객체
+        params: 도구 호출 시 사용된 파라미터
+    
+    Returns:
+        fix hint 문자열 (알려진 패턴인 경우), None (알 수 없는 에러)
+    """
+    try:
+        from bridge.auto_fixer import find_known_pattern
+        known = find_known_pattern(tool_name, type(exception).__name__)
+        if known:
+            hint = known.get("hint", "")
+            if known["action"] == "retry_with_fix" and params:
+                fix_params = known.get("fix_params", lambda p: None)(params or {})
+                if fix_params:
+                    hint += f"\nSuggested re-try with: {json.dumps(fix_params, ensure_ascii=False)}"
+            return hint
+    except Exception:
+        pass
+    return None
 
 
 # ── Crow Memory 동기화 ──────────────────────────────────

@@ -19,43 +19,43 @@ KNOWN_PATTERNS = {
         "action": "retry_with_fix",
         "fix_params": lambda p: {**p, "regex": p.get("query", p.get("regex", ""))},
         "hint": (
-            "`regex` 파라미터가 누락되었습니다. "
-            "`query` 값을 `regex`로 자동 변환하여 재시도할 수 있습니다."
+            "Missing required 'regex' parameter. "
+            "Automatically converting 'query' value to 'regex' for retry."
         ),
     },
     ("search_files", "TypeError"): {
         "action": "hint_only",
         "hint": (
-            "`search_files`는 `regex` 파라미터가 필수입니다. "
-            "`search_codebase`를 대신 사용하거나 `regex` 값을 제공하세요."
+            "Missing required 'regex' parameter. "
+            "Use 'search_codebase' instead, or provide a 'regex' value."
         ),
     },
     ("review_code", "FileNotFoundError"): {
         "action": "hint_only",
         "hint": (
-            "파일을 찾을 수 없습니다. 경로가 현재 워크스페이스 기준인지 확인하고, "
-            "파일이 존재하는지 검토하세요."
+            "File not found. Verify the path is relative to the current "
+            "workspace and the file exists."
         ),
     },
     ("analyze_uploaded_file", "FileNotFoundError"): {
         "action": "hint_only",
         "hint": (
-            "업로드된 파일을 찾을 수 없습니다. "
-            "`check_uploaded_files`로 업로드 상태를 먼저 확인하세요."
+            "Uploaded file not found. "
+            "Use 'check_uploaded_files' to verify upload status first."
         ),
     },
     ("fetch_page", "ConnectionError"): {
         "action": "hint_only",
         "hint": (
-            "URL에 연결할 수 없습니다. URL이 올바른지, "
-            "인터넷 연결이 정상인지 확인하세요."
+            "Cannot connect to URL. "
+            "Verify the URL is correct and internet connection is working."
         ),
     },
     ("web_search", "ConnectionError"): {
         "action": "hint_only",
         "hint": (
-            "검색 엔진에 연결할 수 없습니다. "
-            "인터넷 연결을 확인하거나 다른 검색 엔진(engine 파라미터)을 시도하세요."
+            "Cannot connect to search engine. "
+            "Check internet connection or try a different engine parameter."
         ),
     },
 }
@@ -127,7 +127,7 @@ def generate_fix_suggestion(
         }
         return result
 
-    # 2. Crow Memory에서 유사 에러 검색
+    # 2. Search Crow Memory for similar past errors
     error_sig = _error_signature(tool_name, exception_type)
     similar = search_crow_for_similar(error_sig)
     if similar:
@@ -136,16 +136,16 @@ def generate_fix_suggestion(
             "can_auto_fix": False,
             "action": "hint_only",
             "suggested_params": None,
-            "hint": f"과거 유사 에러 {len(similar)}건 발견: {first_content}",
+            "hint": f"Found {len(similar)} similar past error(s): {first_content}",
             "similar_past_errors": similar,
         }
 
-    # 3. 알 수 없는 에러
+    # 3. Unknown error
     return {
         "can_auto_fix": False,
         "action": "unknown",
         "suggested_params": None,
-        "hint": "알려지지 않은 에러 패턴입니다. Crow Memory에 기록되었습니다.",
+        "hint": "Unknown error pattern. The error has been recorded in Crow Memory for future reference.",
         "similar_past_errors": [],
     }
 
@@ -153,7 +153,7 @@ def generate_fix_suggestion(
 # ── Global AutoFixer ───────────────────────────────────
 
 class GlobalAutoFixer:
-    """전역 자동 복구 관리자"""
+    """Global automatic fix manager"""
     
     @staticmethod
     def attempt_fix(
@@ -162,16 +162,16 @@ class GlobalAutoFixer:
         params: Optional[dict] = None,
         error_msg: Optional[str] = None,
     ) -> dict:
-        """자동 복구 시도 및 제안 생성
+        """Attempt auto-fix and generate suggestion
         
         Args:
-            tool_name: 에러가 발생한 도구 이름
-            exception_type: 예외 타입명
-            params: 도구 호출 파라미터
-            error_msg: 원본 에러 메시지 (선택)
+            tool_name: Tool name where the error occurred
+            exception_type: Exception type name
+            params: Tool call parameters
+            error_msg: Original error message (optional)
         
         Returns:
-            수정 제안 딕셔너리 (generate_fix_suggestion 반환값과 동일)
+            Fix suggestion dict (same as generate_fix_suggestion return value)
         """
         suggestion = generate_fix_suggestion(tool_name, exception_type, params)
         
