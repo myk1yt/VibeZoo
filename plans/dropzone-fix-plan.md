@@ -1,43 +1,43 @@
-# 드랍존 문제 해결 계획
+# Dropzone Problem Resolution Plan
 
-> 디버그 결과 기반 | 날짜: 2026-06-02
+> Based on Debug Results | Date: 2026-06-02
 
-## 디버그 진단 요약
+## Debug Diagnosis Summary
 
-| # | 문제 | 근본 원인 | 파일 |
-|---|------|-----------|------|
-| 1 | 업로드된 파일을 찾을 수 없음 | 저장 위치 `~/.vibezoo-uploads/` vs 내 검색 `~/.vibezoo-cache/` | [`VisualVibePanels.ts`](extension/src/visual/VisualVibePanels.ts:34) |
-| 2 | 파일 업로드 후 LLM이 인식 못 함 | 경로를 **클립보드에만** 복사, MCP 브릿지에 전달하지 않음 | [`VisualVibePanels.ts`](extension/src/visual/VisualVibePanels.ts:462) |
-| 3 | MCP 도구가 업로드 파일 목록을 모름 | 업로드 레지스트리 없음 | 신규 필요 |
+| # | Problem | Root Cause | File |
+|---|---------|-----------|------|
+| 1 | Uploaded file not found | Storage location `~/.vibezoo-uploads/` vs my search `~/.vibezoo-cache/` | [`VisualVibePanels.ts`](extension/src/visual/VisualVibePanels.ts:34) |
+| 2 | LLM doesn't recognize file after upload | Path only copied to **clipboard**, not passed to MCP bridge | [`VisualVibePanels.ts`](extension/src/visual/VisualVibePanels.ts:462) |
+| 3 | MCP tools don't know uploaded file list | No upload registry | New required |
 
-## 해결 설계
+## Solution Design
 
-### 아키텍처 변경
+### Architecture Change
 
 ```
-사용자 파일 드래그&드롭
+User file drag & drop
   → Webview → vscodeApi.postMessage
   → Extension: handleDropzoneUpload()
-  → 파일 저장 (~/.vibezoo-uploads/{date}/)
-  → 업로드 레지스트리 기록 (~/.vibezoo-uploads/latest.json)
-  → Zoo: check_uploaded_files() MCP 도구 호출
-  → 분석 요청
+  → File save (~/.vibezoo-uploads/{date}/)
+  → Upload registry record (~/.vibezoo-uploads/latest.json)
+  → Zoo: check_uploaded_files() MCP tool call
+  → Analysis request
 ```
 
-### 수정 파일
+### Files to Modify
 
-| Phase | 파일 | 변경 | 설명 |
-|-------|------|------|------|
-| 1 | [`VisualVibePanels.ts`](extension/src/visual/VisualVibePanels.ts) | 수정 5줄 | `handleDropzoneUpload()`에서 파일 경로를 `~/.vibezoo-uploads/latest.json`에 기록 |
-| 2 | [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | 수정 2줄 | `_open_dropzone_in_webview()` 메시지에 올바른 업로드 경로 안내 |
-| 3 | [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | 신규 20줄 | `check_uploaded_files()` MCP 도구 추가 — 최근 업로드된 파일 목록 반환 |
+| Phase | File | Change | Description |
+|-------|------|--------|-------------|
+| 1 | [`VisualVibePanels.ts`](extension/src/visual/VisualVibePanels.ts) | Modify 5 lines | Record file path in `~/.vibezoo-uploads/latest.json` in `handleDropzoneUpload()` |
+| 2 | [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | Modify 2 lines | Update `_open_dropzone_in_webview()` message with correct upload path guidance |
+| 3 | [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | New 20 lines | Add `check_uploaded_files()` MCP tool — returns list of recently uploaded files |
 
 ### Phase 1: VisualVibePanels.ts (Extension)
 
-`handleDropzoneUpload()` 함수 (487-537행) 끝부분에 추가:
+Add at the end of `handleDropzoneUpload()` function (lines 487-537):
 
 ```typescript
-// 업로드 레지스트리 기록 (LLM이 파일 경로를 알 수 있도록)
+// Upload registry record (so LLM knows file path)
 const registryPath = path.join(os.homedir(), '.vibezoo-uploads', 'latest.json');
 const registry = {
   path: destPath,
@@ -47,7 +47,7 @@ const registry = {
   timestamp: Date.now(),
 };
 try {
-  // 기존 레지스트리 읽기 → 추가 → 저장 (최대 10개 유지)
+  // Read existing registry → add → save (keep max 10)
   let entries = [];
   if (fs.existsSync(registryPath)) {
     entries = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
@@ -60,7 +60,7 @@ try {
 
 ### Phase 2: whiteboard.py (MCP Bridge)
 
-`_open_dropzone_in_webview()` 반환 메시지 수정 (815-835행):
+Modify `_open_dropzone_in_webview()` return message (lines 815-835):
 
 ```python
 return (_markdown_header("File Drop Zone", "📎")
@@ -72,27 +72,27 @@ return (_markdown_header("File Drop Zone", "📎")
 
 ### Phase 3: whiteboard.py (MCP Bridge)
 
-`register()` 함수에 신규 MCP 도구 추가:
+Add new MCP tool to `register()` function:
 
 ```python
 @mcp.tool
 def check_uploaded_files() -> str:
-    """드랍존에 업로드된 최근 파일 목록을 확인합니다.
+    """Check the list of recently uploaded files in the dropzone.
     
     Returns:
-        업로드된 파일 경로와 메타데이터 목록
+        List of uploaded file paths and metadata
     """
     import json as _json
     registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
     
     if not os.path.exists(registry_path):
-        return "📂 아직 업로드된 파일이 없습니다."
+        return "📂 No files have been uploaded yet."
     
     try:
         with open(registry_path, 'r') as f:
             entries = _json.load(f)
         
-        lines = ["## 📎 최근 업로드된 파일", ""]
+        lines = ["## 📎 Recently Uploaded Files", ""]
         for i, entry in enumerate(entries):
             path = entry.get("path", "?")
             name = entry.get("fileName", "?")
@@ -102,25 +102,25 @@ def check_uploaded_files() -> str:
             
             size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
             lines.append(f"### {i+1}. {name}")
-            lines.append(f"- **경로**: `{path}`")
-            lines.append(f"- **크기**: {size_str}")
-            lines.append(f"- **타입**: {mime}")
+            lines.append(f"- **Path**: `{path}`")
+            lines.append(f"- **Size**: {size_str}")
+            lines.append(f"- **Type**: {mime}")
             lines.append("")
         
-        lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
+        lines.append(f"**Analysis example**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
         return "\n".join(lines)
     except Exception as e:
-        return f"⚠️ 업로드 레지스트리 읽기 실패: {e}"
+        return f"⚠️ Failed to read upload registry: {e}"
 ```
 
-### 영향도
+### Impact
 
-| 항목 | 영향 | 위험 |
-|------|------|------|
-| Extension 변경 | `handleDropzoneUpload()` 마지막에 10줄 추가 | 없음 (파일 I/O 단순) |
-| MCP Bridge 변경 | 설명문 업데이트 + 신규 도구 1개 | 없음 |
-| 기존 기능 | 클립보드 복사 + 알림 유지 | 없음 |
+| Item | Impact | Risk |
+|------|--------|------|
+| Extension Change | 10 lines added at end of `handleDropzoneUpload()` | None (simple file I/O) |
+| MCP Bridge Change | Description update + 1 new tool | None |
+| Existing Functionality | Clipboard copy + notification maintained | None |
 
 ---
 
-> **구현 시 Code 모드로 전환하여 Phase 1~3 순서대로 진행하세요.**
+> **Implementation**: Switch to Code mode and proceed with Phase 1~3 in order.

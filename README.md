@@ -55,7 +55,7 @@ When you say "I'll show you a file", the Dropzone opens. Uploaded files are auto
 
 ### 1.2 Scout (3 Tools) — Code Search and Exploration
 Quickly grasp the project structure and find symbols or functions accurately using tree-sitter AST.
-**`target_path` 파라미터 추가**: 특정 디렉토리를 전역 검색 가능 (예: `search_codebase(query=..., target_path="C:/Projects/MyApp")`).
+**`target_path` parameter added**: Enables global search in a specific directory (e.g., `search_codebase(query=..., target_path="C:/Projects/MyApp")`).
 
 ### 1.3 Reviewer (2 Tools) — Code Quality Check
 Automatically check code quality before submitting a PR. Integrates with ESLint and go vet.
@@ -92,16 +92,16 @@ Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, in
 
 ### 1.14 Editor (2 Tools) — AI-Safe File Editing
 Apply patches to files without worrying about missing parameters. The `apply_patch` tool:
-- **`path` 생략 가능**: diff 내용으로 대상 파일 자동 감지
-- **Fuzzy 매칭**: 85% 유사도까지 자동 보정 (whitespace/indentation 차이 무시)
-- **자동 백업**: 수정 전 `~/.vibezoo-backup/`에 백업
-- **`=======` / `-------` 모두 지원**: `apply_diff` 호환
+- **`path` optional**: Auto-detects target file from diff content
+- **Fuzzy matching**: Auto-corrects up to 85% similarity (ignores whitespace/indentation differences)
+- **Auto backup**: Backs up to `~/.vibezoo-backup/` before modification
+- **Supports both `=======` / `-------`**: Compatible with `apply_diff`
 
 - **`read_project_file`**: Read file or list directory contents. If path is a file, returns content with syntax highlighting. If path is a directory, returns listing with sizes.
 
 ### 1.15 Setup (1 Tool) — Automation
 Installs VibeZoo dependencies and auto-configures MCP/Zoo settings.
-**ripgrep 자동 설치**: `vibezoo_setup(target="full")` 실행 시 winget/choco/scoop 또는 직접 다운로드로 ripgrep 설치.
+**ripgrep auto-install**: When running `vibezoo_setup(target="full")`, automatically installs ripgrep via winget/choco/scoop or direct download.
 
 ---
 
@@ -196,7 +196,7 @@ python install.py
 └─────────────────────────┘  └─────────────────────────────────┘
 ```
 
-**Guard.git**: VibeZoo의 Guard.git 기능은 AI 에이전트가 실수로 `rm -rf *` / `rmdir /s /q` 등을 실행하여 `.git` 폴더가 삭제되는 것을 방지합니다. Windows `icacls`, Linux `chattr`, macOS `chmod`를 사용한 OS 레벨 ACL 보호, 멀티 루트 워크스페이스 지원, Git Worktree 대응, FileSystemWatcher 실시간 감시, Yocto 스냅샷 백업, SelfCheck 무결성 진단을 제공합니다.
+**Guard.git**: VibeZoo's Guard.git feature prevents AI agents from accidentally running `rm -rf *` / `rmdir /s /q` etc. and deleting the `.git` folder. It provides OS-level ACL protection using Windows `icacls`, Linux `chattr`, macOS `chmod`, multi-root workspace support, Git Worktree compatibility, FileSystemWatcher real-time monitoring, Yocto snapshot backup, and SelfCheck integrity diagnostics.
 
 ---
 

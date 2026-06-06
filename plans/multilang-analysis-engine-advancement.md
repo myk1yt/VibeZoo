@@ -1,69 +1,69 @@
-# VibeZoo 다국어 분석 엔진 고도화 — 상세 실행 계획 (v1.1)
+# VibeZoo Multi-language Analysis Engine Enhancement — Detailed Execution Plan (v1.1)
 
-> **Target**: `mcp-servers/bridge/` 내 5개 파일 변경 (config.py, utils.py, ast_engine.py, reviewer.py, integrated.py)  
-> **Principle**: 최소 외부 의존성, 최대 성능, tree-sitter AST 우선 / regex 폴백  
+> **Target**: 5 files in `mcp-servers/bridge/` (config.py, utils.py, ast_engine.py, reviewer.py, integrated.py)  
+> **Principle**: Minimal external dependencies, maximum performance, tree-sitter AST first / regex fallback  
 > **Version Target**: `0.15.0`  
-> **Debug Threat Analysis 반영**: CRITICAL 6건, HIGH 9건, MEDIUM 8건 해결 방안 통합
+> **Debug Threat Analysis Reflected**: CRITICAL 6, HIGH 9, MEDIUM 8 integration of resolution plans
 
 ---
 
-## 0. 버그 수정 사항 (Debug 위협 분석 피드백)
+## 0. Bug Fixes (Debug Threat Analysis Feedback)
 
-> 이 섹션은 Debug 모드 위협 분석에서 발견된 23개 이슈의 해결 방안을 요약한다. 각 항목은 하위 섹션의 구체적인 코드 변경 사양에 반영되어 있다.
+> This section summarizes resolution plans for 23 issues found in Debug mode threat analysis. Each item is reflected in specific code change specifications in sub-sections.
 
-### 🔴 CRITICAL — 수정 방안 요약
+### 🔴 CRITICAL — Resolution Summary
 
-| ID | 이슈 | 해결 방안 | 반영 섹션 |
-|----|------|-----------|-----------|
-| C1 | `.c` 파일 AST 매핑 오류 — `NODE_TYPES`에 `'c'` 키 없음 | `.c` → `'cpp'`로 통일 매핑 (`tree-sitter-cpp`는 C/C++ 모두 지원) | §3.2 변경 A |
-| C2 | `_run_native_linter()` 단일 린터만 실행 — 각 `if` 블록에서 `return`으로 즉시 반환 | 모든 `return diagnostics` 제거, 결과를 누적 리스트에 순차 수집 | §3.4 변경 A |
-| C3 | Dockerfile 파일 수집 불가 (Dead Path) — 확장자 없어 `SOURCE_EXTS` 필터 통과 불가 | `_iter_project_files()`에 `include_names` 파라미터 추가 (방법 A) | §3.1 변경 C, §3.5 |
-| C4 | `_run_native_linter()` — `cargo clippy`가 `build.rs` 실행 → 악의적 프로젝트 RCE 위험 | `cargo`에 `--frozen` 플래그, `go vet`에 `-mod=readonly` 추가; `target_path` 워크스페이스 외부 검증 | §3.4 변경 A |
-| C5 | `_truncate` import 누락 → `NameError` | `integrated.py`의 `from bridge.utils import ...`에 `_truncate` 추가 확인 (이미 import 되어 있음) | §3.4 변경 A |
-| C6 | `CONFIG_FILES`, `GO_EXTS`, `RUST_EXTS`, `REVIEWABLE_EXTS`, `GENERIC_EXTS` 등 상수 미사용 (Orphaned) | `CONFIG_FILES` → `_iter_project_files()` 연동, `CPP_EXTS`/`GENERIC_EXTS` → `reviewer.py` import, `GO_EXTS`/`RUST_EXTS` → 제거 (중복), `REVIEWABLE_EXTS` → `review_code()` 진입 검증 | §3.1 변경 B |
+| ID | Issue | Resolution | Section |
+|----|-------|-----------|---------|
+| C1 | `.c` file AST mapping error — `'c'` key missing in `NODE_TYPES` | Unified mapping `.c` → `'cpp'` (`tree-sitter-cpp` supports both C/C++) | §3.2 Change A |
+| C2 | `_run_native_linter()` runs only single linter — each `if` block returns immediately with `return` | Remove all `return diagnostics`, collect results in cumulative list | §3.4 Change A |
+| C3 | Dockerfile file collection impossible (Dead Path) — no extension, cannot pass `SOURCE_EXTS` filter | Add `include_names` parameter to `_iter_project_files()` (Method A) | §3.1 Change C, §3.5 |
+| C4 | `_run_native_linter()` — `cargo clippy` executes `build.rs` → malicious project RCE risk | Add `--frozen` flag to `cargo`, `-mod=readonly` to `go vet`; validate `target_path` outside workspace | §3.4 Change A |
+| C5 | `_truncate` import missing → `NameError` | Verify `from bridge.utils import ...` in `integrated.py` includes `_truncate` (already imported) | §3.4 Change A |
+| C6 | Constants `CONFIG_FILES`, `GO_EXTS`, `RUST_EXTS`, `REVIEWABLE_EXTS`, `GENERIC_EXTS` unused (Orphaned) | Integrate `CONFIG_FILES` → `_iter_project_files()`, `CPP_EXTS`/`GENERIC_EXTS` → import in `reviewer.py`, `GO_EXTS`/`RUST_EXTS` → remove (duplicate), `REVIEWABLE_EXTS` → entry validation in `review_code()` | §3.1 Change B |
 
-### 🟠 HIGH — 수정 방안 요약
+### 🟠 HIGH — Resolution Summary
 
-| ID | 이슈 | 해결 방안 | 반영 섹션 |
-|----|------|-----------|-----------|
-| H1 | C++ raw pointer 정규식 부정확 | 타입 키워드 기반 정규식으로 개선: `r'(?<!\w)(\w+\s*\*+\s+\w+\|(?:int\|char\|float\|double\|void\|bool\|long\|short\|unsigned\|signed)\s*\*+\s*\w+)'` | §3.3 변경 A (R1) |
-| H2 | C++ new/delete 메모리 누수 검출 오탐 | 주석 제거한 `code_only` 사용, `std::make_unique`/`std::make_shared`/placement new 제외, 임계값 `> 3` 도입 | §3.3 변경 A (R2) |
-| H3 | C++ bracket access 검출 — 배열 선언과 접근 구분 불가 | 정규식을 `\w+\s*\[[^\]]*\]\s*[=;]`로 변경 (초기화/할당 컨텍스트만 매칭) | §3.3 변경 A (R3) |
-| H4 | Rust `as` cast 검출 — `use ... as` 문맥에서 심각한 오탐 | 정규식을 숫자 타입 캐스트만 감지: `r'\b(\w+)\s+as\s+(?!_)(u8\|u16\|u32\|u64\|i8\|i16\|i32\|i64\|f32\|f64\|usize\|isize)\b'` | §3.3 변경 B (R5) |
-| H5 | Go 고루틴 루프 변수 캡처 — 정규식 멀티라인 불가 | `re.DOTALL` 플래그 + non-greedy 정규식: `r'for\s+\w+\s*:?=\s*range\s+.+?go\s+func\s*\('` | §3.3 변경 C (G1) |
-| H6 | Go unbuffered chan 검출 — 멀티라인 미탐 | 개행문자를 공백으로 치환한 `flat_content` 생성 후 정규식 적용 | §3.3 변경 C (G3) |
-| H7 | Shell 변수 따옴표 검출 부정확 | 확장된 패턴: `r'\$\{?\w+\}?\|\$[@*#?!0-9]\|\$\{[\w#%:-]+\}'` + `shlex` 활용 | §3.3 변경 D (S1) |
-| H8 | YAML 중복 키 검출 — 최상위 키만 검사 | 들여쓰기 기반 복합 키 `f"{indent_level}:{key}"` 로 중복 검사 | §3.3 변경 D (Y1) |
-| H9 | `_compute_cyclomatic_complexity` 분기 순서 충돌 | `TS_JS_EXTS → .py → .rs → CPP_EXTS → else (Go + generic)` 순서 명시화, Go는 `else` 내 `elif ext == '.go'`로 먼저 분기 | §3.3 변경 E |
+| ID | Issue | Resolution | Section |
+|----|-------|-----------|---------|
+| H1 | C++ raw pointer regex inaccurate | Improved type keyword-based regex: `r'(?<!\w)(\w+\s*\*+\s+\w+\|(?:int\|char\|float\|double\|void\|bool\|long\|short\|unsigned\|signed)\s*\*+\s*\w+)'` | §3.3 Change A (R1) |
+| H2 | C++ new/delete memory leak detection false positives | Use `code_only` with comments removed, exclude `std::make_unique`/`std::make_shared`/placement new, introduce threshold `> 3` | §3.3 Change A (R2) |
+| H3 | C++ bracket access detection — cannot distinguish array declaration from access | Change regex to `\w+\s*\[[^\]]*\]\s*[=;]` (match only initialization/assignment context) | §3.3 Change A (R3) |
+| H4 | Rust `as` cast detection — severe false positive in `use ... as` context | Limit regex to detect only numeric type casts: `r'\b(\w+)\s+as\s+(?!_)(u8\|u16\|u32\|u64\|i8\|i16\|i32\|i64\|f32\|f64\|usize\|isize)\b'` | §3.3 Change B (R5) |
+| H5 | Go goroutine loop variable capture — regex multiline impossible | `re.DOTALL` flag + non-greedy regex: `r'for\s+\w+\s*:?=\s*range\s+.+?go\s+func\s*\('` | §3.3 Change C (G1) |
+| H6 | Go unbuffered chan detection — multiline miss | Create `flat_content` by replacing newlines with spaces, then apply regex | §3.3 Change C (G3) |
+| H7 | Shell variable quote detection inaccurate | Expanded pattern: `r'\$\{?\w+\}?\|\$[@*#?!0-9]\|\$\{[\w#%:-]+\}'` + use `shlex` | §3.3 Change D (S1) |
+| H8 | YAML duplicate key detection — only checks top-level keys | Check duplicates with indentation-based composite key `f"{indent_level}:{key}"` | §3.3 Change D (Y1) |
+| H9 | `_compute_cyclomatic_complexity` branch order conflict | Explicit order: `TS_JS_EXTS → .py → .rs → CPP_EXTS → else (Go + generic)`, Go branches first in `else` via `elif ext == '.go'` | §3.3 Change E |
 
-### 🟡 MEDIUM — 수정 방안 요약
+### 🟡 MEDIUM — Resolution Summary
 
-| ID | 이슈 | 해결 방안 | 반영 섹션 |
-|----|------|-----------|-----------|
-| M1 | `get_install_hint()` 언어 목록 누락 | `['python', 'go', 'rust', 'typescript', 'javascript', 'cpp', 'c']`로 확장 | §3.2 변경 C |
-| M2 | `SOURCE_EXTS` 확장의 파급효과 — TS 전용 지표(`any_type_count`, `ts_ignore_count`) 왜곡 | `_review_project_core()`에서 TS 전용 지표는 `ext in TS_JS_EXTS` 조건부 처리 | §3.1 변경 A (주의사항), §3.6 변경 A |
-| M3 | `cppcheck` XML 파싱 — 속성 순서 의존 | 정규식 대신 `xml.etree.ElementTree` 사용 | §3.4 변경 A |
-| M4 | 서브프로세스 타임아웃 불충분 | `cargo clippy: 120s`, `cppcheck: 120s`, `go vet: 60s`로 증가 | §3.4 변경 A |
-| M5 | `REVIEWABLE_EXTS` 미사용 | `review_code()` 진입점에서 `ext not in REVIEWABLE_EXTS`면 얼리 리턴 | §3.3 (서문), §3.1 변경 B |
-| M6 | Windows PATH 안내 누락 | `FileNotFoundError` 처리 시 "명령어가 PATH에 없습니다: {tool}. 설치 방법: ..." 메시지 추가 | §3.4 변경 A |
-| M7 | if/elif 체인 순서 명시적 문서화 | `TS_JS → .py → .rs → CPP → Go → Shell → Dockerfile → YAML → JSON` 순서 명시 | §3.3 (서문) |
-| M8 | 기존 `else` 블록의 Rust dead code | `.rs`가 독립 `elif`로 이동 후, 기존 `else` 블록의 Rust 내부 로직(unsafe, unwrap) 제거 | §3.3 변경 B |
+| ID | Issue | Resolution | Section |
+|----|-------|-----------|---------|
+| M1 | `get_install_hint()` language list incomplete | Extend to `['python', 'go', 'rust', 'typescript', 'javascript', 'cpp', 'c']` | §3.2 Change C |
+| M2 | `SOURCE_EXTS` expansion side effect — TS-only metrics (`any_type_count`, `ts_ignore_count`) distorted | Conditionally handle TS-only metrics in `_review_project_core()` with `ext in TS_JS_EXTS` | §3.1 Change A (caution), §3.6 Change A |
+| M3 | `cppcheck` XML parsing — attribute order dependency | Use `xml.etree.ElementTree` instead of regex | §3.4 Change A |
+| M4 | Subprocess timeout insufficient | Increase to `cargo clippy: 120s`, `cppcheck: 120s`, `go vet: 60s` | §3.4 Change A |
+| M5 | `REVIEWABLE_EXTS` unused | Early return in `review_code()` entry point if `ext not in REVIEWABLE_EXTS` | §3.3 (preamble), §3.1 Change B |
+| M6 | Windows PATH guidance missing | Add message on `FileNotFoundError`: "Command not found in PATH: {tool}. Installation method: ..." | §3.4 Change A |
+| M7 | if/elif chain order explicit documentation | Explicit order: `TS_JS → .py → .rs → CPP → Go → Shell → Dockerfile → YAML → JSON` | §3.3 (preamble) |
+| M8 | Rust dead code in existing `else` block | After `.rs` moved to independent `elif`, remove Rust internal logic (unsafe, unwrap) from existing `else` block | §3.3 Change B |
 
 ---
 
-## 1. 변경 대상 파일 & 책임 매트릭스
+## 1. Target Files & Responsibility Matrix
 
-| 파일 | 변경 유형 | 주요 책임 |
+| File | Change Type | Primary Responsibility |
 |------|-----------|-----------|
-| [`mcp-servers/bridge/config.py`](mcp-servers/bridge/config.py:44) | 확장 | SOURCE_EXTS 확장, 신규 상수 그룹 추가, Orphaned 상수 정리 (C6) |
-| [`mcp-servers/bridge/utils.py`](mcp-servers/bridge/utils.py:86) | 확장 | `_iter_project_files()`에 `include_names` 파라미터 추가 (C3) |
-| [`mcp-servers/bridge/ast_engine.py`](mcp-servers/bridge/ast_engine.py:22) | 확장 | LANGUAGES/NODE_TYPES에 cpp/c 추가 (C1 반영), `_compute_cyclomatic_complexity` 확장 |
-| [`mcp-servers/bridge/tools/reviewer.py`](mcp-servers/bridge/tools/reviewer.py:352) | 대폭 확장 | C++/Rust AST 연동, Go 고도화, 일반 파일 지원, 정규식 개선 (H1~H8), 체인 순서 정리 (H9, M7, M8) |
-| [`mcp-servers/bridge/tools/integrated.py`](mcp-servers/bridge/tools/integrated.py:347) | 신규 함수 | `_run_native_linter()` 도입 (C2/C4/M3/M4/M6 반영), `find_bugs()` 연동, TS 전용 지표 조건부 (M2) |
+| [`mcp-servers/bridge/config.py`](mcp-servers/bridge/config.py:44) | Extension | SOURCE_EXTS expansion, new constant group addition, Orphaned constant cleanup (C6) |
+| [`mcp-servers/bridge/utils.py`](mcp-servers/bridge/utils.py:86) | Extension | Add `include_names` parameter to `_iter_project_files()` (C3) |
+| [`mcp-servers/bridge/ast_engine.py`](mcp-servers/bridge/ast_engine.py:22) | Extension | Add cpp/c to LANGUAGES/NODE_TYPES (C1 reflected), extend `_compute_cyclomatic_complexity` |
+| [`mcp-servers/bridge/tools/reviewer.py`](mcp-servers/bridge/tools/reviewer.py:352) | Major Extension | C++/Rust AST integration, Go enhancement, general file support, regex improvements (H1~H8), chain order cleanup (H9, M7, M8) |
+| [`mcp-servers/bridge/tools/integrated.py`](mcp-servers/bridge/tools/integrated.py:347) | New Function | Introduce `_run_native_linter()` (C2/C4/M3/M4/M6 reflected), `find_bugs()` integration, TS-only metrics conditional (M2) |
 
 ---
 
-## 2. 아키텍처 개요
+## 2. Architecture Overview
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -71,48 +71,49 @@
 ├──────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐   │
 │  │ ast_engine   │  │ reviewer     │  │ integrated    │   │
-│  │ (AST 파서)   │  │ (정적 규칙)   │  │ (_run_native_ │   │
-│  │              │  │              │  │  linter)      │   │
+│  │ (AST Parser) │  │ (Static      │  │ (_run_native_ │   │
+│  │              │  │  Rules)      │  │  linter)      │   │
 │  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘   │
 │         │                 │                   │           │
 │  ┌──────▼─────────────────▼───────────────────▼───────┐   │
-│  │              언어 감지 (file extension)             │   │
+│  │              Language Detection (extension)          │   │
 │  │  .ts/.js  .py  .go  .rs  .cpp/.h/.c  .sh  Docker  │   │
 │  └────────────────────────────────────────────────────┘   │
 │                           │                               │
 │  ┌────────────────────────▼──────────────────────────┐    │
-│  │          tree-sitter AST (우선) / regex (폴백)      │    │
+│  │          tree-sitter AST (primary) / regex (fallback) │
 │  └────────────────────────────────────────────────────┘    │
 │                           │                               │
 │  ┌────────────────────────▼──────────────────────────┐    │
-│  │     통합 진단 보고서 (issues + native linter)       │    │
+│  │     Integrated Diagnostic Report (issues + native   │    │
+│  │     linter)                                        │    │
 │  └────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 데이터 흐름 (Mermaid)
+### Data Flow (Mermaid)
 
 ```mermaid
 graph TD
-    A[review_code / find_bugs 호출] --> B{파일 확장자 감지}
+    A[review_code / find_bugs call] --> B{File extension detection}
     B -->|.ts .tsx .js .jsx| C[TypeScript/JavaScript AST]
-    B -->|.py| D[Python AST + 특화 규칙]
-    B -->|.rs| F[Rust AST + unsafe/clone 규칙]
-    B -->|.cpp .hpp .cc .h .c| G[C/C++ AST + 메모리 안전 규칙]
-    B -->|.go| E[Go AST + 동시성 규칙]
+    B -->|.py| D[Python AST + specialized rules]
+    B -->|.rs| F[Rust AST + unsafe/clone rules]
+    B -->|.cpp .hpp .cc .h .c| G[C/C++ AST + memory safety rules]
+    B -->|.go| E[Go AST + concurrency rules]
     B -->|.sh .bash .ps1| H[Shell regex + shellcheck]
-    B -->|Dockerfile .yaml .json| I[설정 파일 패턴 매칭]
-    C --> J[이슈 집계]
+    B -->|Dockerfile .yaml .json| I[Configuration file pattern matching]
+    C --> J[Issue aggregation]
     D --> J
     E --> J
     F --> J
     G --> J
     H --> J
     I --> J
-    J --> K[심각도 필터링]
-    K --> L[마크다운 보고서]
-    A --> M{find_bugs 전용}
-    M --> N[_run_native_linter: 모든 감지된 빌드 파일 순차 실행]
+    J --> K[Severity filtering]
+    K --> L[Markdown report]
+    A --> M{find_bugs only}
+    M --> N[_run_native_linter: sequential execution of all detected build files]
     N --> N1[cargo clippy --frozen]
     N --> N2[go vet -mod=readonly]
     N --> N3[cppcheck --enable=all --xml]
@@ -123,63 +124,63 @@ graph TD
     N4 --> J
 ```
 
-> **주요 변경**: `_run_native_linter()`는 이제 모든 린터를 순차 실행하며 (C2), `--frozen`/`-mod=readonly` 보안 플래그 적용 (C4). `review_code()` 체인 순서: `TS_JS → .py → .rs → CPP → Go → Shell → Dockerfile → YAML → JSON` (M7).
+> **Key Changes**: `_run_native_linter()` now executes all linters sequentially (C2), applies `--frozen`/`-mod=readonly` security flags (C4). `review_code()` chain order: `TS_JS → .py → .rs → CPP → Go → Shell → Dockerfile → YAML → JSON` (M7).
 
 ---
 
-## 3. 파일별 상세 변경 사양
+## 3. File-by-File Detailed Change Specifications
 
 ### 3.1 [`mcp-servers/bridge/config.py`](mcp-servers/bridge/config.py)
 
-#### 변경 A — SOURCE_EXTS 확장 (라인 44)
+#### Change A — SOURCE_EXTS Expansion (line 44)
 
 ```python
-# 기존
+# Existing
 SOURCE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs"}
 
-# 신규
+# New
 SOURCE_EXTS = {
     ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs",
     # C/C++
     ".cpp", ".hpp", ".cc", ".h", ".c",
     # Shell
     ".sh", ".bash", ".ps1",
-    # 설정 파일
+    # Configuration files
     ".yaml", ".yml", ".json",
 }
 ```
 
-> **M2 주의사항**: `SOURCE_EXTS` 확장으로 인해 `_review_project_core()` 내 `any_type_count`, `ts_ignore_count` 등 TS 전용 지표가 C++/Shell 파일에서도 카운트될 수 있다. → §3.6 변경 A에서 조건부 처리로 대응.
+> **M2 Caution**: `SOURCE_EXTS` expansion may cause TS-only metrics (`any_type_count`, `ts_ignore_count`) in `_review_project_core()` to be counted for C++/Shell files. → Handled by conditional processing in §3.6 Change A.
 
-#### 변경 B — 신규 상수 그룹 추가 (C6 반영: Orphaned 상수 정리)
+#### Change B — New Constant Group Addition (C6: Orphaned Constant Cleanup)
 
 ```python
-# C/C++ 확장자 그룹 (→ reviewer.py, ast_engine.py 에서 import)
+# C/C++ extension group (→ imported by reviewer.py, ast_engine.py)
 CPP_EXTS = {".cpp", ".hpp", ".cc", ".h", ".c"}
 
-# Shell 확장자 그룹
+# Shell extension group
 SHELL_EXTS = {".sh", ".bash", ".ps1"}
 
-# 확장자 없는 설정 파일명 (→ _iter_project_files()의 include_names 파라미터에서 사용)
+# Extensionless configuration file names (→ used in _iter_project_files() include_names parameter)
 CONFIG_FILES = {"Dockerfile", "docker-compose.yml", "docker-compose.yaml"}
 
-# Generic / non-AST 파일 (reviewer 기본 패턴만 적용) (→ reviewer.py 에서 import)
+# Generic / non-AST files (only reviewer basic patterns applied) (→ imported by reviewer.py)
 GENERIC_EXTS = {".sh", ".bash", ".ps1", ".yaml", ".yml", ".json"}
 
-# 모든 리뷰 가능 확장자 (→ review_code() 진입 검증에 사용) (M5)
+# All reviewable extensions (→ used for review_code() entry validation) (M5)
 REVIEWABLE_EXTS = SOURCE_EXTS | GENERIC_EXTS
 ```
 
-> **C6 정리**:
-> - `GO_EXTS` / `RUST_EXTS` → **제거** (이미 `SOURCE_EXTS`에 포함되어 중복)
-> - `CONFIG_FILES` → `_iter_project_files()`의 `include_names` 파라미터와 연동 (변경 C)
-> - `CPP_EXTS` → `reviewer.py`, `ast_engine.py` 에서 import
-> - `GENERIC_EXTS` → `reviewer.py` 에서 import
-> - `REVIEWABLE_EXTS` → `review_code()` 진입점에서 `ext not in REVIEWABLE_EXTS` 얼리 리턴 (M5)
+> **C6 Cleanup**:
+> - `GO_EXTS` / `RUST_EXTS` → **Remove** (already included in `SOURCE_EXTS`, duplicate)
+> - `CONFIG_FILES` → Linked with `_iter_project_files()` `include_names` parameter (Change C)
+> - `CPP_EXTS` → Imported by `reviewer.py`, `ast_engine.py`
+> - `GENERIC_EXTS` → Imported by `reviewer.py`
+> - `REVIEWABLE_EXTS` → Early return at `review_code()` entry point if `ext not in REVIEWABLE_EXTS` (M5)
 
-#### 변경 C — `CONFIG_FILES` export 추가
+#### Change C — `CONFIG_FILES` Export Addition
 
-`config.py` 최하단에 `CONFIG_FILES`를 `utils.py`에서 import할 수 있도록 export 확인. `utils.py`의 import 문에 `CONFIG_FILES` 추가:
+Ensure `CONFIG_FILES` is exported at the bottom of `config.py` for import by `utils.py`. Add `CONFIG_FILES` to `utils.py`'s import statement:
 
 ```python
 # utils.py
@@ -190,11 +191,11 @@ from bridge.config import SOURCE_EXTS, DEFAULT_EXCLUDE_DIRS, TS_JS_EXTS, CONFIG_
 
 ### 3.2 [`mcp-servers/bridge/ast_engine.py`](mcp-servers/bridge/ast_engine.py)
 
-#### 변경 A — LANGUAGES 매핑에 C/C++ 추가 (라인 22~30) (C1 반영)
+#### Change A — Add C/C++ to LANGUAGES Mapping (lines 22~30) (C1 reflected)
 
 ```python
 LANGUAGES = {
-    # ... 기존 ...
+    # ... existing ...
     '.ts':   'typescript',
     '.tsx':  'typescript',
     '.js':   'javascript',
@@ -202,27 +203,27 @@ LANGUAGES = {
     '.py':   'python',
     '.go':   'go',
     '.rs':   'rust',
-    # ── 신규: C/C++ ── (.c도 'cpp'로 통일 — tree-sitter-cpp가 C/C++ 모두 지원)
+    # ── New: C/C++ ── (.c unified to 'cpp' — tree-sitter-cpp supports both C/C++)
     '.cpp':  'cpp',
     '.hpp':  'cpp',
     '.cc':   'cpp',
     '.h':    'cpp',
-    '.c':    'cpp',        # C1 fix: 'c' → 'cpp' 통일
+    '.c':    'cpp',        # C1 fix: 'c' → 'cpp' unified
 }
 ```
 
-> **C1 해결**: `.c`를 `'c'`가 아닌 `'cpp'`로 매핑. `tree-sitter-cpp`는 C와 C++을 모두 지원하므로 별도 `tree-sitter-c` 불필요. `NODE_TYPES`에도 `'c'` 키 없이 `'cpp'`만 유지.
+> **C1 Resolution**: Map `.c` to `'cpp'` not `'c'`. `tree-sitter-cpp` supports both C and C++, so separate `tree-sitter-c` is unnecessary. `NODE_TYPES` also keeps only `'cpp'` without `'c'` key.
 
-#### 변경 B — NODE_TYPES에 C++ 노드 타입 추가 (라인 32~58)
+#### Change B — Add C++ Node Types to NODE_TYPES (lines 32~58)
 
 ```python
 NODE_TYPES = {
-    # ... 기존 typescript, python, go, rust ...
+    # ... existing typescript, python, go, rust ...
     'cpp': {
         'function': [
-            'function_definition',        # 일반 함수
-            'template_declaration',       # template<T> 함수
-            'lambda_expression',          # 람다
+            'function_definition',        # Regular function
+            'template_declaration',       # template<T> function
+            'lambda_expression',          # Lambda
         ],
         'class': [
             'class_specifier',            # class X { ... }
@@ -238,11 +239,11 @@ NODE_TYPES = {
 }
 ```
 
-> `'c'` 키는 불필요 — C1에서 `.c`도 `'cpp'`로 통일 매핑.
+> `'c'` key unnecessary — C1 unifies `.c` to `'cpp'` mapping.
 
-#### 변경 C — `get_install_hint()` 언어 목록 확장 (M1 반영)
+#### Change C — Expand `get_install_hint()` Language List (M1 reflected)
 
-기존 `['python', 'go', 'rust', 'typescript', 'javascript']`에서 다음과 같이 확장:
+Extend from existing `['python', 'go', 'rust', 'typescript', 'javascript']` to:
 
 ```python
 ['python', 'go', 'rust', 'typescript', 'javascript', 'cpp', 'c']
@@ -252,24 +253,24 @@ NODE_TYPES = {
 
 ### 3.3 [`mcp-servers/bridge/tools/reviewer.py`](mcp-servers/bridge/tools/reviewer.py)
 
-이 파일이 가장 큰 변경을 수반한다. 현재 `review_code()` 함수의 `if/elif/else` 체인을 확장한다.
+This file undergoes the largest change. Extend the `if/elif/else` chain of the current `review_code()` function.
 
-#### if/elif 체인 순서 (M7 명시화, H9 반영)
+#### if/elif Chain Order (M7 explicit, H9 reflected)
 
 ```
-1. if ext in TS_JS_EXTS:       # TS/JS 완전 AST 분석 (변경 없음)
-2. elif ext == ".py":          # Python AST 분석 (변경 없음)
-3. elif ext == ".rs":          # Rust AST 완전 분석 (변경 B — M8: 기존 else 블록 Rust 코드 제거)
-4. elif ext in CPP_EXTS:       # C/C++ AST 분석 (변경 A)
-5. elif ext == ".go":          # Go AST + 고도화 규칙 (변경 C)
-6. elif ext in GENERIC_EXTS:   # Shell/Dockerfile/YAML/JSON (변경 D)
+1. if ext in TS_JS_EXTS:       # TS/JS full AST analysis (no change)
+2. elif ext == ".py":          # Python AST analysis (no change)
+3. elif ext == ".rs":          # Rust full AST analysis (Change B — M8: remove Rust code from existing else block)
+4. elif ext in CPP_EXTS:       # C/C++ AST analysis (Change A)
+5. elif ext == ".go":          # Go AST + enhanced rules (Change C)
+6. elif ext in GENERIC_EXTS:   # Shell/Dockerfile/YAML/JSON (Change D)
 ```
 
-> **M5**: `review_code()` 진입점에서 `ext not in REVIEWABLE_EXTS` 이면 얼리 리턴하여 지원 불가 언어는 즉시 거부.
+> **M5**: Early return at `review_code()` entry point if `ext not in REVIEWABLE_EXTS` to immediately reject unsupported languages.
 
-#### 변경 A — C++ 특화 분석 블록 (`elif ext in CPP_EXTS:`) (H1, H2, H3 반영)
+#### Change A — C++-specific Analysis Block (`elif ext in CPP_EXTS:`) (H1, H2, H3 reflected)
 
-기존 `else` 블록의 C++ 처리 제거, 신규 독립 블록:
+Remove C++ handling from existing `else` block, new independent block:
 
 ```python
 elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
@@ -279,10 +280,10 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
     stats["functions"] = len(functions)
     stats["classes"] = len(classes)
 
-    # 주석 제거한 코드 (H2: new/delete 오탐 방지)
+    # Code with comments removed (H2: new/delete false positive prevention)
     code_only = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', content)
 
-    # ── 함수 길이 검사 ──
+    # ── Function length check ──
     if functions:
         long_funcs = []
         for fn in functions:
@@ -300,16 +301,16 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
     if comp > 15:
         issues.append(("⚠️", f"Cyclomatic complexity: {comp} — consider simplifying"))
 
-    # ── 중첩 깊이 ──
+    # ── Nesting depth ──
     max_depth = _compute_nesting_depth(content, ext)
     stats["max_depth"] = max_depth
     if max_depth > 4:
         issues.append(("⚠️",
             f"Maximum nesting depth: {max_depth} levels — consider early returns"))
 
-    # ═══ C++ 특화 규칙 ═══
+    # ═══ C++-specific rules ═══
 
-    # R1. Raw pointer vs smart pointer (H1: 정규식 개선)
+    # R1. Raw pointer vs smart pointer (H1: regex improved)
     raw_ptr_count = len(re.findall(
         r'(?<!\w)(?:\w+\s*\*+\s+\w+|(?:int|char|float|double|void|bool|long|short|unsigned|signed)\s*\*+\s*\w+)',
         code_only))
@@ -320,7 +321,7 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
             f"Raw pointer(s) found ({raw_ptr_count}) — "
             f"consider std::unique_ptr or std::shared_ptr (C++11+)"))
 
-    # R2. new/delete 불일치 (H2: 주석 제거, placement new 제외, 임계값 도입)
+    # R2. new/delete mismatch (H2: comment removal, placement new exclusion, threshold introduction)
     new_count = len(re.findall(
         r'\bnew\s+(?!\(\))(?!\s*std::make_unique)(?!\s*std::make_shared)', code_only))
     delete_count = len(re.findall(r'\bdelete\s+(?!\[\])', code_only))
@@ -330,7 +331,7 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
             f"Potential memory leak: {new_count} `new` vs "
             f"{delete_count + delete_array_count} `delete`/`delete[]` (diff > 3)"))
 
-    # R3. 경계검사 우회 (H3: 초기화/할당 컨텍스트만 매칭)
+    # R3. Bounds checking bypass (H3: initialization/assignment context only)
     bracket_access = len(re.findall(r'\w+\s*\[[^\]]*\]\s*[=;]', code_only))
     at_access = len(re.findall(r'\.at\(', code_only))
     if bracket_access > 10 and at_access == 0:
@@ -338,7 +339,7 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
             f"Index operator `[]` used {bracket_access} times without `.at()` — "
             f"no bounds checking"))
 
-    # R4. RAII 락 누락: std::mutex without std::lock_guard/unique_lock
+    # R4. RAII lock missing: std::mutex without std::lock_guard/unique_lock
     mutex_count = len(re.findall(r'std::mutex\s+\w+', code_only))
     lock_guard_count = len(re.findall(
         r'(std::lock_guard|std::unique_lock|std::scoped_lock)', code_only))
@@ -347,7 +348,7 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
             f"`std::mutex` used without RAII lock guard — "
             f"consider std::lock_guard or std::scoped_lock (C++17)"))
 
-    # R5. C 스타일 캐스트 (C++ 프로젝트에서)
+    # R5. C-style cast (in C++ projects)
     if ext in (".cpp", ".hpp", ".cc", ".h"):
         c_cast = len(re.findall(r'\(int\)|\(char\*\)|\(void\*\)|\(double\)|\(float\)',
                                 code_only))
@@ -356,22 +357,22 @@ elif ext in (".cpp", ".hpp", ".cc", ".h", ".c"):
                 f"C-style cast found {c_cast} time(s) — "
                 f"use static_cast, dynamic_cast, const_cast, reinterpret_cast"))
 
-    # R6. printf/scanf 대신 iostream 사용 권장
+    # R6. Recommend iostream instead of printf/scanf
     printfs = len(re.findall(r'\b(printf|scanf|fprintf|sprintf)\s*\(', code_only))
     if printfs > 0:
         issues.append(("📝",
             f"`printf`/`scanf` family used {printfs} time(s) — "
             f"consider std::cout / std::format (C++20)"))
 
-    # TODO/디버그
+    # TODO/debug
     todos = len(re.findall(r'(TODO|FIXME|HACK|XXX)', code_only))
     if todos > 0:
         issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
 ```
 
-#### 변경 B — Rust AST 완전 분석 블록 (`elif ext == ".rs"`) (H4, M8 반영)
+#### Change B — Rust AST Full Analysis Block (`elif ext == ".rs"`) (H4, M8 reflected)
 
-기존 `else` 블록의 Rust regex-only 처리 대체. **M8**: 기존 `else` 블록의 `if ext == ".rs":` 내부 로직(unsafe, unwrap)은 제거한다.
+Replace existing regex-only Rust handling in `else` block. **M8**: Remove Rust internal logic (unsafe, unwrap) from existing `else` block's `if ext == ".rs":`.
 
 ```python
 elif ext == ".rs":
@@ -382,7 +383,7 @@ elif ext == ".rs":
     stats["functions"] = len(functions)
     stats["classes"] = len(classes)
 
-    # ── 함수 길이 검사 ──
+    # ── Function length check ──
     if functions:
         long_funcs = []
         for fn in functions:
@@ -410,16 +411,16 @@ elif ext == ".rs":
     if comp > 15:
         issues.append(("⚠️", f"Cyclomatic complexity: {comp}"))
 
-    # ── 중첩 깊이 ──
+    # ── Nesting depth ──
     max_depth = _compute_nesting_depth(content, ext)
     stats["max_depth"] = max_depth
     if max_depth > 4:
         issues.append(("⚠️",
             f"Maximum nesting depth: {max_depth} — use match or early returns"))
 
-    # ═══ Rust 특화 규칙 ═══
+    # ═══ Rust-specific rules ═══
 
-    # R1. unsafe 블록 복잡도 제어
+    # R1. unsafe block complexity control
     unsafe_blocks = re.findall(r'\bunsafe\s*\{', content)
     if unsafe_blocks:
         unsafe_lines = []
@@ -445,14 +446,14 @@ elif ext == ".rs":
             issues.append(("⚠️",
                 f"`unsafe` block(s) found: {len(unsafe_blocks)} — review for safety"))
 
-    # R2. 묵살된 Result/Option (`let _ = ...`)
+    # R2. Silenced Result/Option (`let _ = ...`)
     let_underscore = len(re.findall(r'\blet\s+_\s*=', content))
     if let_underscore > 0:
         issues.append(("⚠️",
             f"`let _ = ...` pattern found {let_underscore} time(s) — "
             f"Result/Option silently ignored, use `?` or proper match"))
 
-    # R3. Panic 유발 지점
+    # R3. Panic trigger points
     unwrap_count = len(re.findall(r'\.unwrap\(\)', content))
     expect_count = len(re.findall(r'\.expect\(', content))
     panic_count = len(re.findall(r'panic!\(', content))
@@ -465,14 +466,14 @@ elif ext == ".rs":
             f"`panic!` macro found {panic_count} time(s) — "
             f"consider graceful error propagation"))
 
-    # R4. clone 남용 감지
+    # R4. clone overuse detection
     clone_count = len(re.findall(r'\.clone\(\)', content))
     if clone_count > 5:
         issues.append(("⚠️",
             f"`.clone()` called {clone_count} times — "
             f"consider borrowing or refactoring ownership"))
 
-    # R5. `as` 타입 캐스트 (H4: 숫자 타입 캐스트만 감지, use ... as 제외)
+    # R5. `as` type cast (H4: numeric type casts only, exclude use ... as)
     as_cast_count = len(re.findall(
         r'\b(\w+)\s+as\s+(?!_)(u8|u16|u32|u64|i8|i16|i32|i64|f32|f64|usize|isize)\b',
         content))
@@ -481,7 +482,7 @@ elif ext == ".rs":
             f"`as` numeric cast used {as_cast_count} times — "
             f"consider `From`/`Into`/`TryFrom` for safe conversions"))
 
-    # R6. `println!` 디버그 로그
+    # R6. `println!` debug logs
     println_count = len(re.findall(r'println!\(', content))
     if println_count > 0:
         issues.append(("📝",
@@ -492,16 +493,16 @@ elif ext == ".rs":
         issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
 ```
 
-#### 변경 C — Go 분석 규칙 고도화 (`elif ext == ".go"`) (H5, H6 반영)
+#### Change C — Go Analysis Rules Enhancement (`elif ext == ".go"`) (H5, H6 reflected)
 
-기존 Go 블록 (라인 490~544) 에 **5개의 신규 규칙**을 추가:
+Add **5 new rules** to the existing Go block (lines 490~544):
 
 ```python
-# 기존 Go AST 분석 블록 내, 기존 규칙 다음에 추가:
+# Within existing Go AST analysis block, after existing rules:
 
-# ═══ Go 고도화 규칙 (신규) ═══
+# ═══ Go enhancement rules (new) ═══
 
-# G1. 고루틴 내 루프 변수 캡처 (H5: re.DOTALL + non-greedy)
+# G1. Goroutine loop variable capture (H5: re.DOTALL + non-greedy)
 go_stmt_pattern = re.findall(
     r'for\s+\w+\s*:?=\s*range\s+.+?go\s+func\s*\(', content, re.DOTALL)
 if go_stmt_pattern:
@@ -510,7 +511,7 @@ if go_stmt_pattern:
         f"loop variable may be captured by reference. "
         f"Pass as parameter or use Go 1.22+"))
 
-# G2. defer 내 recover() 부재
+# G2. Missing recover() in defer
 defer_funcs = re.findall(r'defer\s+func\s*\(\s*\)\s*\{', content)
 recover_calls = len(re.findall(r'\brecover\(\)', content))
 if defer_funcs and recover_calls == 0:
@@ -518,7 +519,7 @@ if defer_funcs and recover_calls == 0:
         f"`defer func()` found but no `recover()` — "
         f"potential unhandled panic in deferred cleanup"))
 
-# G3. 채널 데드락 위험 (H6: flat_content 사용)
+# G3. Channel deadlock risk (H6: flat_content used)
 flat_content = content.replace('\n', ' ')
 unbuffered_chan = re.findall(r'make\s*\(\s*chan\s+(?!.*,\s*\d+)', flat_content)
 if unbuffered_chan:
@@ -526,7 +527,7 @@ if unbuffered_chan:
         f"Unbuffered channel(s) found ({len(unbuffered_chan)}) — "
         f"ensure send/receive happen in different goroutines"))
 
-# G4. Mutex Unlock 누락 (defer mu.Unlock() 없는 경우)
+# G4. Mutex Unlock missing (no defer mu.Unlock())
 mutex_locks = len(re.findall(r'\.Lock\(\)', content))
 defer_unlocks = len(re.findall(r'defer\s+\w+\.Unlock\(\)', content))
 if mutex_locks > 0 and defer_unlocks < mutex_locks:
@@ -543,15 +544,15 @@ if nil_map_assign:
         f"composite literal"))
 ```
 
-#### 변경 D — 일반 소스 파일 지원 (Shell, Dockerfile, YAML, JSON) (H7, H8 반영)
+#### Change D — General Source File Support (Shell, Dockerfile, YAML, JSON) (H7, H8 reflected)
 
-`else` 블록 내에서 파일 확장자/이름 기반 분기:
+Branching by file extension/name within `else` block:
 
 ```python
 else:
     # ── Shell Script ──
     if ext in (".sh", ".bash"):
-        # S1. 따옴표 누락 감지 (H7: 확장된 패턴)
+        # S1. Missing quote detection (H7: expanded pattern)
         unquoted_vars = len(re.findall(
             r'\$\{?\w+\}?|\$[@*#?!0-9]|\$\{[\w#%:-]+\}', content))
         quotes_ok = len(re.findall(r'"\$\{?\w+\}?"', content))
@@ -560,7 +561,7 @@ else:
                 f"Unquoted variable expansion(s) — "
                 f"may cause word splitting on whitespace"))
 
-        # S2. set -e / set -o pipefail 부재
+        # S2. Missing set -e / set -o pipefail
         has_set_e = bool(re.search(r'set\s+-e', content))
         has_pipefail = bool(re.search(r'set\s+-o\s+pipefail', content))
         if not has_set_e:
@@ -570,7 +571,7 @@ else:
             issues.append(("📝",
                 "`set -o pipefail` not found — pipeline errors may be masked"))
 
-        # S3. shellcheck 연동 시도 (optional, subprocess)
+        # S3. shellcheck integration attempt (optional, subprocess)
         try:
             result = subprocess.run(
                 ["shellcheck", "-f", "json", str(p)],
@@ -596,14 +597,14 @@ else:
 
     # ── Dockerfile ──
     elif p.name == "Dockerfile" or p.suffix.lower() == ".dockerfile":
-        # D1. latest 태그 사용
+        # D1. latest tag usage
         latest_tags = re.findall(r'FROM\s+\S+:latest', content)
         if latest_tags:
             issues.append(("⚠️",
                 f"`FROM ... :latest` tag(s) found ({len(latest_tags)}) — "
                 f"pin to specific version for reproducible builds"))
 
-        # D2. apt-get 캐시 미삭제
+        # D2. apt-get cache not cleaned
         apt_installs = len(re.findall(r'apt-get\s+install', content))
         apt_cleans = len(re.findall(
             r'(rm -rf /var/lib/apt/lists|apt-get clean|apt-get autoclean)',
@@ -613,12 +614,12 @@ else:
                 f"`apt-get install` without cache cleanup — "
                 f"add `rm -rf /var/lib/apt/lists/*` to reduce image size"))
 
-        # D3. root 유저 사용
+        # D3. Root user usage
         if "USER" not in content:
             issues.append(("📝",
                 "No `USER` directive — container runs as root"))
 
-        # D4. COPY 대신 ADD
+        # D4. ADD instead of COPY
         add_count = len(re.findall(r'\bADD\s+', content))
         copy_count = len(re.findall(r'\bCOPY\s+', content))
         if add_count > copy_count:
@@ -628,7 +629,7 @@ else:
 
     # ── YAML ──
     elif ext in (".yaml", ".yml"):
-        # Y1. 중복 키 탐지 (H8: 들여쓰기 기반 복합 키)
+        # Y1. Duplicate key detection (H8: indentation-based composite key)
         key_paths = {}
         for i, line in enumerate(lines, 1):
             m = re.match(r'^(\s*)(\w[\w.-]*)\s*:', line)
@@ -642,7 +643,7 @@ else:
                         f"(first at line {key_paths[composite_key]})"))
                 key_paths[composite_key] = i
 
-        # Y2. 하드코딩된 시크릿
+        # Y2. Hardcoded secrets
         secret_patterns = [
             (r'(password|passwd|pwd)\s*:\s*\S+', 'password'),
             (r'(secret|SECRET)\s*:\s*\S+', 'secret'),
@@ -671,7 +672,7 @@ else:
             issues.append(("❌",
                 f"Hardcoded sensitive value(s) found ({len(secret_matches)})"))
 
-    # ── 공통: 중첩 깊이, TODO ──
+    # ── Common: nesting depth, TODO ──
     max_depth = _compute_nesting_depth(content, ext)
     stats["max_depth"] = max_depth
     if max_depth > 4:
@@ -682,9 +683,9 @@ else:
         issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
 ```
 
-#### 변경 E — `_compute_cyclomatic_complexity` 확장 (H9 반영)
+#### Change E — `_compute_cyclomatic_complexity` Extension (H9 reflected)
 
-명시적 분기 순서: `TS_JS_EXTS → .py → .rs → CPP_EXTS → else (Go + generic)`. Go는 `else` 블록 내에서 `elif ext == '.go'`로 먼저 분기.
+Explicit branch order: `TS_JS_EXTS → .py → .rs → CPP_EXTS → else (Go + generic)`. Go branches first in `else` block via `elif ext == '.go'`.
 
 ```python
 elif ext in CPP_EXTS:
@@ -705,7 +706,7 @@ elif ext == '.rs':
         + len(re.findall(r'\bloop\s*\{', content))
     )
 else:
-    # Go + generic 분기문
+    # Go + generic branching
     if ext == '.go':
         branches = (
             len(re.findall(r'\bif\s+', content))
@@ -715,7 +716,7 @@ else:
             + len(re.findall(r'\bselect\s*\{', content))
         )
     else:
-        # generic: 기본 분기문
+        # generic: basic branching
         branches = (
             len(re.findall(r'\bif\s+', content))
             + len(re.findall(r'\bfor\s+', content))
@@ -727,24 +728,24 @@ else:
 
 ### 3.4 [`mcp-servers/bridge/tools/integrated.py`](mcp-servers/bridge/tools/integrated.py)
 
-#### 변경 A — `_run_native_linter()` 신규 함수 (C2, C4, M3, M4, M6 반영)
+#### Change A — `_run_native_linter()` New Function (C2, C4, M3, M4, M6 reflected)
 
 ```python
 def _run_native_linter(root: Path) -> dict:
-    """프로젝트 루트의 빌드 파일을 감지하여 모든 매칭되는 네이티브 린터를 순차 실행.
+    """Detects build files in the project root and sequentially runs all matching native linters.
 
-    감지 순서 (모두 실행, 결과 누적):
+    Detection order (all executed, results accumulated):
     1. Cargo.toml → cargo clippy --frozen
     2. go.mod → go vet -mod=readonly
     3. CMakeLists.txt / Makefile → cppcheck
-    4. package.json → eslint + tsc (기존)
+    4. package.json → eslint + tsc (existing)
 
     Returns:
         {
             "language": str,           # primary language detected
             "tool": str,               # primary tool name
             "success": bool,
-            "results": list[dict],     # C2 fix: 모든 린터 결과 누적
+            "results": list[dict],     # C2 fix: accumulated linter results
             "raw_output": str (truncated),
         }
     """
@@ -752,11 +753,11 @@ def _run_native_linter(root: Path) -> dict:
         "language": "unknown",
         "tool": "none",
         "success": False,
-        "results": [],     # C2: return 제거, 모든 결과 누적
+        "results": [],     # C2: remove return, accumulate all results
         "raw_output": "",
     }
 
-    # ── 1. Rust: cargo clippy (C4: --frozen 추가, M4: timeout 120s) ──
+    # ── 1. Rust: cargo clippy (C4: --frozen added, M4: timeout 120s) ──
     if (root / "Cargo.toml").exists():
         diagnostics["language"] = "rust"
         diagnostics["tool"] = "cargo-clippy"
@@ -812,9 +813,9 @@ def _run_native_linter(root: Path) -> dict:
                 "tool": "cargo-clippy", "success": False,
                 "error": f"cargo clippy error: {e}",
             })
-        # C2 fix: return 제거 → 다음 린터 계속 실행
+        # C2 fix: remove return → continue to next linter
 
-    # ── 2. Go: go vet (C4: -mod=readonly 추가, M4: timeout 60s) ──
+    # ── 2. Go: go vet (C4: -mod=readonly added, M4: timeout 60s) ──
     if (root / "go.mod").exists():
         if diagnostics["language"] == "unknown":
             diagnostics["language"] = "go"
@@ -857,9 +858,9 @@ def _run_native_linter(root: Path) -> dict:
                 "tool": "go-vet", "success": False,
                 "error": f"go vet error: {e}",
             })
-        # C2 fix: return 제거
+        # C2 fix: remove return
 
-    # ── 3. C++: cppcheck (M3: xml.etree.ElementTree 사용, M4: timeout 120s) ──
+    # ── 3. C++: cppcheck (M3: xml.etree.ElementTree used, M4: timeout 120s) ──
     if (root / "CMakeLists.txt").exists() or any(root.glob("Makefile*")):
         if diagnostics["language"] == "unknown":
             diagnostics["language"] = "c/c++"
@@ -871,7 +872,7 @@ def _run_native_linter(root: Path) -> dict:
             )
             diagnostics["raw_output"] = _truncate(
                 diagnostics["raw_output"] + "\n" + _truncate(res.stdout + res.stderr, 2000), 3000)
-            # M3: xml.etree.ElementTree 로 속성 순서 무관 파싱
+            # M3: xml.etree.ElementTree for attribute order-independent parsing
             import xml.etree.ElementTree as ET
             try:
                 root_elem = ET.fromstring(res.stderr + res.stdout)
@@ -910,9 +911,9 @@ def _run_native_linter(root: Path) -> dict:
                 "tool": "cppcheck", "success": False,
                 "error": f"cppcheck error: {e}",
             })
-        # C2 fix: return 제거
+        # C2 fix: remove return
 
-    # ── 4. TS/JS: eslint + tsc (기존) ──
+    # ── 4. TS/JS: eslint + tsc (existing) ──
     if (root / "package.json").exists():
         if diagnostics["language"] == "unknown":
             diagnostics["language"] = "typescript/javascript"
@@ -927,21 +928,21 @@ def _run_native_linter(root: Path) -> dict:
     return diagnostics
 ```
 
-> **C2 해결**: 모든 `return diagnostics` 제거하고 결과를 `diagnostics["results"]` 리스트에 누적.  
-> **C4 해결**: `cargo`에 `--frozen`, `go vet`에 `-mod=readonly` 플래그 추가.  
-> **C5 확인**: `_truncate`는 이미 `integrated.py` 상단 `from bridge.utils import ...`에 포함되어 있음 (라인 26).  
-> **M3 해결**: cppcheck XML 파싱을 `xml.etree.ElementTree`로 변경하여 속성 순서 무관.  
-> **M4 해결**: 타임아웃을 `cargo clippy: 120s`, `cppcheck: 120s`, `go vet: 60s`로 증가.  
-> **M6 해결**: `FileNotFoundError` 메시지에 설치 안내 추가 (`winget install cppcheck`, `https://rustup.rs`, `https://go.dev/dl`).
+> **C2 Resolution**: Remove all `return diagnostics` and accumulate results in `diagnostics["results"]` list.  
+> **C4 Resolution**: Add `--frozen` flag to `cargo`, `-mod=readonly` flag to `go vet`.  
+> **C5 Confirmed**: `_truncate` already included in `integrated.py` top-level `from bridge.utils import ...` (line 26).  
+> **M3 Resolution**: Changed cppcheck XML parsing to `xml.etree.ElementTree` for attribute order independence.  
+> **M4 Resolution**: Increased timeouts to `cargo clippy: 120s`, `cppcheck: 120s`, `go vet: 60s`.  
+> **M6 Resolution**: Added installation guidance in `FileNotFoundError` messages (`winget install cppcheck`, `https://rustup.rs`, `https://go.dev/dl`).
 
-#### 변경 B — `find_bugs()` 함수에 `_run_native_linter` 연동 (라인 400 부근)
+#### Change B — Integrate `_run_native_linter` into `find_bugs()` Function (around line 400)
 
 ```python
-# find_bugs() 내부, summary 모드:
+# find_bugs() internal, summary mode:
 root = Path(get_project_root(target_path))
 native_diag = _run_native_linter(root)
 
-# C2 반영: 모든 린터 결과 순회
+# C2 reflected: iterate over all linter results
 if native_diag.get("results"):
     sections.append(f"\n## 🔬 Native Linter Results\n\n")
     for result in native_diag["results"]:
@@ -962,27 +963,27 @@ if native_diag.get("results"):
 else:
     sections.append("\n## 🔬 Native Linter\n\n- No supported linter environment detected.\n")
 
-# 기존 ESLint/tsc는 package.json 존재 시에만 실행 (fallback)
+# Existing ESLint/tsc only runs when package.json exists (fallback)
 if native_diag["language"] in ("unknown", "typescript/javascript"):
     eslint_data = _run_eslint(root)
     tsc_output = _run_tsc(root)
-    # ... 기존 ESLint/tsc 출력 로직 ...
+    # ... existing ESLint/tsc output logic ...
 ```
 
 ---
 
-### 3.5 [`mcp-servers/bridge/utils.py`](mcp-servers/bridge/utils.py) — `_iter_project_files()` 확장 (C3)
+### 3.5 [`mcp-servers/bridge/utils.py`](mcp-servers/bridge/utils.py) — `_iter_project_files()` Extension (C3)
 
-#### 변경 A — `include_names` 파라미터 추가
+#### Change A — Add `include_names` Parameter
 
 ```python
 def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = None,
                         max_depth: int = -1, include_names: set = None) -> list:
-    """성능 최적화된 프로젝트 파일 순회 (os.walk, 단일 패스).
+    """Performance-optimized project file iteration (os.walk, single pass).
     
     Args:
-        include_names: 확장자 없는 파일명 집합 (예: {"Dockerfile", "Makefile"}). 
-                       extensions와 OR 조건으로 매칭.
+        include_names: Set of extensionless file names (e.g., {"Dockerfile", "Makefile"}). 
+                       Matches as OR condition with extensions.
     """
     if extensions is None:
         extensions = SOURCE_EXTS
@@ -993,7 +994,7 @@ def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = 
     root_str = str(root)
     try:
         for dirpath, dirnames, filenames in os.walk(root_str):
-            # ... 기존 exclude_dirs 로직 ...
+            # ... existing exclude_dirs logic ...
 
             for fname in filenames:
                 ext = os.path.splitext(fname)[1]
@@ -1004,14 +1005,14 @@ def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = 
     return results
 ```
 
-`_iter_project_files_cached()`도 동일하게 `include_names` 파라미터를 받도록 수정하고 캐시 키에 포함.
+`_iter_project_files_cached()` should also accept the `include_names` parameter and include it in the cache key.
 
-#### 변경 B — 호출부 업데이트
+#### Change B — Update Call Sites
 
-`_review_project_core()` 및 `find_bugs()` 내 `_iter_project_files_cached()` 호출에 `include_names=CONFIG_FILES` 추가:
+Add `include_names=CONFIG_FILES` to `_iter_project_files_cached()` calls in `_review_project_core()` and `find_bugs()`:
 
 ```python
-# integrated.py, reviewer.py 내 호출부
+# integrated.py, reviewer.py call sites
 source_files = list(_iter_project_files_cached(
     root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS,
     include_names=CONFIG_FILES  # C3 fix
@@ -1020,31 +1021,31 @@ source_files = list(_iter_project_files_cached(
 
 ---
 
-### 3.6 추가 변경 사항
+### 3.6 Additional Changes
 
-#### 변경 A — `_review_project_core()` TS 전용 지표 조건부 처리 (M2)
+#### Change A — Conditional Processing of TS-only Metrics in `_review_project_core()` (M2)
 
 ```python
-# _review_project_core() 내 파일 순회 루프에서:
+# In _review_project_core() file iteration loop:
 for p in source_files:
     ext = p.suffix.lower()
     content = _read_file_content(p)
     if not content:
         continue
 
-    # ... 공통 지표 ...
+    # ... common metrics ...
 
-    # TS 전용 지표: ext in TS_JS_EXTS 일 때만 카운트 (M2 fix)
+    # TS-only metrics: count only when ext in TS_JS_EXTS (M2 fix)
     if ext in TS_JS_EXTS:
         any_type_count += len(re.findall(r':\s*any\b', content))
         ts_ignore_count += len(re.findall(r'@ts-ignore', content))
         ts_nocheck_count += len(re.findall(r'@ts-nocheck', content))
 ```
 
-#### 변경 B — `review_code()` 진입점 `REVIEWABLE_EXTS` 검증 (M5)
+#### Change B — `REVIEWABLE_EXTS` Validation at `review_code()` Entry Point (M5)
 
 ```python
-# review_code() 함수 서두에 추가:
+# Add at the beginning of review_code() function:
 ext = p.suffix.lower()
 if ext not in REVIEWABLE_EXTS and p.name not in CONFIG_FILES:
     return _markdown_header(f"Review: `{rel}`", "⚠️") \
@@ -1054,86 +1055,86 @@ if ext not in REVIEWABLE_EXTS and p.name not in CONFIG_FILES:
 
 ---
 
-## 4. 의존성 및 설치 변경
+## 4. Dependency and Installation Changes
 
-### 4.1 Python 패키지
+### 4.1 Python Packages
 
-| 패키지 | 용도 | 설치 방법 |
-|--------|------|-----------|
-| `tree-sitter-cpp` | C/C++ AST 파싱 | `pip install tree-sitter-cpp` |
+| Package | Purpose | Installation Method |
+|---------|---------|-------------------|
+| `tree-sitter-cpp` | C/C++ AST parsing | `pip install tree-sitter-cpp` |
 
-> `tree-sitter-cpp`는 C++과 C를 모두 커버한다. 별도 `tree-sitter-c` 불필요. (C1)
+> `tree-sitter-cpp` covers both C++ and C. Separate `tree-sitter-c` unnecessary. (C1)
 
-### 4.2 시스템 도구 (optional, 폴백 허용)
+### 4.2 System Tools (optional, fallback allowed)
 
-| 도구 | 용도 | 설치 방법 |
-|------|------|-----------|
-| `cargo clippy` | Rust 린트 | Rust 툴체인에 기본 포함 (`https://rustup.rs`) |
-| `go vet` | Go 정적 분석 | Go 툴체인에 기본 포함 (`https://go.dev/dl`) |
-| `cppcheck` | C++ 정적 분석 | `winget install cppcheck` / `apt install cppcheck` |
-| `shellcheck` | Shell 스크립트 분석 | `winget install shellcheck` / `apt install shellcheck` |
+| Tool | Purpose | Installation Method |
+|------|---------|-------------------|
+| `cargo clippy` | Rust lint | Included in Rust toolchain (`https://rustup.rs`) |
+| `go vet` | Go static analysis | Included in Go toolchain (`https://go.dev/dl`) |
+| `cppcheck` | C++ static analysis | `winget install cppcheck` / `apt install cppcheck` |
+| `shellcheck` | Shell script analysis | `winget install shellcheck` / `apt install shellcheck` |
 
-> 모든 시스템 도구는 **optional** — 미설치 시 조용히 폴백하고, `FileNotFoundError` 처리 시 설치 안내 메시지 포함 (M6).
+> All system tools are **optional** — silently fallback when not installed, installation guidance included in `FileNotFoundError` handling (M6).
 
-### 4.3 `setup.py` (vibezoo_setup) 업데이트
+### 4.3 `setup.py` (vibezoo_setup) Update
 
-[`mcp-servers/bridge/tools/setup.py`](mcp-servers/bridge/tools/setup.py)의 `recommended`/`full` 타겟에 `tree-sitter-cpp` 추가.
-
----
-
-## 5. 실행 순서 (구현 작업 순서)
-
-| 단계 | 파일 | 작업 내용 | 의존성 |
-|------|------|-----------|--------|
-| **P1** | `config.py` | SOURCE_EXTS 확장, 신규 상수 그룹 추가 (CPP_EXTS, GENERIC_EXTS, REVIEWABLE_EXTS), GO_EXTS/RUST_EXTS 제거 (C6) | 없음 |
-| **P2** | `utils.py` | `_iter_project_files()`에 `include_names` 파라미터 추가 (C3) | P1 |
-| **P3** | `ast_engine.py` | LANGUAGES/NODE_TYPES에 cpp 추가 (.c → 'cpp'), `get_install_hint()` 갱신 (C1, M1) | P1 |
-| **P4** | `reviewer.py` | C++ AST 분석 블록 추가 (변경 A, H1/H2/H3 정규식 개선 포함) | P2, P3 |
-| **P5** | `reviewer.py` | Rust AST 분석 블록 교체 (변경 B, H4 정규식 개선), 기존 else 블록 Rust 코드 제거 (M8) | — |
-| **P6** | `reviewer.py` | Go 고도화 규칙 추가 (변경 C, H5/H6 정규식 개선 포함) | — |
-| **P7** | `reviewer.py` | 일반 파일 지원 블록 추가 (변경 D, H7/H8 정규식 개선 포함) | P1 |
-| **P8** | `reviewer.py` | `_compute_cyclomatic_complexity` 확장 (변경 E, H9 분기 순서 정리) | P1 |
-| **P9** | `reviewer.py` | `review_code()` 진입점 REVIEWABLE_EXTS 검증 추가 (M5), if/elif 체인 순서 재정렬 (M7) | P1, P4~P8 |
-| **P10** | `integrated.py` | `_run_native_linter()` 함수 추가 (C2 누적, C4 보안, M3 XML, M4 타임아웃, M6 안내) | P1 |
-| **P11** | `integrated.py` | `find_bugs()`에 native linter 연동, `_review_project_core()` TS 전용 지표 조건부 (M2) | P10 |
-| **P12** | `setup.py` | `tree-sitter-cpp` 의존성 추가 | — |
-| **P13** | 통합 테스트 | 각 언어별 샘플 파일로 `review_code` / `find_bugs` 검증 | P1~P12 |
-| **P14** | 통합 테스트 | Dockerfile 수집 확인 (C3), multi-linter 누적 실행 확인 (C2), `--frozen`/`-mod=readonly` 검증 (C4) | P1~P13 |
+Add `tree-sitter-cpp` to `recommended`/`full` targets in [`mcp-servers/bridge/tools/setup.py`](mcp-servers/bridge/tools/setup.py).
 
 ---
 
-## 6. UX 고려사항
+## 5. Execution Order (Implementation Task Sequence)
 
-### 6.1 오류 처리 원칙
-
-- tree-sitter 언어팩 미설치 → regex 폴백 + 진단 메시지
-- 시스템 린터(cargo, go, cppcheck, shellcheck) 미설치 → 조용히 스킵 + 설치 안내 메시지 포함 (M6)
-- 파일 파싱 실패 → 빈 결과 반환, 예외 전파 안 함
-- `_run_native_linter()`는 모든 매칭 린터를 순차 실행, 하나 실패해도 나머지 계속 진행 (C2)
-
-### 6.2 보안 고려사항 (C4)
-
-- `cargo clippy` 실행 시 `--frozen` 플래그 필수 적용 → `Cargo.lock` 변경 및 `build.rs` 실행 방지
-- `go vet` 실행 시 `-mod=readonly` 플래그 필수 적용 → 모듈 다운로드/변경 방지
-- `target_path`가 현재 워크스페이스 외부일 경우 실행 전 검증 (향후 `safe_mode` 파라미터 도입 검토)
-
-### 6.3 성능 고려사항
-
-- [`file_cache.py`](mcp-servers/bridge/file_cache.py)의 L1/L2 캐시가 이미 모든 파일 읽기에 적용됨
-- `_run_native_linter`는 subprocess 기반이므로 타임아웃 필수 (`cargo clippy: 120s`, `cppcheck: 120s`, `go vet: 60s`) (M4)
-- tree-sitter AST 파싱은 파일당 ~10ms 이내 (캐싱된 parser 재사용)
-- `review_code()`는 단일 파일 대상이므로 latency 낮음
-- `include_names` 파라미터는 `os.walk` 루프 내 단순 문자열 비교, 성능 영향 미미 (C3)
-
-### 6.4 보고서 형식
-
-- 모든 언어에서 일관된 마크다운 출력 (`## Issues`, `## Structure` 등)
-- 심각도 아이콘: ❌(error), ⚠️(warning), 📝(info), 📏(metrics)
-- `severity` 파라미터로 필터링 가능 (`all`, `error`, `warning`, `info`)
+| Step | File | Task | Dependency |
+|------|------|------|-----------|
+| **P1** | `config.py` | SOURCE_EXTS expansion, new constant group addition (CPP_EXTS, GENERIC_EXTS, REVIEWABLE_EXTS), GO_EXTS/RUST_EXTS removal (C6) | None |
+| **P2** | `utils.py` | Add `include_names` parameter to `_iter_project_files()` (C3) | P1 |
+| **P3** | `ast_engine.py` | Add cpp to LANGUAGES/NODE_TYPES (.c → 'cpp'), update `get_install_hint()` (C1, M1) | P1 |
+| **P4** | `reviewer.py` | Add C++ AST analysis block (Change A, including H1/H2/H3 regex improvements) | P2, P3 |
+| **P5** | `reviewer.py` | Replace Rust AST analysis block (Change B, H4 regex improvement), remove Rust code from existing else block (M8) | — |
+| **P6** | `reviewer.py` | Add Go enhancement rules (Change C, including H5/H6 regex improvements) | — |
+| **P7** | `reviewer.py` | Add general file support block (Change D, including H7/H8 regex improvements) | P1 |
+| **P8** | `reviewer.py` | Extend `_compute_cyclomatic_complexity` (Change E, H9 branch order cleanup) | P1 |
+| **P9** | `reviewer.py` | Add REVIEWABLE_EXTS validation at `review_code()` entry point (M5), reorder if/elif chain (M7) | P1, P4~P8 |
+| **P10** | `integrated.py` | Add `_run_native_linter()` function (C2 accumulation, C4 security, M3 XML, M4 timeout, M6 guidance) | P1 |
+| **P11** | `integrated.py` | Integrate native linter into `find_bugs()`, conditional TS-only metrics in `_review_project_core()` (M2) | P10 |
+| **P12** | `setup.py` | Add `tree-sitter-cpp` dependency | — |
+| **P13** | Integration Test | Verify `review_code` / `find_bugs` with sample files for each language | P1~P12 |
+| **P14** | Integration Test | Verify Dockerfile collection (C3), multi-linter accumulation (C2), `--frozen`/`-mod=readonly` (C4) | P1~P13 |
 
 ---
 
-## 7. Mermaid 아키텍처 다이어그램
+## 6. UX Considerations
+
+### 6.1 Error Handling Principles
+
+- tree-sitter language pack not installed → regex fallback + diagnostic message
+- System linter (cargo, go, cppcheck, shellcheck) not installed → silently skip + installation guidance (M6)
+- File parsing failure → return empty results, do not propagate exceptions
+- `_run_native_linter()` executes all matching linters sequentially, continues if one fails (C2)
+
+### 6.2 Security Considerations (C4)
+
+- `cargo clippy` execution with `--frozen` flag mandatory → prevents `Cargo.lock` changes and `build.rs` execution
+- `go vet` execution with `-mod=readonly` flag mandatory → prevents module download/changes
+- `target_path` outside current workspace → validate before execution (consider future `safe_mode` parameter)
+
+### 6.3 Performance Considerations
+
+- L1/L2 cache in [`file_cache.py`](mcp-servers/bridge/file_cache.py) already applies to all file reads
+- `_run_native_linter` is subprocess-based, timeout mandatory (`cargo clippy: 120s`, `cppcheck: 120s`, `go vet: 60s`) (M4)
+- tree-sitter AST parsing takes ~10ms per file (reuses cached parser)
+- `review_code()` targets single file, latency low
+- `include_names` parameter is a simple string comparison in `os.walk` loop, performance impact negligible (C3)
+
+### 6.4 Report Format
+
+- Consistent markdown output across all languages (`## Issues`, `## Structure`, etc.)
+- Severity icons: ❌(error), ⚠️(warning), 📝(info), 📏(metrics)
+- Filterable by `severity` parameter (`all`, `error`, `warning`, `info`)
+
+---
+
+## 7. Mermaid Architecture Diagram
 
 ```mermaid
 graph TD
@@ -1184,22 +1185,22 @@ graph TD
 
 ---
 
-## 8. 요약
+## 8. Summary
 
-| 항목 | 현재 | 목표 |
-|------|------|------|
-| 지원 언어 | TS/JS, Python, Go, Rust (regex only) | + C/C++ (AST), Rust (AST), Shell, Dockerfile, YAML, JSON |
-| `ast_engine.py` LANGUAGES | 7개 매핑 | 12개 매핑 (+5, .c → 'cpp' 통일) |
-| `ast_engine.py` NODE_TYPES | 4개 언어 | 5개 언어 (+cpp) |
-| `reviewer.py` 검사 규칙 | ~15개 | ~55개 (+40) |
-| `find_bugs` 린터 | ESLint, tsc only | + cargo clippy, go vet, cppcheck, shellcheck (모두 순차 실행) |
-| `_run_native_linter()` | 단일 린터 | 다중 린터 누적 실행 (C2) |
-| 보안 | 없음 | `--frozen`, `-mod=readonly` 적용 (C4) |
-| Dockerfile 수집 | 불가 | `include_names` 파라미터로 수집 가능 (C3) |
-| Orphaned constants | 6개 정의 후 미사용 | 2개 제거, 4개 연동 (C6) |
-| 외부 의존성 | tree-sitter (5개 언어팩) | + tree-sitter-cpp (1개) |
-| 시스템 도구 (optional) | 없음 | cargo, go, cppcheck, shellcheck |
+| Item | Current | Target |
+|------|---------|--------|
+| Supported Languages | TS/JS, Python, Go, Rust (regex only) | + C/C++ (AST), Rust (AST), Shell, Dockerfile, YAML, JSON |
+| `ast_engine.py` LANGUAGES | 7 mappings | 12 mappings (+5, .c → 'cpp' unified) |
+| `ast_engine.py` NODE_TYPES | 4 languages | 5 languages (+cpp) |
+| `reviewer.py` Check Rules | ~15 | ~55 (+40) |
+| `find_bugs` Linters | ESLint, tsc only | + cargo clippy, go vet, cppcheck, shellcheck (all sequential) |
+| `_run_native_linter()` | Single linter | Multi-linter accumulation (C2) |
+| Security | None | `--frozen`, `-mod=readonly` applied (C4) |
+| Dockerfile Collection | Impossible | Collectable via `include_names` parameter (C3) |
+| Orphaned Constants | 6 defined, unused | 2 removed, 4 integrated (C6) |
+| External Dependencies | tree-sitter (5 language packs) | + tree-sitter-cpp (1) |
+| System Tools (optional) | None | cargo, go, cppcheck, shellcheck |
 
 ---
 
-> **문서 버전**: 1.1 (Debug 위협 분석 피드백 반영) · **작성일**: 2026-06-06 · **대상 버전**: VibeZoo Bridge `0.15.0` · **23개 이슈 해결 방안 통합 완료**
+> **Document Version**: 1.1 (Debug Threat Analysis Feedback Reflected) · **Written**: 2026-06-06 · **Target Version**: VibeZoo Bridge `0.15.0` · **23 Issues Resolution Plans Integrated**

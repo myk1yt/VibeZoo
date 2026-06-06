@@ -1,57 +1,57 @@
-# Guard.git — 설계 계획서
+# Guard.git — Design Plan
 
-> **버전**: 1.1.0 | **날짜**: 2026-06-05 | **대상**: VibeZoo v0.14.2+
+> **Version**: 1.1.0 | **Date**: 2026-06-05 | **Target**: VibeZoo v0.14.2+
 >
-> **v1.1.0**: Debug 피드백 루프백 — Critical 4건, High 6건 해결 방안 반영 (아래 ## 11 참조)
+> **v1.1.0**: Debug feedback loopback — Critical 4, High 6 resolution plans reflected (see ## 11 below)
 
 ---
 
-## 1. 개요
+## 1. Overview
 
-AI 에이전트가 실수로 `rm -rf *` / `rmdir /s /q` 등을 실행하여 프로젝트의 `.git` 폴더가 통째로 삭제되는 것을 방지하는 **Guard.git** 기능 설계.
+Design of **Guard.git** feature that prevents AI agents from accidentally running `rm -rf *` / `rmdir /s /q` etc. and completely deleting the project's `.git` folder.
 
-### 1.1 핵심 요구사항
+### 1.1 Key Requirements
 
-| # | 요구사항 | 우선순위 |
-|---|---------|---------|
-| R1 | `.git` 폴더 삭제를 OS 레벨에서 차단 (읽기/쓰기/편집 허용, 삭제만 금지) | P0 |
-| R2 | VibeZoo 탭에서 Guard.git On/Off 토글 가능한 UI 제공 | P0 |
-| R3 | 기존 Safety 모듈(GitStashManager, YoctoManager, SelfCheck)과 통합 | P1 |
-| R4 | Windows (icacls) 및 cross-platform 대응 | P0 |
-| R5 | Guard 활성화/비활성화 시 ACL 원복 처리 | P0 |
-| R6 | **멀티 루트 워크스페이스 지원 (C4)** | P0 |
-| R7 | **Shell injection 방지 (`execFile` 전환) (C1)** | P0 |
+| # | Requirement | Priority |
+|---|-----------|---------|
+| R1 | Block `.git` folder deletion at OS level (allow read/write/edit, only block delete) | P0 |
+| R2 | Provide UI to toggle Guard.git On/Off in VibeZoo tab | P0 |
+| R3 | Integration with existing Safety modules (GitStashManager, YoctoManager, SelfCheck) | P1 |
+| R4 | Windows (icacls) and cross-platform support | P0 |
+| R5 | ACL restoration on Guard enable/disable | P0 |
+| R6 | **Multi-root workspace support (C4)** | P0 |
+| R7 | **Shell injection prevention (`execFile` migration) (C1)** | P0 |
 
 ---
 
-## 2. 아키텍처 개요
+## 2. Architecture Overview
 
 ```mermaid
 flowchart TB
-    subgraph Extension["extension.ts (진입점)"]
+    subgraph Extension["extension.ts (Entry Point)"]
         activate["activate()"]
         deactivate["deactivate()"]
     end
 
-    subgraph GuardModule["Guard.git 모듈"]
+    subgraph GuardModule["Guard.git Module"]
         GGM["GuardGitManager<br/>(safety/GuardGitManager.ts)<br/>gitDirPaths: string[]<br/>stateMap: Map<string, GuardGitState>"]
-        ACL["GuardGitACL 계층<br/>(safety/GuardGitACL.ts)<br/>execFile() only, timeout 10s"]
-        Watcher["MultiWatcher<br/>(.git 디렉토리 감시 × N개 루트)"]
+        ACL["GuardGitACL Layer<br/>(safety/GuardGitACL.ts)<br/>execFile() only, timeout 10s"]
+        Watcher["MultiWatcher<br/>(.git directory monitoring × N roots)"]
     end
 
-    subgraph ExistingSafety["기존 Safety 모듈"]
-        Yocto["YoctoManager<br/>스냅샷 시스템"]
-        SC["SelfChecker<br/>무결성 진단"]
-        GSM["GitStashManager<br/>stash 관리"]
+    subgraph ExistingSafety["Existing Safety Modules"]
+        Yocto["YoctoManager<br/>Snapshot System"]
+        SC["SelfChecker<br/>Integrity Diagnostics"]
+        GSM["GitStashManager<br/>Stash Management"]
     end
 
-    subgraph UI["UI 계층"]
-        StatusBar["StatusBarManager<br/>Guard 상태 표시"]
-        TreeView["ActiveSubagentsProvider<br/>Guard.git 토글 노드"]
-        Config["ConfigService<br/>vibezoo.guard.* 설정"]
+    subgraph UI["UI Layer"]
+        StatusBar["StatusBarManager<br/>Guard Status Display"]
+        TreeView["ActiveSubagentsProvider<br/>Guard.git Toggle Node"]
+        Config["ConfigService<br/>vibezoo.guard.* Settings"]
     end
 
-    subgraph OSCmd["OS 명령어 (execFile only)"]
+    subgraph OSCmd["OS Commands (execFile only)"]
         Win["icacls /deny (DE)"]
         Linux["chattr +a (no sudo)"]
         Mac["chmod +a ACL"]
@@ -62,72 +62,72 @@ flowchart TB
     GGM --> Watcher
     GGM -->|"critical files snapshot"| Yocto
     GGM -->|"integrity check"| SC
-    GGM -->|"상태 동기화"| StatusBar
-    GGM -->|"토글 명령"| TreeView
+    GGM -->|"status sync"| StatusBar
+    GGM -->|"toggle command"| TreeView
     GGM --> Config
     ACL --> Win
     ACL --> Linux
     ACL --> Mac
-    activate -.->|"잔여 ACL 정리 (H6)"| GGM
-    deactivate -->|"ACL 원복"| GGM
+    activate -.->|"residual ACL cleanup (H6)"| GGM
+    deactivate -->|"ACL restoration"| GGM
     GGM -.->|"onDidChangeWorkspaceFolders (C4)"| activate
 ```
 
-### 2.1 5-Layer 방어 체계
+### 2.1 5-Layer Defense System
 
 ```
 ┌─────────────────────────────────────────────┐
-│ Layer 5: TreeView UI 토글                    │  Vibezoo 사이드바
+│ Layer 5: TreeView UI Toggle                  │  VibeZoo sidebar
 ├─────────────────────────────────────────────┤
-│ Layer 4: SelfCheck .git 무결성 진단          │  SelfChecker.checkGitGuardIntegrity()
-│          (5분 주기 자동 진단 — H5 대응)       │
+│ Layer 4: SelfCheck .git Integrity Diagnostics│  SelfChecker.checkGitGuardIntegrity()
+│          (5-min periodic auto-diagnosis — H5)│
 ├─────────────────────────────────────────────┤
-│ Layer 3: Yocto .git 핵심 파일 스냅샷         │  YoctoManager.snapshotGitCore()
+│ Layer 3: Yocto .git Core File Snapshot       │  YoctoManager.snapshotGitCore()
 ├─────────────────────────────────────────────┤
-│ Layer 2: MultiWatcher 존재 감시              │  vscode.workspace.createFileSystemWatcher
-│          (rename 감지: create+delete — H5)   │
+│ Layer 2: MultiWatcher Presence Monitoring    │  vscode.workspace.createFileSystemWatcher
+│          (rename detection: create+delete — H5)│
 ├─────────────────────────────────────────────┤
-│ Layer 1: OS ACL 삭제 방지                    │  icacls / chattr / chmod +a
+│ Layer 1: OS ACL Deletion Prevention          │  icacls / chattr / chmod +a
 │          (execFile only, no shell — C1)      │
 └─────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. 모듈 상세 설계
+## 3. Module Detailed Design
 
-### 3.1 [`GuardGitManager`](extension/src/safety/GuardGitManager.ts) — 핵심 오케스트레이터
+### 3.1 [`GuardGitManager`](extension/src/safety/GuardGitManager.ts) — Core Orchestrator
 
 ```typescript
-// Guard.git 상태
+// Guard.git state
 export type GuardGitState = 'active' | 'inactive' | 'error' | 'warning';
 
-// Guard.git ACL 작업 결과
+// Guard.git ACL operation result
 export interface GuardGitACLResult {
   success: boolean;
   error?: string;
-  command?: string;       // 실행된 OS 명령어 (디버깅용)
+  command?: string;       // Executed OS command (for debugging)
   stdout?: string;
   stderr?: string;
 }
 
-// Guard.git 무결성 상태
+// Guard.git integrity status
 export interface GuardGitIntegrity {
   exists: boolean;
-  protected: boolean;     // ACL 적용 여부
-  headRef: string | null; // HEAD 참조 값
-  objectCount: number;    // objects/ 내 파일 수
-  refCount: number;       // refs/ 내 파일 수
+  protected: boolean;     // ACL application status
+  headRef: string | null; // HEAD reference value
+  objectCount: number;    // Number of files in objects/
+  refCount: number;       // Number of files in refs/
 }
 ```
 
-**클래스 시그니처 (C4: 멀티 루트 대응, H6: 잔여 ACL 정리):**
+**Class signature (C4: multi-root support, H6: residual ACL cleanup):**
 
 ```typescript
 export class GuardGitManager {
-  // ── 상태 ──
+  // ── State ──
   private stateMap: Map<string, GuardGitState> = new Map(); // path → state (C4)
-  private gitDirPaths: string[] = [];   // C4: 배열로 변경 (曾: string | null)
+  private gitDirPaths: string[] = [];   // C4: changed to array (formerly: string | null)
   private acl: IGuardGitACL;
   private watchers: Map<string, vscode.FileSystemWatcher> = new Map(); // C4
   private yocto: YoctoManager | null = null;
@@ -137,44 +137,44 @@ export class GuardGitManager {
 
   constructor();
 
-  // ── 생명주기 ──
+  // ── Lifecycle ──
   activate(context: vscode.ExtensionContext, yocto: YoctoManager): Promise<void>;
-  dispose(): Promise<void>; // ACL 원복 + watchers 해제
+  dispose(): Promise<void>; // ACL restoration + watchers release
 
-  // ── Guard 토글 ──
+  // ── Guard Toggle ──
   enable(): Promise<GuardGitACLResult>;
   disable(): Promise<GuardGitACLResult>;
-  isEnabled(): boolean;      // any gitDirPath가 active인지
-  getState(path: string): GuardGitState;  // C4: 경로별 상태 조회
+  isEnabled(): boolean;      // Whether any gitDirPath is active
+  getState(path: string): GuardGitState;  // C4: per-path state query
 
-  // ── 무결성 ──
+  // ── Integrity ──
   checkIntegrity(): Promise<GuardGitIntegrity[]>;
-  startPeriodicIntegrityCheck(intervalMs: number): void;  // H5: 주기 진단
+  startPeriodicIntegrityCheck(intervalMs: number): void;  // H5: periodic diagnostics
   stopPeriodicIntegrityCheck(): void;
 
-  // ── Yocto 연동 ──
+  // ── Yocto Integration ──
   createGitSnapshot(trigger: 'guard-enable' | 'guard-periodic' | 'guard-pre-danger'): Promise<void>;
 
-  // ── 상태바 연동 ──
+  // ── StatusBar Integration ──
   bindStatusBar(statusBar: StatusBarManager): void;
 
-  // ── 이벤트 ──
+  // ── Events ──
   onChange(cb: (stateSummary: { overall: GuardGitState; paths: Map<string, GuardGitState> }) => void): void;
 
-  // ── 휴리스틱: 자동 활성화 판단 ──
+  // ── Heuristic: Auto-activation Decision ──
   shouldAutoEnable(): boolean;
 
-  // ── H1: Git Worktree 탐지 ──
-  /** .git이 파일인지 디렉토리인지 확인 후 실제 git dir 경로 반환 */
+  // ── H1: Git Worktree Detection ──
+  /** Checks if .git is a file or directory and returns actual git dir path */
   private resolveGitDir(workspaceRoot: string): string | null;
 
-  // ── H6: 잔여 ACL 정리 ──
-  /** activate() 시 호출: 기존 .git에 남아있는 Guard ACL 제거 */
+  // ── H6: Residual ACL Cleanup ──
+  /** Called on activate(): removes remaining Guard ACL on existing .git */
   private async cleanupResidualACL(): Promise<void>;
 }
 ```
 
-**핵심 로직 흐름:**
+**Core Logic Flow:**
 
 ```mermaid
 sequenceDiagram
@@ -186,81 +186,81 @@ sequenceDiagram
     participant Yocto as YoctoManager
     participant SB as StatusBarManager
 
-    User->>TreeView: Guard On 클릭
+    User->>TreeView: Click Guard On
     TreeView->>GGM: enable()
-    loop 각 workspace root (C4)
+    loop each workspace root (C4)
         GGM->>GGM: resolveGitDir(root) (H1)
         GGM->>ACL: applyProtection(gitDir)
         ACL-->>GGM: GuardGitACLResult
     end
-    alt 모두 성공
+    alt all success
         GGM->>Watchers: createFileSystemWatcher × N
         GGM->>Yocto: snapshotGitCore('guard-enable')
         GGM->>SB: setGuardMode('active')
         GGM->>GGM: startPeriodicIntegrityCheck() (H5)
         GGM-->>TreeView: overall='active'
-    else 일부 실패
+    else partial failure
         GGM->>SB: setGuardMode('warning')
         GGM-->>TreeView: overall='warning'
     end
 
-    Note over Watchers: .git 디렉토리 삭제/rename 감지 (H5)
+    Note over Watchers: .git directory deletion/rename detection (H5)
     Watchers-->>GGM: onDidCreate + onDidDelete → rename detect
     GGM->>SB: setGuardMode('warning')
-    GGM->>Yocto: 복구 스냅샷 조회
-    GGM-->>User: 경고 알림 + 복구 제안
+    GGM->>Yocto: Query recovery snapshot
+    GGM-->>User: Warning notification + recovery suggestion
 ```
 
-**`enable()` / `disable()` 상세 시퀀스:**
+**`enable()` / `disable()` Detailed Sequence:**
 
-| 단계 | 액션 | 실패 처리 |
-|------|------|----------|
-| `enable()` | 1. `cleanupResidualACL()` → 잔여 ACL 제거 (H6)<br>2. 모든 workspace root에 대해:<br> a. `resolveGitDir(root)` → .git 실제 경로 확인 (H1)<br> b. `checkProtection()` → 이미 적용됐으면 skip<br> c. `applyProtection()` → ACL 적용<br>3. 각 gitDir에 대해 `startWatcher()` → 감시 시작 (C4)<br>4. `createGitSnapshot('guard-enable')` → 스냅샷<br>5. `startPeriodicIntegrityCheck()` → 5분 주기 진단 (H5)<br>6. `statusBar.setGuardMode('active')` → UI 갱신<br>7. `fire onChanged` → TreeView 갱신 | 2c 실패: 해당 경로 state='error', 다른 경로 계속 진행<br>4 실패: 로그 경고, 계속 진행 |
-| `disable()` | 1. 모든 watcher `stopWatcher()` → 감시 중지<br>2. 모든 gitDir에 대해 `removeProtection()` → ACL 원복<br>3. `stopPeriodicIntegrityCheck()` → 주기 진단 중지<br>4. `statusBar.setGuardMode('safe')` → UI 갱신<br>5. `fire onChanged` → TreeView 갱신 | 2 실패: state='error', 사용자에게 수동 제거 안내 |
-| `deactivate()` | 1. 모든 watcher 중지<br>2. `removeProtection()` → ACL 원복 보장<br>3. 주기 진단 중지<br>4. 정리 | 2 실패: 로그 경고 (확장 종료 시 필수 원복) |
+| Step | Action | Failure Handling |
+|------|--------|-----------------|
+| `enable()` | 1. `cleanupResidualACL()` → remove residual ACL (H6)<br>2. For each workspace root:<br>&emsp;a. `resolveGitDir(root)` → check actual .git path (H1)<br>&emsp;b. `checkProtection()` → skip if already applied<br>&emsp;c. `applyProtection()` → apply ACL<br>3. For each gitDir, `startWatcher()` → start monitoring (C4)<br>4. `createGitSnapshot('guard-enable')` → snapshot<br>5. `startPeriodicIntegrityCheck()` → 5-min periodic diagnostics (H5)<br>6. `statusBar.setGuardMode('active')` → UI update<br>7. `fire onChanged` → TreeView update | 2c failure: path state='error', continue other paths<br>4 failure: log warning, continue |
+| `disable()` | 1. All watchers `stopWatcher()` → stop monitoring<br>2. For each gitDir, `removeProtection()` → restore ACL<br>3. `stopPeriodicIntegrityCheck()` → stop periodic diagnostics<br>4. `statusBar.setGuardMode('safe')` → UI update<br>5. `fire onChanged` → TreeView update | 2 failure: state='error', guide user manual removal |
+| `deactivate()` | 1. Stop all watchers<br>2. `removeProtection()` → guarantee ACL restoration<br>3. Stop periodic diagnostics<br>4. Cleanup | 2 failure: log warning (mandatory restoration on extension exit) |
 
 ---
 
-### 3.2 [`GuardGitACL`](extension/src/safety/GuardGitACL.ts) — OS ACL 추상화 계층
+### 3.2 [`GuardGitACL`](extension/src/safety/GuardGitACL.ts) — OS ACL Abstraction Layer
 
-**C1 핵심 변경: `exec()` → `execFile()`, 경로 검증, 타임아웃**
+**C1 Core Change: `exec()` → `execFile()`, path validation, timeout**
 
 ```typescript
 export interface IGuardGitACL {
-  /** .git 디렉토리에 삭제 방지 ACL 적용 */
+  /** Apply delete prevention ACL to .git directory */
   applyProtection(gitDir: string): Promise<GuardGitACLResult>;
 
-  /** .git 디렉토리에서 ACL 제거 (원상복구) */
+  /** Remove ACL from .git directory (restore) */
   removeProtection(gitDir: string): Promise<GuardGitACLResult>;
 
-  /** 현재 ACL 상태 확인 */
+  /** Check current ACL status */
   checkProtection(gitDir: string): Promise<boolean>;
 
-  /** 이 OS에서 지원되는 방식의 이름 */
+  /** Name of the method supported on this OS */
   readonly method: string;
 
-  /** 사전 점검: 필요한 도구가 설치되어 있고, FS가 ACL을 지원하는지 (H4) */
+  /** Pre-check: required tools installed and FS supports ACL (H4) */
   isAvailable(gitDir: string): Promise<boolean>;
 }
 ```
 
-#### 공통 유틸리티: 경로 검증 (C1)
+#### Common Utility: Path Validation (C1)
 
 ```typescript
-// GuardGitACL.ts — 모든 플랫폼 구현체에서 공통 사용
+// GuardGitACL.ts — common use across all platform implementations
 const SAFE_PATH_REGEX = /^[a-zA-Z0-9_\-\\:. \/@]+$/;
 
 function validatePath(gitDir: string): void {
   if (!SAFE_PATH_REGEX.test(gitDir)) {
-    throw new Error(`Guard.git: 안전하지 않은 경로 문자 포함 — "${gitDir}"`);
+    throw new Error(`Guard.git: Unsafe path characters — "${gitDir}"`);
   }
-  // 경로 길이 제한 (Windows MAX_PATH ≈ 260)
+  // Path length limit (Windows MAX_PATH ≈ 260)
   if (gitDir.length > 250) {
-    throw new Error(`Guard.git: 경로가 너무 깁니다 (${gitDir.length}자)`);
+    throw new Error(`Guard.git: Path too long (${gitDir.length} characters)`);
   }
 }
 
-// execFile 래퍼 (C1, C2: 타임아웃 통합)
+// execFile wrapper (C1, C2: integrated timeout)
 function execFileSafe(
   command: string,
   args: string[],
@@ -268,12 +268,12 @@ function execFileSafe(
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = child_process.execFile(command, args, {
-      timeout: timeoutMs,       // C1/C2: 10초 타임아웃
-      windowsHide: true,        // C1: 윈도우에서 콘솔 창 숨김
-      shell: false,             // C1: 셸 경유 금지 (주입 방지)
+      timeout: timeoutMs,       // C1/C2: 10-second timeout
+      windowsHide: true,        // C1: hide console window on Windows
+      shell: false,             // C1: no shell (injection prevention)
     }, (error, stdout, stderr) => {
       if (error) {
-        // kill signal 또는 timeout → 구체적 에러 전파
+        // kill signal or timeout → propagate specific error
         reject(error);
       } else {
         resolve({ stdout, stderr });
@@ -283,44 +283,44 @@ function execFileSafe(
 }
 ```
 
-#### Windows 구현: [`WindowsGuardGitACL`](extension/src/safety/GuardGitACL.ts)
+#### Windows Implementation: [`WindowsGuardGitACL`](extension/src/safety/GuardGitACL.ts)
 
 ```
-전략: icacls deny Delete (DE)
+Strategy: icacls deny Delete (DE)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-적용:
+Apply:
   execFile('icacls', [gitDir, '/deny', '*S-1-1-0:(DE)'], { timeout: 10000 })
-  → S-1-1-0 = Everyone (SID 기반으로 로케일 독립)
+  → S-1-1-0 = Everyone (SID-based, locale independent)
 
-해제:
+Remove:
   execFile('icacls', [gitDir, '/remove:d', '*S-1-1-0'], { timeout: 10000 })
 
-확인:
+Verify:
   execFile('icacls', [gitDir], { timeout: 5000 }) → stdout.includes('DENY')
 ```
 
-| 속성 | 값 |
-|------|-----|
-| DE | Delete — 폴더 자체 삭제 방지 |
-| DC | Delete Child — 자식 삭제 방지 (**미적용**: git GC 등 허용) |
+| Property | Value |
+|----------|-------|
+| DE | Delete — prevents folder deletion itself |
+| DC | Delete Child — **not applied**: allows git GC etc. |
 
-**설계 의사결정**: DC(Delete Child)는 **적용하지 않는다.** `.git/objects/`, `.git/refs/` 내 파일 삭제가 필요한 정상 git 작업(`git gc`, `git prune`, `git repack`, `git checkout`)을 방해하지 않기 위함. 대신 Yocto 스냅샷 + FileSystemWatcher + 주기적 SelfCheck(H5)로 다층 방어.
+**Design Decision**: DC(Delete Child) is **not applied** to avoid interfering with normal git operations (`git gc`, `git prune`, `git repack`, `git checkout`) that need to delete files inside `.git/objects/`, `.git/refs/`. Multi-layer defense is instead provided by Yocto snapshot + FileSystemWatcher + periodic SelfCheck (H5).
 
 ```typescript
 class WindowsGuardGitACL implements IGuardGitACL {
   readonly method = 'icacls (DE deny)';
 
   async isAvailable(gitDir: string): Promise<boolean> {
-    // C1: 경로 검증
+    // C1: path validation
     validatePath(gitDir);
-    // H4: NTFS 여부 간접 확인 (icacls는 NTFS에서만 동작)
+    // H4: indirect NTFS check (icacls works only on NTFS)
     try {
       await execFileSafe('icacls', [gitDir], 3000);
       return true;
     } catch {
-      // FAT32/exFAT 등 → ACL 미지원
-      console.warn('[Guard.git] icacls 실패 — FS가 ACL을 지원하지 않을 수 있음');
+      // FAT32/exFAT etc. → ACL not supported
+      console.warn('[Guard.git] icacls failed — FS may not support ACL');
       return false;
     }
   }
@@ -360,44 +360,44 @@ class WindowsGuardGitACL implements IGuardGitACL {
 }
 ```
 
-#### Linux 구현: [`LinuxGuardGitACL`](extension/src/safety/GuardGitACL.ts)
+#### Linux Implementation: [`LinuxGuardGitACL`](extension/src/safety/GuardGitACL.ts)
 
-**C2/C3 핵심 변경: `sudo` 절대 사용 금지, `setfacl` fallback 완전 제거**
+**C2/C3 Core Change: `sudo` absolutely prohibited, `setfacl` fallback completely removed**
 
 ```
-전략: chattr +a (append-only) — sudo 없이 시도, 실패 시 즉시 Watcher+Yocto
+Strategy: chattr +a (append-only) — attempt without sudo, fallback to Watcher+Yocto on failure
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-C2: 절대 sudo를 사용하지 않음.
-    - 사용자가 디렉토리 소유자면 sudo 없이 chattr 가능 → 시도
-    - 실패 시 즉시 fallback: Watcher + Yocto only 모드
-    - execFile() timeout 10초로 무한 행 방지
+C2: Never use sudo.
+    - If user owns the directory, chattr may work without sudo → attempt
+    - On failure, immediate fallback: Watcher + Yocto only mode
+    - execFile() timeout 10s prevents hang
 
-C3: setfacl fallback 제거.
-    - setfacl로는 디렉토리 삭제를 방지할 수 없음 (부모 디렉토리 권한이 결정)
-    - r-x는 git 동작을 막음 (파일 생성/쓰기 차단)
-    - Linux fallback은 Watcher + Yocto only로 일원화
+C3: Remove setfacl fallback.
+    - setfacl cannot prevent directory deletion (parent directory permissions decide)
+    - r-x blocks git operations (file creation/write blocked)
+    - Linux fallback unified to Watcher + Yocto only
 
-적용:
+Apply:
   execFile('chattr', ['+a', gitDir], { timeout: 10000 })
 
-해제:
+Remove:
   execFile('chattr', ['-a', gitDir], { timeout: 10000 })
 
-확인:
+Verify:
   execFile('lsattr', [gitDir], { timeout: 5000 }) → stdout.includes('a')
 ```
 
-**H2: `chattr +a` 과잉 보호 문서화**
+**H2: `chattr +a` Over-protection Documentation**
 
-| `chattr +a` 효과 | git 작업 영향 |
+| `chattr +a` Effect | Git Operation Impact |
 |---|---|
-| 디렉토리 내 **파일 추가** 허용 | ✅ git add, commit, checkout 정상 |
-| 디렉토리 내 **파일 수정** 허용 | ✅ git reflog, index 갱신 정상 |
-| 디렉토리 내 **파일 삭제 방지** | ❌ `git gc`, `git prune`, `git repack` 실패 가능 |
-| 디렉토리 **자체 삭제 방지** | ✅ 핵심 목표 달성 |
+| Allows **file addition** in directory | ✅ git add, commit, checkout normal |
+| Allows **file modification** in directory | ✅ git reflog, index update normal |
+| **Prevents file deletion** in directory | ❌ `git gc`, `git prune`, `git repack` may fail |
+| **Prevents directory deletion** itself | ✅ Core goal achieved |
 
-→ Linux에서는 `chattr +a`를 **optional** 기능으로 격하하고, 1차 방어는 Watcher + Yocto에 의존한다. 사용자가 `vibezoo.guard.linuxUseChattr` 설정으로 명시적 활성화 가능. 기본값은 `false` (Watcher+Yocto only).
+→ On Linux, `chattr +a` is downgraded to **optional** feature, primary defense relies on Watcher + Yocto. User can explicitly enable via `vibezoo.guard.linuxUseChattr` setting. Default is `false` (Watcher+Yocto only).
 
 ```typescript
 class LinuxGuardGitACL implements IGuardGitACL {
@@ -405,26 +405,26 @@ class LinuxGuardGitACL implements IGuardGitACL {
 
   async isAvailable(gitDir: string): Promise<boolean> {
     validatePath(gitDir);  // C1
-    // C2: chattr이 사용 가능한지 확인 (sudo 없이)
+    // C2: check if chattr is available (without sudo)
     try {
-      // H4: FS 타입 확인 (ext4, btrfs, xfs만 chattr 지원)
+      // H4: check FS type (ext4, btrfs, xfs only support chattr)
       const { stdout } = await execFileSafe('stat', ['-f', '-c', '%T', gitDir], 3000);
       const fsType = stdout.trim();
-      const supportedFS = ['ext2/ext3', 'ext4', 'btrfs', 'xfs', 'tmpfs'];  // tmpfs도 가능
+      const supportedFS = ['ext2/ext3', 'ext4', 'btrfs', 'xfs', 'tmpfs'];
       if (!supportedFS.some(fs => fsType.includes(fs))) {
-        console.log(`[Guard.git] FS 타입 '${fsType}'는 chattr 미지원 → Watcher+Yocto fallback`);
+        console.log(`[Guard.git] FS type '${fsType}' doesn't support chattr → Watcher+Yocto fallback`);
         return false;
       }
-      // chattr 실행 가능 여부 확인 (sudo 없이)
+      // Check if chattr is executable (without sudo)
       await execFileSafe('chattr', ['-R', '--help'], 3000);
-      // 소유권 확인
+      // Check ownership
       try {
         await execFileSafe('chattr', ['+a', gitDir], 3000);
-        // 성공 시 바로 해제 (pre-flight check)
+        // Immediately remove on success (pre-flight check)
         await execFileSafe('chattr', ['-a', gitDir], 3000);
         return true;
       } catch {
-        console.log('[Guard.git] chattr 권한 없음 → Watcher+Yocto fallback');
+        console.log('[Guard.git] No chattr permission → Watcher+Yocto fallback');
         return false;
       }
     } catch {
@@ -435,12 +435,12 @@ class LinuxGuardGitACL implements IGuardGitACL {
   async applyProtection(gitDir: string): Promise<GuardGitACLResult> {
     validatePath(gitDir);  // C1
     try {
-      // C2: sudo 없이 chattr 시도
+      // C2: attempt chattr without sudo
       const result = await execFileSafe('chattr', ['+a', gitDir]);
       return { success: true, command: `chattr +a ${gitDir}`, stdout: result.stdout, stderr: result.stderr };
     } catch (err: any) {
-      // C2: 실패 시 즉시 fallback — Watcher + Yocto only
-      return { success: false, error: `chattr 실패 (Watcher+Yocto fallback): ${err.message}` };
+      // C2: immediate fallback on failure — Watcher + Yocto only
+      return { success: false, error: `chattr failed (Watcher+Yocto fallback): ${err.message}` };
     }
   }
 
@@ -457,7 +457,7 @@ class LinuxGuardGitACL implements IGuardGitACL {
   async checkProtection(gitDir: string): Promise<boolean> {
     try {
       const { stdout } = await execFileSafe('lsattr', [gitDir], 5000);
-      // lsattr 출력: "----a-------- ./git" → 'a' 속성이 있으면 보호 중
+      // lsattr output: "----a-------- ./git" → 'a' attribute indicates protection
       return /^[^ ]*a[^ ]* /.test(stdout);
     } catch {
       return false;
@@ -466,25 +466,25 @@ class LinuxGuardGitACL implements IGuardGitACL {
 }
 ```
 
-#### macOS 구현: [`MacOSGuardGitACL`](extension/src/safety/GuardGitACL.ts)
+#### macOS Implementation: [`MacOSGuardGitACL`](extension/src/safety/GuardGitACL.ts)
 
 ```
-전략: chmod +a ACL
+Strategy: chmod +a ACL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-적용:
+Apply:
   execFile('chmod', ['+a', 'everyone deny delete', gitDir], { timeout: 10000 })
 
-해제:
+Remove:
   execFile('chmod', ['-a', 'everyone deny delete', gitDir], { timeout: 10000 })
 
-확인:
+Verify:
   execFile('ls', ['-le', gitDir], { timeout: 5000 }) → stdout.includes('deny delete')
 ```
 
-**Fallback**: `chflags uchg` → 삭제는 방지하나 내부 쓰기도 막힘 → 경고 후 Yocto 의존.
+**Fallback**: `chflags uchg` → prevents deletion but also blocks internal writes → warning then depend on Yocto.
 
-#### Factory 함수
+#### Factory Function
 
 ```typescript
 export function createGuardGitACL(): IGuardGitACL {
@@ -500,12 +500,12 @@ export function createGuardGitACL(): IGuardGitACL {
 
 ---
 
-### 3.3 FileSystemWatcher — Layer 2 (C4: 멀티 루트, H5: rename 감지)
+### 3.3 FileSystemWatcher — Layer 2 (C4: multi-root, H5: rename detection)
 
-[`GuardGitManager`](extension/src/safety/GuardGitManager.ts) 내부에서 관리:
+Managed inside [`GuardGitManager`](extension/src/safety/GuardGitManager.ts):
 
 ```typescript
-// C4: Map<string, FileSystemWatcher> — 각 .git 경로당 독립 watcher
+// C4: Map<string, FileSystemWatcher> — independent watcher per .git path
 private watchers: Map<string, vscode.FileSystemWatcher> = new Map();
 
 private startWatcher(gitDirPath: string): void {
@@ -515,32 +515,32 @@ private startWatcher(gitDirPath: string): void {
   const watcher = vscode.workspace.createFileSystemWatcher(pattern, false, false, false);
 
   watcher.onDidDelete((uri) => {
-    // H5: rename 감지를 위해 일정 시간 내 create와 쌍으로 확인
+    // H5: check paired with create within time window for rename detection
     this.pendingDeletions.set(gitDirPath, Date.now());
     setTimeout(() => {
       if (this.pendingDeletions.has(gitDirPath)) {
-        // timeout 내에 create가 없었음 → 진짜 삭제
+        // No create within timeout → real deletion
         this.handleGitDeletion(gitDirPath);
         this.pendingDeletions.delete(gitDirPath);
       }
-    }, 2000); // 2초 내 create 없으면 진짜 삭제로 판단
+    }, 2000); // 2-second window
   });
 
-  // H5: rename 감지 — create + delete 조합
+  // H5: rename detection — create + delete combination
   watcher.onDidCreate((uri) => {
     const pendingTime = this.pendingDeletions.get(gitDirPath);
     if (pendingTime && (Date.now() - pendingTime) < 2000) {
-      // 2초 내 delete → create: rename으로 판단
-      console.warn(`[Guard.git] ⚠️ .git 디렉토리 rename 감지! (ACL bypass 가능)`);
+      // delete → create within 2s: considered rename
+      console.warn(`[Guard.git] ⚠️ .git directory rename detected! (ACL bypass possible)`);
       this.pendingDeletions.delete(gitDirPath);
       this.stateMap.set(gitDirPath, 'warning');
       this.statusBar?.setGuardMode('warning');
       this.notifyListeners();
       NotificationThrottle.showWarning(
-        '⚠️ .git 폴더가 이름 변경되었습니다! (ACL bypass 가능) Yocto에서 복구하시겠습니까?',
-        '복구하기', '무시'
+        '⚠️ .git folder has been renamed! (ACL bypass possible) Restore from Yocto?',
+        'Restore', 'Ignore'
       ).then(choice => {
-        if (choice === '복구하기') {
+        if (choice === 'Restore') {
           vscode.commands.executeCommand('vibezoo.instantRewind');
         }
       });
@@ -550,19 +550,19 @@ private startWatcher(gitDirPath: string): void {
   this.watchers.set(gitDirPath, watcher);
 }
 
-// pending deletions — rename 감지를 위한 임시 상태 (H5)
+// pending deletions — temporary state for rename detection (H5)
 private pendingDeletions: Map<string, number> = new Map();
 
 private handleGitDeletion(gitDirPath: string): void {
-  console.error(`[Guard.git] ⚠️ .git 디렉토리 삭제 감지! (${gitDirPath})`);
+  console.error(`[Guard.git] ⚠️ .git directory deletion detected! (${gitDirPath})`);
   this.stateMap.set(gitDirPath, 'warning');
   this.statusBar?.setGuardMode('warning');
   this.notifyListeners();
   NotificationThrottle.showWarning(
-    '⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?',
-    '복구하기', '무시'
+    '⚠️ .git folder has been deleted! Guard.git attempted defense but may have been bypassed. Restore from Yocto?',
+    'Restore', 'Ignore'
   ).then(choice => {
-    if (choice === '복구하기') {
+    if (choice === 'Restore') {
       vscode.commands.executeCommand('vibezoo.instantRewind');
     }
   });
@@ -584,13 +584,13 @@ private stopAllWatchers(): void {
 }
 ```
 
-**C4: 워크스페이스 폴더 변경 이벤트 대응**
+**C4: Workspace folder change event handling**
 
 ```typescript
-// GuardGitManager.activate() 내
+// Inside GuardGitManager.activate()
 this.disposables.push(
   vscode.workspace.onDidChangeWorkspaceFolders((e) => {
-    // 추가된 폴더: .git 찾아서 ACL 적용
+    // Added folders: find .git and apply ACL
     for (const added of e.added) {
       const gitDir = this.resolveGitDir(added.uri.fsPath);
       if (gitDir) {
@@ -601,13 +601,13 @@ this.disposables.push(
             this.startWatcher(gitDir);
             this.stateMap.set(gitDir, 'active');
           }).catch(err => {
-            console.warn(`[Guard.git] 새 워크스페이스 ACL 적용 실패:`, err);
+            console.warn(`[Guard.git] New workspace ACL apply failed:`, err);
             this.stateMap.set(gitDir, 'error');
           });
         }
       }
     }
-    // 제거된 폴더: ACL 원복 + watcher 해제
+    // Removed folders: restore ACL + release watcher
     for (const removed of e.removed) {
       const toRemove = this.gitDirPaths.filter(p => p.startsWith(removed.uri.fsPath));
       for (const p of toRemove) {
@@ -623,32 +623,32 @@ this.disposables.push(
 
 ---
 
-### 3.4 기존 Safety 모듈과의 통합
+### 3.4 Integration with Existing Safety Modules
 
-#### 3.4.1 YoctoManager 연동
+#### 3.4.1 YoctoManager Integration
 
-[`YoctoManager`](extension/src/safety/YoctoManager.ts)에 `.git` 핵심 파일 전용 스냅샷 메서드 추가:
+Add `.git` core file dedicated snapshot method to [`YoctoManager`](extension/src/safety/YoctoManager.ts):
 
 ```typescript
-// YoctoManager에 추가할 메서드
+// Method to add to YoctoManager
 /**
- * Guard.git 전용: .git 디렉토리의 핵심 파일들만 스냅샷
+ * Guard.git dedicated: snapshot only core files of .git directory
  *
- * 대상 파일:
- *   .git/HEAD          — 현재 브랜치 참조
- *   .git/config        — 저장소 설정
- *   .git/refs/heads/*  — 로컬 브랜치 refs
- *   .git/refs/remotes/*— 리모트 refs
- *   .git/refs/stash    — stash ref (있을 경우)
- *   .git/index         — 스테이징 영역 (있을 경우)
+ * Target files:
+ *   .git/HEAD          — current branch reference
+ *   .git/config        — repository settings
+ *   .git/refs/heads/*  — local branch refs
+ *   .git/refs/remotes/*— remote refs
+ *   .git/refs/stash    — stash ref (if present)
+ *   .git/index         — staging area (if present)
  *
- * H3: trigger 타입은 내부적으로 createSnapshot('auto')를 호출하고,
- *     metadata.guardTrigger 필드로 guard 전용 trigger 기록.
+ * H3: trigger type internally calls createSnapshot('auto'),
+ *     records guard-specific trigger via metadata.guardTrigger field.
  */
 async snapshotGitCore(metadata: { guardTrigger: 'guard-enable' | 'guard-periodic' | 'guard-pre-danger' }): Promise<YoctoSnapshot>
 
 /**
- * Guard 감지: .git 내 파일 목록을 해시 맵으로 비교하여 변경 감지
+ * Guard detection: compare file list hash map within .git to detect changes
  */
 async detectGitChanges(lastSnapshot: YoctoSnapshot): Promise<{
   added: string[];
@@ -657,50 +657,50 @@ async detectGitChanges(lastSnapshot: YoctoSnapshot): Promise<{
 }>
 ```
 
-**H3: YoctoSnapshot.trigger 타입 확장** — [`types/index.ts`](extension/src/types/index.ts)의 `YoctoSnapshot.trigger` union에 Guard 전용 리터럴을 추가하지 않고, `snapshotGitCore()` 내부에서 `createSnapshot('auto')`를 호출하고 `metadata.guardTrigger` 필드를 별도 관리한다. 이 방식은 기존 union 타입을 오염시키지 않으면서 Guard 전용 트리거 정보를 보존한다.
+**H3: YoctoSnapshot.trigger type extension** — Instead of adding Guard-specific literal to the `YoctoSnapshot.trigger` union in [`types/index.ts`](extension/src/types/index.ts), `snapshotGitCore()` internally calls `createSnapshot('auto')` and manages `metadata.guardTrigger` field separately. This preserves Guard-specific trigger information without polluting the existing union type.
 
-스냅샷 저장 경로: `~/.zoo-code/yocto/{sessionId}/guard-git-{timestamp}/`
+Snapshot storage path: `~/.zoo-code/yocto/{sessionId}/guard-git-{timestamp}/`
 
-#### 3.4.2 SelfCheck 통합
+#### 3.4.2 SelfCheck Integration
 
-[`SelfCheck.ts`](extension/src/safety/SelfCheck.ts)의 `SelfChecker` 클래스에 `.git` 무결성 진단 항목 추가:
+Add `.git` integrity diagnostic item to `SelfChecker` class in [`SelfCheck.ts`](extension/src/safety/SelfCheck.ts):
 
 ```typescript
-// SelfChecker.runAll()의 Promise.allSettled 배열에 추가
+// Add to SelfChecker.runAll()'s Promise.allSettled array
 this.checkGitGuardIntegrity(),
 
-// 새 메서드
+// New method
 async checkGitGuardIntegrity(): Promise<SelfCheckItem> {
   const base: SelfCheckItem = {
     name: 'Git Guard Integrity',
     status: 'passed',
-    message: '.git 디렉토리 보호 상태 정상',
+    message: '.git directory protection status normal',
   };
 
-  const guardManager = getGuardGitManager(); // 싱글톤 접근
+  const guardManager = getGuardGitManager(); // singleton access
 
   if (!guardManager) {
     base.status = 'warning';
-    base.message = 'Guard.git이 초기화되지 않음';
+    base.message = 'Guard.git not initialized';
     return base;
   }
 
   const integrities = await guardManager.checkIntegrity();
 
-  // C4: 멀티 루트 — 모든 경로 검사
+  // C4: multi-root — check all paths
   const failedPaths = integrities.filter(i => !i.exists);
   const unprotectedPaths = integrities.filter(i => i.exists && !i.protected && guardManager.isEnabled());
 
   if (failedPaths.length > 0) {
     base.status = 'failed';
-    base.message = `${failedPaths.length}개 .git 디렉토리가 존재하지 않음`;
+    base.message = `${failedPaths.length} .git director(ies) not found`;
     base.autoRecoverable = true;
     return base;
   }
 
   if (unprotectedPaths.length > 0) {
     base.status = 'warning';
-    base.message = 'Guard가 활성화되어 있으나 ACL이 적용되지 않은 .git 경로 있음';
+    base.message = 'Guard is enabled but some .git paths have no ACL applied';
     base.autoRecoverable = true;
     return base;
   }
@@ -712,15 +712,15 @@ async checkGitGuardIntegrity(): Promise<SelfCheckItem> {
 }
 ```
 
-#### 3.4.3 GitStashManager 관계
+#### 3.4.3 GitStashManager Relationship
 
-[`GitStashManager`](extension/src/safety/GitStashManager.ts)는 YOLO 모드 진입/퇴장 시 git stash를 다룬다. Guard.git과의 직접적인 통합은 불필요하나, Guard가 활성화된 상태에서 `git stash pop` 시 `.git` 내부에 refs/stash가 생성되므로 정상 동작을 방해하지 않아야 한다 — DC 미적용 결정과 일치.
+[`GitStashManager`](extension/src/safety/GitStashManager.ts) handles git stash on YOLO mode entry/exit. Direct integration with Guard.git is unnecessary, but when Guard is active, `git stash pop` creates refs/stash inside `.git` — must not interfere with normal operation, consistent with the DC not applied decision.
 
 ---
 
-### 3.5 Configuration 설계
+### 3.5 Configuration Design
 
-[`package.json`](extension/package.json) `contributes.configuration.properties`에 추가:
+Add to [`package.json`](extension/package.json) `contributes.configuration.properties`:
 
 ```jsonc
 {
@@ -728,19 +728,19 @@ async checkGitGuardIntegrity(): Promise<SelfCheckItem> {
     "type": "boolean",
     "default": true,
     "description": "%vibezoo.guard.enabled.description%"
-    // "Guard.git: AI 에이전트의 실수로 .git 폴더가 삭제되는 것을 방지합니다."
+    // "Guard.git: Prevents .git folder from being deleted by AI agent mistakes."
   },
   "vibezoo.guard.autoEnable": {
     "type": "boolean",
     "default": true,
     "description": "%vibezoo.guard.autoEnable.description%"
-    // "Guard.git: YOLO 모드 진입 시 자동으로 Guard를 활성화합니다."
+    // "Guard.git: Auto-activate Guard on YOLO mode entry."
   },
   "vibezoo.guard.yoctoBackupEnabled": {
     "type": "boolean",
     "default": true,
     "description": "%vibezoo.guard.yoctoBackupEnabled.description%"
-    // "Guard.git: .git 핵심 파일을 yocto에 주기적으로 스냅샷합니다."
+    // "Guard.git: Periodically snapshot .git core files to yocto."
   },
   "vibezoo.guard.yoctoBackupIntervalMin": {
     "type": "number",
@@ -748,7 +748,7 @@ async checkGitGuardIntegrity(): Promise<SelfCheckItem> {
     "minimum": 5,
     "maximum": 1440,
     "description": "%vibezoo.guard.yoctoBackupIntervalMin.description%"
-    // "Guard.git: .git 스냅샷 간격 (분)"
+    // "Guard.git: .git snapshot interval (minutes)"
   },
   "vibezoo.guard.integrityCheckIntervalMin": {
     "type": "number",
@@ -756,18 +756,18 @@ async checkGitGuardIntegrity(): Promise<SelfCheckItem> {
     "minimum": 1,
     "maximum": 60,
     "description": "%vibezoo.guard.integrityCheckIntervalMin.description%"
-    // "Guard.git: .git 무결성 자동 진단 간격 (분) — H5 대응"
+    // "Guard.git: .git integrity auto-diagnostic interval (minutes) — H5 response"
   },
   "vibezoo.guard.linuxUseChattr": {
     "type": "boolean",
     "default": false,
     "description": "%vibezoo.guard.linuxUseChattr.description%"
-    // "Guard.git: Linux에서 chattr +a 사용 (내부 파일 삭제도 방지 → git gc 실패 가능) — H2 대응"
+    // "Guard.git: Use chattr +a on Linux (also prevents internal file deletion → may break git gc) — H2 response"
   }
 }
 ```
 
-[`ConfigService`](extension/src/config/ConfigService.ts)에 추가:
+Add to [`ConfigService`](extension/src/config/ConfigService.ts):
 
 ```typescript
 public static getGuardEnabled(): boolean {
@@ -797,14 +797,14 @@ public static getGuardLinuxUseChattr(): boolean {
 
 ---
 
-### 3.6 UI 설계
+### 3.6 UI Design
 
-#### 3.6.1 TreeView: Guard.git 토글 노드
+#### 3.6.1 TreeView: Guard.git Toggle Node
 
-[`ActiveSubagentsProvider`](extension/src/ui/TreeViewProviders.ts)에 Guard.git 특수 노드 추가 (기존 `_bridge`, `_cim` 패턴을 따름):
+Add Guard.git special node to [`ActiveSubagentsProvider`](extension/src/ui/TreeViewProviders.ts) (following existing `_bridge`, `_cim` pattern):
 
 ```typescript
-// ActiveSubagentsProvider에 추가할 메서드
+// Method to add to ActiveSubagentsProvider
 setGuardGitStatus(state: GuardGitState): void {
   const nodeId = '_guard_git';
   if (state === 'inactive') {
@@ -816,7 +816,7 @@ setGuardGitStatus(state: GuardGitState): void {
       warning: '$(warning)',
       error: '$(error)',
     };
-    // C4: tooltip에 보호 중인 경로 수 표시
+    // C4: show protected path count in tooltip
     const guardManager = getGuardGitManager();
     const pathCount = guardManager?.getProtectedPathCount() ?? 1;
     this.nodes.set(nodeId, {
@@ -834,10 +834,10 @@ setGuardGitStatus(state: GuardGitState): void {
 }
 ```
 
-TreeItem 렌더링 (기존 `_bridge`, `_cim` 패턴으로 `SubagentTreeItem` 생성자에 추가):
+TreeItem rendering (added to `SubagentTreeItem` constructor following existing `_bridge`, `_cim` pattern):
 
 ```typescript
-// SubagentTreeItem constructor 내
+// Inside SubagentTreeItem constructor
 if (node.id === '_guard_git') {
   const stateLabel = node.status === 'running' ? 'Active'
     : node.status === 'error' ? 'Warning'
@@ -857,19 +857,19 @@ if (node.id === '_guard_git') {
 }
 ```
 
-#### 3.6.2 StatusBar 연동
+#### 3.6.2 StatusBar Integration
 
-[`StatusBarManager`](extension/src/ui/StatusBarManager.ts)는 이미 [`GuardMode`](extension/src/ui/StatusBarManager.ts:96) 타입과 [`setGuardMode()`](extension/src/ui/StatusBarManager.ts:206) 메서드, [`_composeText()`](extension/src/ui/StatusBarManager.ts:143) / [`_composeTooltip()`](extension/src/ui/StatusBarManager.ts:123) 내 Guard 표시 로직이 구현되어 있음. Guard.git과의 연동은 기존 인프라에 상태값만 전달하면 된다:
+[`StatusBarManager`](extension/src/ui/StatusBarManager.ts) already has [`GuardMode`](extension/src/ui/StatusBarManager.ts:96) type, [`setGuardMode()`](extension/src/ui/StatusBarManager.ts:206) method, and Guard display logic in [`_composeText()`](extension/src/ui/StatusBarManager.ts:143) / [`_composeTooltip()`](extension/src/ui/StatusBarManager.ts:123). Guard.git integration only needs to pass status values to the existing infrastructure:
 
 ```typescript
-// StatusBarManager._composeText() 내 기존 로직 활용
-// this._guardMode가 'active' → '$(zap) VibeZoo Guard' 표시
-// this._guardMode가 'warning' → '$(warning) VibeZoo' 표시
+// Using existing logic in StatusBarManager._composeText()
+// this._guardMode 'active' → '$(zap) VibeZoo Guard' display
+// this._guardMode 'warning' → '$(warning) VibeZoo' display
 ```
 
 #### 3.6.3 Command Palette
 
-[`package.json`](extension/package.json)에 `vibezoo.toggleGuardGit` 명령어 등록:
+Register `vibezoo.toggleGuardGit` command in [`package.json`](extension/package.json):
 
 ```jsonc
 {
@@ -879,46 +879,46 @@ if (node.id === '_guard_git') {
 }
 ```
 
-기존 `vibezoo.toggleFileGuard`(66-68)는 제거하고 `vibezoo.toggleGuardGit`으로 대체.
+Remove existing `vibezoo.toggleFileGuard` (66-68) and replace with `vibezoo.toggleGuardGit`.
 
 ---
 
-### 3.7 Guard 활성화/비활성화 라이프사이클 (H6: 잔여 ACL 정리 추가)
+### 3.7 Guard Activation/Deactivation Lifecycle (H6: Residual ACL Cleanup Added)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Cleaning: activate() 시작
-    Cleaning --> Inactive: 잔여 ACL 정리 완료 (H6)
-    Inactive --> Active: enable() (사용자 토글 or autoEnable)
-    Active --> Inactive: disable() (사용자 토글)
-    Active --> Warning: Watcher .git 삭제/rename 감지 (H5)
-    Warning --> Active: disable() → enable() (재보호)
+    [*] --> Cleaning: activate() starts
+    Cleaning --> Inactive: Residual ACL cleanup complete (H6)
+    Inactive --> Active: enable() (user toggle or autoEnable)
+    Active --> Inactive: disable() (user toggle)
+    Active --> Warning: Watcher .git deletion/rename detected (H5)
+    Warning --> Active: disable() → enable() (re-protect)
     Warning --> Inactive: disable()
-    Active --> Error: ACL 적용/해제 실패
-    Error --> Active: enable() 재시도 성공
-    Error --> Inactive: disable() 강제
+    Active --> Error: ACL apply/remove failure
+    Error --> Active: enable() retry success
+    Error --> Inactive: disable() force
 
     state Active {
         [*] --> ACL_Applied
         ACL_Applied --> Watchers_Running
         Watchers_Running --> Yocto_Backup
-        Yocto_Backup --> Periodic_Check: 5분 주기 진단 (H5)
-        Periodic_Check --> ACL_Applied: 주기적 스냅샷
+        Yocto_Backup --> Periodic_Check: 5-min periodic diagnostics (H5)
+        Periodic_Check --> ACL_Applied: Periodic snapshot
     }
 ```
 
-**H1: Worktree 탐지 로직**
+**H1: Worktree Detection Logic**
 
 ```typescript
 /**
- * .git이 실제 디렉토리인지, worktree 참조 파일인지 확인
+ * Check if .git is an actual directory or worktree reference file
  *
- * Worktree 환경:
+ * Worktree environment:
  *   $ cat .git
  *   gitdir: /path/to/main/.git/worktrees/feature-branch
  *
- * 일반 환경:
- *   .git/ — 디렉토리
+ * Normal environment:
+ *   .git/ — directory
  */
 private resolveGitDir(workspaceRoot: string): string | null {
   const dotGitPath = path.join(workspaceRoot, '.git');
@@ -927,27 +927,27 @@ private resolveGitDir(workspaceRoot: string): string | null {
     const stat = fs.statSync(dotGitPath);
 
     if (stat.isDirectory()) {
-      return dotGitPath;  // 일반 git 저장소
+      return dotGitPath;  // Normal git repository
     }
 
     if (stat.isFile()) {
-      // worktree: .git 파일 내용 파싱
+      // worktree: parse .git file content
       const content = fs.readFileSync(dotGitPath, 'utf-8').trim();
       const match = content.match(/^gitdir:\s*(.+)$/);
       if (match) {
         const actualGitDir = match[1].trim();
-        // 상대 경로일 경우 workspaceRoot 기준 절대 경로로 변환
+        // Convert relative path to absolute based on workspaceRoot
         const resolved = path.isAbsolute(actualGitDir)
           ? actualGitDir
           : path.resolve(workspaceRoot, actualGitDir);
         if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
-          console.log(`[Guard.git] Worktree 감지: ${dotGitPath} → ${resolved}`);
+          console.log(`[Guard.git] Worktree detected: ${dotGitPath} → ${resolved}`);
           return resolved;
         }
       }
     }
   } catch {
-    // .git 없음
+    // .git not found
   }
 
   return null;
@@ -956,9 +956,9 @@ private resolveGitDir(workspaceRoot: string): string | null {
 
 ---
 
-## 4. Types 확장
+## 4. Types Extension
 
-[`types/index.ts`](extension/src/types/index.ts)에 추가:
+Add to [`types/index.ts`](extension/src/types/index.ts):
 
 ```typescript
 // ── Guard.git (v0.14.3) ──────────────────────────────────
@@ -981,227 +981,227 @@ export interface GuardGitIntegrity {
   refCount: number;
 }
 
-// H3: YoctoSnapshot.trigger union에 Guard trigger를 직접 추가하지 않고,
-// snapshotGitCore() 내부에서 metadata.guardTrigger 별도 관리.
-// → 기존 union 타입('manual'|'auto'|'yolo-enter'|'pre-edit') 유지
+// H3: Don't directly add Guard trigger to YoctoSnapshot.trigger union,
+// instead manage metadata.guardTrigger separately inside snapshotGitCore().
+// → Keep existing union type ('manual'|'auto'|'yolo-enter'|'pre-edit')
 ```
 
 ---
 
-## 5. extension.ts 통합 포인트 (C4 멀티 루트, H6 잔여 ACL 정리 반영)
+## 5. extension.ts Integration Points (C4 Multi-root, H6 Residual ACL Cleanup Reflected)
 
-[`extension.ts`](extension/src/extension.ts)에서 수정할 지점:
+Points to modify in [`extension.ts`](extension/src/extension.ts):
 
 ```typescript
-// ── Import 추가 ──
+// ── Add Import ──
 import { GuardGitManager } from './safety/GuardGitManager';
 
-// ── 변수 선언 추가 ──
+// ── Add Variable Declaration ──
 let guardGit: GuardGitManager;
 
-// ── activate() 내 Wave 2: Safety Net 섹션에 추가 ──
-// (line 131~139, yocto/gitStash 생성 직후)
+// ── Add to activate() Wave 2: Safety Net section ──
+// (line 131~139, after yocto/gitStash creation)
 if (ConfigService.getGuardEnabled()) {
   guardGit = new GuardGitManager();
   guardGit.bindStatusBar(statusBar);
 
-  // H6: activate() 시작 시 잔여 ACL 감지 → 정리
-  // GuardGitManager.activate() 내에서 cleanupResidualACL() 호출
+  // H6: Detect residual ACL on activate() start → cleanup
+  // GuardGitManager.activate() calls cleanupResidualACL() internally
   await guardGit.activate(context, yocto);
 
-  // TreeView에 Guard 노드 등록
+  // Register Guard node in TreeView
   guardGit.onChange((summary) => {
     subagentsProvider.setGuardGitStatus(summary.overall);
   });
 
-  // autoEnable: YOLO 진입 시 자동 활성화
+  // autoEnable: auto-activate on YOLO entry
   if (ConfigService.getGuardAutoEnable()) {
     guardGit.enable().catch(err =>
-      console.warn('[Guard.git] 자동 활성화 실패:', err)
+      console.warn('[Guard.git] Auto-activation failed:', err)
     );
   }
 }
 
-// ── Command 등록 ──
+// ── Command Registration ──
 context.subscriptions.push(
   vscode.commands.registerCommand('vibezoo.toggleGuardGit', async () => {
     if (!guardGit) {
-      vscode.window.showWarningMessage('Guard.git이 초기화되지 않았습니다.');
+      vscode.window.showWarningMessage('Guard.git not initialized.');
       return;
     }
     if (guardGit.isEnabled()) {
       const result = await guardGit.disable();
       if (result.success) {
-        vscode.window.showInformationMessage('🛡️ Guard.git: 보호가 해제되었습니다.');
+        vscode.window.showInformationMessage('🛡️ Guard.git: Protection disabled.');
       } else {
-        vscode.window.showErrorMessage(`Guard.git 해제 실패: ${result.error}`);
+        vscode.window.showErrorMessage(`Guard.git disable failed: ${result.error}`);
       }
     } else {
       const result = await guardGit.enable();
       if (result.success) {
-        vscode.window.showInformationMessage('🛡️ Guard.git: .git 폴더가 보호됩니다.');
+        vscode.window.showInformationMessage('🛡️ Guard.git: .git folder is protected.');
       } else {
-        vscode.window.showErrorMessage(`Guard.git 활성화 실패: ${result.error}`);
+        vscode.window.showErrorMessage(`Guard.git enable failed: ${result.error}`);
       }
     }
   })
 );
 
-// ── deactivate()에 ACL 원복 추가 ──
+// ── Add ACL restoration to deactivate() ──
 export function deactivate(): void {
   // ...existing code...
   guardGit?.disable().catch(err =>
-    console.warn('[Guard.git] deactivate 원복 실패:', err)
+    console.warn('[Guard.git] deactivate restoration failed:', err)
   );
 }
 ```
 
 ---
 
-## 6. OS별 ACL 대응 매트릭스 (C1/C2/C3 반영)
+## 6. OS-specific ACL Response Matrix (C1/C2/C3 Reflected)
 
-| OS | 메커니즘 | 적용 명령어 | 해제 명령어 | exec 방식 | 제한사항 |
-|----|---------|------------|-----------|----------|---------|
-| **Windows** | `icacls` deny DE | `execFile('icacls', ['.git', '/deny', '*S-1-1-0:(DE)'])` | `execFile('icacls', ['.git', '/remove:d', '*S-1-1-0'])` | `execFile` | NTFS만 지원 |
-| **Linux** | `chattr +a` (optional) | `execFile('chattr', ['+a', '.git'])` | `execFile('chattr', ['-a', '.git'])` | `execFile` | ext4/btrfs/xfs 지원; sudo 금지; 기본 비활성 (H2) |
-| **macOS** | `chmod +a` ACL | `execFile('chmod', ['+a', 'everyone deny delete', '.git'])` | `execFile('chmod', ['-a', 'everyone deny delete', '.git'])` | `execFile` | APFS/HFS+ 지원 |
+| OS | Mechanism | Apply Command | Remove Command | exec Method | Limitations |
+|----|-----------|--------------|---------------|-------------|-------------|
+| **Windows** | `icacls` deny DE | `execFile('icacls', ['.git', '/deny', '*S-1-1-0:(DE)'])` | `execFile('icacls', ['.git', '/remove:d', '*S-1-1-0'])` | `execFile` | NTFS only |
+| **Linux** | `chattr +a` (optional) | `execFile('chattr', ['+a', '.git'])` | `execFile('chattr', ['-a', '.git'])` | `execFile` | ext4/btrfs/xfs; no sudo; disabled by default (H2) |
+| **macOS** | `chmod +a` ACL | `execFile('chmod', ['+a', 'everyone deny delete', '.git'])` | `execFile('chmod', ['-a', 'everyone deny delete', '.git'])` | `execFile` | APFS/HFS+ support |
 
-**Fallback 계층 (C2/C3 반영):**
+**Fallback Hierarchy (C2/C3 Reflected):**
 
-| OS | 1차 시도 | Fallback | 최종 Fallback |
-|----|---------|----------|-------------|
-| Windows | `icacls` | — (Windows 표준) | Watcher + Yocto only |
-| Linux | **Watcher + Yocto** (기본) | `chattr +a` (`linuxUseChattr: true` 시) | Watcher + Yocto only |
-| macOS | `chmod +a` | `chflags uchg` (쓰기도 막힘 - 경고) | Watcher + Yocto only |
-| 기타 | — | — | Watcher + Yocto only |
+| OS | Primary Attempt | Fallback | Final Fallback |
+|----|----------------|----------|----------------|
+| Windows | `icacls` | — (Windows standard) | Watcher + Yocto only |
+| Linux | **Watcher + Yocto** (default) | `chattr +a` (when `linuxUseChattr: true`) | Watcher + Yocto only |
+| macOS | `chmod +a` | `chflags uchg` (also blocks writes - warning) | Watcher + Yocto only |
+| Other | — | — | Watcher + Yocto only |
 
-> **C3**: Linux `setfacl` fallback 제거. `setfacl -m u:$(whoami):r-x`는 디렉토리 삭제를 방지하지 못하며, `r-x`는 git 동작을 방해한다.
+> **C3**: Removed Linux `setfacl` fallback. `setfacl -m u:$(whoami):r-x` cannot prevent directory deletion, and `r-x` interferes with git operations.
 
 ---
 
-## 7. 파일 목록 (신규/수정)
+## 7. File List (New/Modified)
 
-### 7.1 신규 파일
+### 7.1 New Files
 
-| 파일 | 설명 |
-|------|------|
-| [`extension/src/safety/GuardGitManager.ts`](extension/src/safety/GuardGitManager.ts) | Guard.git 핵심 오케스트레이터 (멀티 루트, worktree, 잔여 ACL 정리) |
-| [`extension/src/safety/GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) | OS ACL 추상화 계층 (execFile only, 경로 검증, FS 타입 확인) |
+| File | Description |
+|------|-------------|
+| [`extension/src/safety/GuardGitManager.ts`](extension/src/safety/GuardGitManager.ts) | Guard.git core orchestrator (multi-root, worktree, residual ACL cleanup) |
+| [`extension/src/safety/GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) | OS ACL abstraction layer (execFile only, path validation, FS type check) |
 
-### 7.2 수정 파일
+### 7.2 Modified Files
 
-| 파일 | 변경 내용 |
+| File | Changes |
 |------|---------|
-| [`extension/src/extension.ts`](extension/src/extension.ts) | GuardGitManager 생성 및 명령어 등록, deactivate 원복, H6 잔여 ACL 정리 호출 |
-| [`extension/src/safety/YoctoManager.ts`](extension/src/safety/YoctoManager.ts) | `snapshotGitCore()`, `detectGitChanges()` 메서드 추가; H3 trigger는 metadata로 관리 |
-| [`extension/src/safety/SelfCheck.ts`](extension/src/safety/SelfCheck.ts) | `checkGitGuardIntegrity()` 진단 항목 추가, 멀티 루트 대응 |
-| [`extension/src/ui/TreeViewProviders.ts`](extension/src/ui/TreeViewProviders.ts) | `setGuardGitStatus()` 메서드, Guard 노드 TreeItem 추가, 멀티 루트 카운트 |
-| [`extension/src/config/ConfigService.ts`](extension/src/config/ConfigService.ts) | Guard 관련 설정 메서드 추가 (`linuxUseChattr`, `integrityCheckIntervalMin`) |
-| [`extension/src/types/index.ts`](extension/src/types/index.ts) | GuardGitState, GuardGitACLResult, GuardGitIntegrity 타입 추가 |
-| [`extension/package.json`](extension/package.json) | toggleGuardGit 명령어, guard.* 설정 속성 추가, toggleFileGuard 제거 |
-| [`extension/l10n/bundle.l10n.json`](extension/l10n/bundle.l10n.json) | Guard 관련 영문 로컬라이제이션 추가 |
-| [`extension/l10n/bundle.l10n.ko.json`](extension/l10n/bundle.l10n.ko.json) | Guard 관련 한글 로컬라이제이션 추가 |
+| [`extension/src/extension.ts`](extension/src/extension.ts) | GuardGitManager creation and command registration, deactivate restoration, H6 residual ACL cleanup call |
+| [`extension/src/safety/YoctoManager.ts`](extension/src/safety/YoctoManager.ts) | Add `snapshotGitCore()`, `detectGitChanges()` methods; H3 trigger managed via metadata |
+| [`extension/src/safety/SelfCheck.ts`](extension/src/safety/SelfCheck.ts) | Add `checkGitGuardIntegrity()` diagnostic item, multi-root support |
+| [`extension/src/ui/TreeViewProviders.ts`](extension/src/ui/TreeViewProviders.ts) | `setGuardGitStatus()` method, Guard node TreeItem, multi-root count |
+| [`extension/src/config/ConfigService.ts`](extension/src/config/ConfigService.ts) | Add Guard-related configuration methods (`linuxUseChattr`, `integrityCheckIntervalMin`) |
+| [`extension/src/types/index.ts`](extension/src/types/index.ts) | Add GuardGitState, GuardGitACLResult, GuardGitIntegrity types |
+| [`extension/package.json`](extension/package.json) | Add toggleGuardGit command, guard.* settings properties, remove toggleFileGuard |
+| [`extension/l10n/bundle.l10n.json`](extension/l10n/bundle.l10n.json) | Add Guard-related English localization |
+| [`extension/l10n/bundle.l10n.ko.json`](extension/l10n/bundle.l10n.ko.json) | Add Guard-related Korean localization |
 
 ---
 
-## 8. 예외 시나리오 (H5 rename 대응, C2/C3 Linux fallback 반영)
+## 8. Exception Scenarios (H5 Rename Response, C2/C3 Linux Fallback Reflected)
 
-| 시나리오 | 감지 | 대응 |
-|---------|------|------|
-| `rm -rf *` | ACL이 `.git` 자체 삭제 차단 → 내용물은 삭제됨 | Watcher가 변경 감지 → Yocto 스냅샷으로 복구 제안 |
-| `rmdir /s /q .git` | ACL이 폴더 삭제 차단 → `Access Denied` | OS 오류 발생, AI 에이전트에게 실패 피드백 |
-| `del /f /s /q .git\*` | 내용물 삭제됨 (의도적 허용) | Watcher 감지 → Yocto 복구 |
-| `.git` 폴더 rename (H5) | Watcher: 2초 내 `onDidDelete` + `onDidCreate` 감지 | rename bypass 경고 → SelfCheck로도 주기적 확인 |
-| `move .git .git_backup` (H5) | Watcher rename 감지 + SelfCheck 5분 간격 진단 | 경고 알림 + Yocto 복구 제안 |
-| 다른 프로세스가 ACL 제거 | 주기적 `checkProtection()` 호출 (5분 간격) (H5) | 상태 변경 감지 → 재적용 시도 |
-| git GC/prune/repack 수행 | 정상 동작 (DC 미적용으로 내용 삭제 허용)<br>⚠️ Linux `chattr +a` 사용 시 실패 가능 (H2) | 간섭 없음 (Windows/macOS); Linux에서는 기본 비활성 |
-| 확장 deactivate 시 ACL 원복 실패 | 로그 경고 | 사용자에게 수동 복구 명령어 안내 |
-| Extension crash → ACL 잔류 (H6) | `activate()` 시작 시 잔여 ACL 감지 | 자동 정리 후 정상 활성화 |
-| Linux `chattr` TTY 필요 (C2) | `execFile` + timeout 10초 → 자동 실패 | 즉시 Watcher+Yocto only fallback |
-| FAT32/exFAT/NFS FS (H4) | `isAvailable()`에서 FS 타입 확인 | ACL 미지원 → Watcher+Yocto only fallback |
-| Git Worktree (H1) | `resolveGitDir()`에서 `.git` 파일 감지 | 실제 git dir 경로 추적 → ACL 적용 |
-
----
-
-## 9. 구현 우선순위
-
-| 순서 | 작업 | 의존성 |
-|------|------|--------|
-| 1 | [`GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) — OS ACL 계층 구현 (execFile, 경로 검증, FS 확인) | 없음 |
-| 2 | [`types/index.ts`](extension/src/types/index.ts) — 타입 정의 추가 | 없음 |
-| 3 | [`GuardGitManager.ts`](extension/src/safety/GuardGitManager.ts) — 핵심 오케스트레이터 (멀티 루트, worktree, 잔여 ACL) | 1, 2 |
-| 4 | [`ConfigService.ts`](extension/src/config/ConfigService.ts) — 설정 메서드 (linuxUseChattr 등) | 없음 |
-| 5 | [`YoctoManager.ts`](extension/src/safety/YoctoManager.ts) — `snapshotGitCore()` (H3 metadata 방식) | 2 |
-| 6 | [`SelfCheck.ts`](extension/src/safety/SelfCheck.ts) — `checkGitGuardIntegrity()` (멀티 루트) | 2, 3 |
-| 7 | [`TreeViewProviders.ts`](extension/src/ui/TreeViewProviders.ts) — Guard 노드 | 2 |
-| 8 | [`extension.ts`](extension/src/extension.ts) — 통합 (H6 잔여 ACL 정리 호출) | 3, 4, 5, 6, 7 |
-| 9 | [`package.json`](extension/package.json) — 명령어/설정 등록 | 없음 |
-| 10 | [`l10n/`](extension/l10n/) — 로컬라이제이션 | 없음 |
+| Scenario | Detection | Response |
+|----------|-----------|----------|
+| `rm -rf *` | ACL blocks `.git` deletion itself → contents deleted | Watcher detects change → suggest Yocto snapshot restore |
+| `rmdir /s /q .git` | ACL blocks folder deletion → `Access Denied` | OS error occurs, feedback to AI agent |
+| `del /f /s /q .git\*` | Contents deleted (intentionally allowed) | Watcher detects → Yocto restore |
+| `.git` folder rename (H5) | Watcher: `onDidDelete` + `onDidCreate` within 2s | Rename bypass warning + SelfCheck periodic verification |
+| `move .git .git_backup` (H5) | Watcher rename detection + SelfCheck 5-min interval | Warning notification + Yocto restore suggestion |
+| Another process removes ACL | Periodic `checkProtection()` call (5-min interval) (H5) | State change detected → re-apply attempt |
+| git GC/prune/repack execution | Normal operation (DC not applied allows content deletion)<br>⚠️ May fail on Linux with `chattr +a` (H2) | No interference (Windows/macOS); disabled by default on Linux |
+| Extension deactivate ACL restoration failure | Log warning | Guide user with manual restore command |
+| Extension crash → ACL residual (H6) | Residual ACL detection on `activate()` start | Auto cleanup then normal activation |
+| Linux `chattr` TTY required (C2) | `execFile` + timeout 10s → auto failure | Immediate Watcher+Yocto only fallback |
+| FAT32/exFAT/NFS FS (H4) | FS type check in `isAvailable()` | ACL not supported → Watcher+Yocto only fallback |
+| Git Worktree (H1) | `.git` file detection in `resolveGitDir()` | Track actual git dir path → apply ACL |
 
 ---
 
-## 10. 기술적 의사결정 기록
+## 9. Implementation Priority
 
-| 결정 | 근거 |
-|------|------|
-| DC(Delete Child) 미적용 | `git gc`, `git prune`, `git repack` 등 정상 git 작업이 `.git` 내부 파일 삭제를 필요로 함. 내용 삭제 방어는 Yocto 스냅샷으로 대체. |
-| `chattr +a` (append-only) — Linux에서 **기본 비활성화** (H2) | `+a`는 디렉토리 내 파일 삭제도 방지하여 `git gc`/`prune`/`repack` 실패. Linux 1차 방어는 Watcher+Yocto로, `chattr`은 optional. |
-| Windows Everyone SID(`*S-1-1-0`) 사용 | `icacls`의 `Everyone` 문자열은 OS 로케일에 따라 번역됨 (예: 독일어 "Jeder"). SID 기반으로 로케일 독립적 처리. |
-| 별도 TreeView 대신 ActiveSubagentsProvider에 노드 추가 | 기존 `_bridge`, `_cim` 패턴과 일관성 유지. 신규 TreeView 생성보다 구현 비용이 낮고 UX 통일. |
-| StatusBarManager 기존 GuardMode 인프라 재사용 | 이미 [`GuardMode`](extension/src/ui/StatusBarManager.ts:96) 타입, [`setGuardMode()`](extension/src/ui/StatusBarManager.ts:206), `_composeText()`/`_composeTooltip()` Guard 표시 로직이 구현 완료되어 있음. |
-| **`child_process.execFile()`로 전환 (C1)** | `exec()`는 셸을 경유하므로 경로에 `&`, `|`, `;` 등 메타문자 주입 가능. `execFile()`은 셸 없이 직접 실행하므로 안전. |
-| **`sudo` 절대 사용 금지 (C2)** | VS Code Extension에는 TTY가 없어 `sudo chattr`은 무한 대기. 사용자 소유 디렉토리면 `sudo` 없이 가능. 실패 시 즉시 Watcher+Yocto fallback. |
-| **`setfacl` fallback 제거 (C3)** | Linux에서 디렉토리 삭제는 부모 디렉토리 권한에 의존. `setfacl -m u:$(whoami):r-x`는 삭제 방지 불가 + git 동작 방해. |
-| **`gitDirPaths: string[]` 배열화 (C4)** | 멀티 루트 워크스페이스에서 모든 `.git` 경로에 ACL 적용. `onDidChangeWorkspaceFolders`로 동적 대응. |
-| **경로 검증 정규식 `^[a-zA-Z0-9_\-\\:. /@]+$` (C1)** | 모든 OS 명령어 인자에 대해 허용 문자만 통과. 경로 길이 250자 제한. |
-| **모든 OS 명령어에 타임아웃 10초 (C1/C2)** | `execFile()`의 `timeout` 옵션으로 행(hang) 방지. |
-| **H5: Rename 감지 (2초 delete+create window)** | `onDidDelete` 후 2초 내 `onDidCreate`가 같은 경로에 발생하면 rename으로 판단. |
-| **H5: SelfCheck 5분 주기 진단** | `startPeriodicIntegrityCheck()`로 ACL bypass 여부를 주기적으로 확인. |
-| **H6: `activate()` 시 잔여 ACL 정리** | Extension crash 후 재시작 시 `.git`에 남아있는 Guard ACL을 먼저 제거 후 정상 활성화. |
-| **H3: trigger 타입 — metadata 방식** | `YoctoSnapshot.trigger` union에 새 리터럴을 추가하지 않고, `snapshotGitCore()` 내부에서 `createSnapshot('auto')` 호출 + `metadata.guardTrigger` 별도 관리. |
-| **H4: `isAvailable()`에 FS 타입 확인 추가** | Windows: `icacls` pre-flight check. Linux: `stat -f -c %T`로 ext4/btrfs/xfs 확인. 미지원 FS → Watcher+Yocto only. |
+| Order | Task | Dependency |
+|-------|------|------------|
+| 1 | [`GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) — OS ACL layer implementation (execFile, path validation, FS check) | None |
+| 2 | [`types/index.ts`](extension/src/types/index.ts) — Add type definitions | None |
+| 3 | [`GuardGitManager.ts`](extension/src/safety/GuardGitManager.ts) — Core orchestrator (multi-root, worktree, residual ACL) | 1, 2 |
+| 4 | [`ConfigService.ts`](extension/src/config/ConfigService.ts) — Configuration methods (linuxUseChattr etc.) | None |
+| 5 | [`YoctoManager.ts`](extension/src/safety/YoctoManager.ts) — `snapshotGitCore()` (H3 metadata method) | 2 |
+| 6 | [`SelfCheck.ts`](extension/src/safety/SelfCheck.ts) — `checkGitGuardIntegrity()` (multi-root) | 2, 3 |
+| 7 | [`TreeViewProviders.ts`](extension/src/ui/TreeViewProviders.ts) — Guard node | 2 |
+| 8 | [`extension.ts`](extension/src/extension.ts) — Integration (H6 residual ACL cleanup call) | 3, 4, 5, 6, 7 |
+| 9 | [`package.json`](extension/package.json) — Command/settings registration | None |
+| 10 | [`l10n/`](extension/l10n/) — Localization | None |
 
 ---
 
-## 11. Debug 피드백 루프백 — 변경 이력 (v1.0.0 → v1.1.0)
+## 10. Technical Decision Records
 
-### Critical 문제 해결 내역
+| Decision | Rationale |
+|----------|-----------|
+| DC(Delete Child) not applied | Normal git operations (`git gc`, `git prune`, `git repack`) need to delete files inside `.git`. Content deletion defense replaced by Yocto snapshot. |
+| `chattr +a` (append-only) — **disabled by default** on Linux (H2) | `+a` also prevents file deletion in directory, breaking `git gc`/`prune`/`repack`. Linux primary defense is Watcher+Yocto, `chattr` is optional. |
+| Windows Everyone SID(`*S-1-1-0`) used | `icacls`'s `Everyone` string is translated based on OS locale (e.g., German "Jeder"). SID-based for locale-independent processing. |
+| Node added to ActiveSubagentsProvider instead of separate TreeView | Maintains consistency with existing `_bridge`, `_cim` pattern. Lower implementation cost than creating new TreeView, UX unified. |
+| Reuse existing StatusBarManager GuardMode infrastructure | [`GuardMode`](extension/src/ui/StatusBarManager.ts:96) type, [`setGuardMode()`](extension/src/ui/StatusBarManager.ts:206), `_composeText()`/`_composeTooltip()` Guard display logic already implemented. |
+| **Migrate to `child_process.execFile()` (C1)** | `exec()` goes through shell, allowing meta-character injection (`&`, `|`, `;`) in paths. `execFile()` runs directly without shell, safe. |
+| **`sudo` absolutely prohibited (C2)** | VS Code Extension has no TTY, `sudo chattr` hangs indefinitely. If user owns the directory, possible without `sudo`. Immediate Watcher+Yocto fallback on failure. |
+| **Remove `setfacl` fallback (C3)** | On Linux, directory deletion depends on parent directory permissions. `setfacl -m u:$(whoami):r-x` cannot prevent deletion + interferes with git operations. |
+| **`gitDirPaths: string[]` array (C4)** | Apply ACL to all `.git` paths in multi-root workspace. Dynamic response via `onDidChangeWorkspaceFolders`. |
+| **Path validation regex `^[a-zA-Z0-9_\-\\:. /@]+$` (C1)** | Only allow permitted characters for all OS command arguments. Path length 250 character limit. |
+| **10-second timeout on all OS commands (C1/C2)** | `execFile()` `timeout` option prevents hang. |
+| **H5: Rename detection (2s delete+create window)** | `onDidCreate` on same path within 2s after `onDidDelete` considered rename. |
+| **H5: SelfCheck 5-min periodic diagnostics** | `startPeriodicIntegrityCheck()` periodically checks for ACL bypass. |
+| **H6: Residual ACL cleanup on `activate()`** | On Extension crash restart, remove any remaining Guard ACL on `.git` before normal activation. |
+| **H3: trigger type — metadata method** | Don't add new literal to `YoctoSnapshot.trigger` union; `snapshotGitCore()` internally calls `createSnapshot('auto')` + manages `metadata.guardTrigger` separately. |
+| **H4: FS type check added to `isAvailable()`** | Windows: `icacls` pre-flight check. Linux: `stat -f -c %T` check for ext4/btrfs/xfs. Unsupported FS → Watcher+Yocto only. |
 
-| ID | 문제 | 변경 사항 | 영향 범위 |
-|----|------|---------|----------|
-| **C1** | 셸 명령어 주입 | `exec()` → `execFile()`, 인자 배열 전달, 경로 검증 정규식, 10초 타임아웃 | [`GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) — 모든 플랫폼 구현체 |
-| **C2** | Linux `sudo chattr` 무한 행 | `sudo` 사용 금지, `chattr`은 사용자 권한으로만 시도, 실패 시 즉시 Watcher+Yocto fallback, 10초 타임아웃 | [`LinuxGuardGitACL`](extension/src/safety/GuardGitACL.ts), Linux fallback 계층 |
-| **C3** | Linux `setfacl` fallback 설계 결함 | `setfacl` fallback 완전 제거, Linux fallback은 Watcher+Yocto only로 일원화 | Linux fallback 계층, OS 매트릭스 |
-| **C4** | 멀티 루트 워크스페이스 미지원 | `gitDirPath: string | null` → `gitDirPaths: string[]`, `Map<string, GuardGitState>`, `onDidChangeWorkspaceFolders` 구독 | [`GuardGitManager`](extension/src/safety/GuardGitManager.ts), [`extension.ts`](extension/src/extension.ts) |
+---
 
-### High 문제 해결 내역
+## 11. Debug Feedback Loopback — Change History (v1.0.0 → v1.1.0)
 
-| ID | 문제 | 변경 사항 | 영향 범위 |
-|----|------|---------|----------|
-| **H1** | Git Worktree 미대응 | `resolveGitDir()`: `.git` 파일 감지 → `gitdir:` 파싱 → 실제 git dir 경로 추적 | [`GuardGitManager`](extension/src/safety/GuardGitManager.ts) |
-| **H2** | `chattr +a` 과잉 보호 | Linux `chattr` 기본 비활성화 (`linuxUseChattr: false`), Watcher+Yocto가 1차 방어, 문서화 추가 | Configuration, Linux fallback |
-| **H3** | `YoctoSnapshot.trigger` 불일치 | `snapshotGitCore()` 내부에서 `createSnapshot('auto')` 호출 + `metadata.guardTrigger` 별도 관리 | [`YoctoManager`](extension/src/safety/YoctoManager.ts) |
-| **H4** | FS 타입 미확인 | `isAvailable()`에 FS 타입 확인 로직 추가 (Windows: icacls pre-flight, Linux: `stat -f`) | [`GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) |
-| **H5** | ACL bypass via rename | Watcher: 2초 delete+create window로 rename 감지, SelfCheck 5분 주기 진단 (`integrityCheckIntervalMin`) | Watcher 로직, SelfCheck, Configuration |
-| **H6** | Deactivate 시 ACL 잔여 리스크 | `activate()` 시작 시 `cleanupResidualACL()` 호출로 잔여 ACL 감지 → 자동 정리 | [`GuardGitManager.activate()`](extension/src/safety/GuardGitManager.ts) |
+### Critical Problem Resolution
 
-### 변경된 인터페이스 요약
+| ID | Problem | Changes | Impact |
+|----|---------|---------|--------|
+| **C1** | Shell command injection | `exec()` → `execFile()`, argument array passing, path validation regex, 10-second timeout | [`GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) — all platform implementations |
+| **C2** | Linux `sudo chattr` infinite hang | `sudo` prohibited, `chattr` attempted with user permissions only, immediate Watcher+Yocto fallback on failure, 10-second timeout | [`LinuxGuardGitACL`](extension/src/safety/GuardGitACL.ts), Linux fallback hierarchy |
+| **C3** | Linux `setfacl` fallback design flaw | Complete removal of `setfacl` fallback, Linux fallback unified to Watcher+Yocto only | Linux fallback hierarchy, OS matrix |
+| **C4** | Multi-root workspace not supported | `gitDirPath: string | null` → `gitDirPaths: string[]`, `Map<string, GuardGitState>`, subscribe `onDidChangeWorkspaceFolders` | [`GuardGitManager`](extension/src/safety/GuardGitManager.ts), [`extension.ts`](extension/src/extension.ts) |
 
-| 인터페이스 | 변경 전 | 변경 후 |
-|-----------|---------|---------|
+### High Problem Resolution
+
+| ID | Problem | Changes | Impact |
+|----|---------|---------|--------|
+| **H1** | Git Worktree not handled | `resolveGitDir()`: detect `.git` file → parse `gitdir:` → track actual git dir path | [`GuardGitManager`](extension/src/safety/GuardGitManager.ts) |
+| **H2** | `chattr +a` over-protection | Linux `chattr` disabled by default (`linuxUseChattr: false`), Watcher+Yocto as primary defense, documentation added | Configuration, Linux fallback |
+| **H3** | `YoctoSnapshot.trigger` inconsistency | `snapshotGitCore()` internally calls `createSnapshot('auto')` + manages `metadata.guardTrigger` separately | [`YoctoManager`](extension/src/safety/YoctoManager.ts) |
+| **H4** | FS type not checked | Added FS type check logic to `isAvailable()` (Windows: icacls pre-flight, Linux: `stat -f`) | [`GuardGitACL.ts`](extension/src/safety/GuardGitACL.ts) |
+| **H5** | ACL bypass via rename | Watcher: 2s delete+create window for rename detection, SelfCheck 5-min periodic diagnostics (`integrityCheckIntervalMin`) | Watcher logic, SelfCheck, Configuration |
+| **H6** | Residual ACL risk on deactivate | `cleanupResidualACL()` call on `activate()` start to detect and auto-clean residual ACL | [`GuardGitManager.activate()`](extension/src/safety/GuardGitManager.ts) |
+
+### Changed Interfaces Summary
+
+| Interface | Before | After |
+|-----------|--------|-------|
 | `GuardGitManager.gitDirPath` | `string \| null` | `gitDirPaths: string[]` |
 | `GuardGitManager.state` | `GuardGitState` | `stateMap: Map<string, GuardGitState>` |
 | `GuardGitManager.watcher` | `FileSystemWatcher \| null` | `watchers: Map<string, FileSystemWatcher>` |
 | `GuardGitManager.checkIntegrity()` | `Promise<GuardGitIntegrity>` | `Promise<GuardGitIntegrity[]>` |
 | `GuardGitManager.onChange(cb)` | `(state: GuardGitState) => void` | `(summary: { overall: GuardGitState; paths: Map<string, GuardGitState> }) => void` |
 | `IGuardGitACL.isAvailable()` | `(): Promise<boolean>` | `(gitDir: string): Promise<boolean>` |
-| `YoctoSnapshot.trigger` | `'manual'\|'auto'\|'yolo-enter'\|'pre-edit'` | **변경 없음** (metadata 방식) |
-| `ConfigService` | 4개 메서드 | 6개 메서드 (`linuxUseChattr`, `integrityCheckIntervalMin` 추가) |
-| `package.json` 설정 | 4개 속성 | 6개 속성 (`linuxUseChattr`, `integrityCheckIntervalMin` 추가) |
+| `YoctoSnapshot.trigger` | `'manual'\|'auto'\|'yolo-enter'\|'pre-edit'` | **No change** (metadata method) |
+| `ConfigService` | 4 methods | 6 methods (added `linuxUseChattr`, `integrityCheckIntervalMin`) |
+| `package.json` settings | 4 properties | 6 properties (added `linuxUseChattr`, `integrityCheckIntervalMin`) |
 
 ---
 
-## 부록 A: `icacls` deny 실험 결과 (참고)
+## Appendix A: `icacls` deny Experiment Results (Reference)
 
 ```
 C:\project> icacls .git /deny *S-1-1-0:(DE)
@@ -1211,7 +1211,7 @@ C:\project> rmdir /s /q .git
 .git - Access is denied.
 
 C:\project> del /f /s /q .git\*
-(내용물 삭제 - 정상 동작)
+(Contents deleted - normal operation)
 
 C:\project> icacls .git /remove:d *S-1-1-0
 processed file: .git
@@ -1219,12 +1219,12 @@ processed file: .git
 
 ---
 
-## 부록 B: `execFile` vs `exec` 비교 (C1 참고)
+## Appendix B: `execFile` vs `exec` Comparison (C1 Reference)
 
-| 특성 | `exec()` | `execFile()` |
-|------|---------|-------------|
-| 셸 경유 | ✅ (cmd.exe / bash) | ❌ (직접 실행) |
-| 인자 전달 | 문자열 보간 (`icacls ${path} ...`) | 배열 (`['icacls', path, ...]`) |
-| 메타문자 취약 | `&`, `|`, `;`, `` ` `` 등 주입 가능 | 없음 (인자가 프로그램에 직접 전달) |
-| 타임아웃 | `timeout` 옵션 (비권장) | `timeout` 옵션 (권장) |
-| 콘솔 창 | Windows에서 표시됨 | `windowsHide: true` 가능 |
+| Feature | `exec()` | `execFile()` |
+|---------|----------|--------------|
+| Shell passthrough | ✅ (cmd.exe / bash) | ❌ (direct execution) |
+| Argument passing | String interpolation (`icacls ${path} ...`) | Array (`['icacls', path, ...]`) |
+| Meta-character vulnerability | `&`, `|`, `;`, `` ` `` injectable | None (arguments passed directly to program) |
+| Timeout | `timeout` option (not recommended) | `timeout` option (recommended) |
+| Console window | Displayed on Windows | `windowsHide: true` possible |

@@ -1,6 +1,6 @@
 # VibeZoo Implementation Plan — v0.14.4
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 다국어 분석)
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 Multilingual Analysis)
 > **Baseline Version**: v0.14.4
 > **Base Documents**: [Architecture.md](./Architecture.md), [ROADMAP.md](./ROADMAP.md), [JOURNAL.md](./JOURNAL.md)
 
@@ -10,10 +10,10 @@
 
 | Version | Date | Key Changes | Notes |
 |:---|:---|:---|:---|
-| **v0.14.3** | 2026-06-05 (Current) | Guard.git: OS ACL(.git 삭제 방지), 멀티 루트/Worktree 대응, Shell injection 방어, Yocto 스냅샷, SelfCheck 통합 | Current |
-| **v0.14.2** | 2026-06-03 | Guard.git l10n 번들, TreeView 토글, 설정 추가 | |
-| **v0.14.1** | 2026-06-02 | VibeZoo v2 업그레이드: 드랍존 범용화 + PDF 파이프라인 + OCR 전처리 + 문서 최신화 | |
-| **v0.14.0** | 2026-06-02 | UX Workflow: intent_detector + ux_coordinator (3 tools) + 문서 업데이트 |
+| **v0.14.3** | 2026-06-05 (Current) | Guard.git: OS ACL (.git deletion prevention), multi-root/Worktree support, Shell injection defense, Yocto snapshot, SelfCheck integration | Current |
+| **v0.14.2** | 2026-06-03 | Guard.git l10n bundles, TreeView toggle, settings added | |
+| **v0.14.1** | 2026-06-02 | VibeZoo v2 upgrade: Dropzone generalization + PDF pipeline + OCR preprocessing + documentation update | |
+| **v0.14.0** | 2026-06-02 | UX Workflow: intent_detector + ux_coordinator (3 tools) + documentation update |
 | **v0.10.0** | 2026-05-27 AM | Initial implementation complete (26 files). 4 Go MCP servers. AutoBuildFix empty loop. | Design → Implementation |
 | **v0.10.0** | 2026-05-27 PM | Switched to Python MCP bridge. All Go servers removed. Single `vibezoo_mcp_bridge.py` file. | Go→Python |
 | **v0.10.0** | 2026-05-27 PM | AI auto Whiteboard + UI Preview integration. 4 new MCP tools including `draw_on_whiteboard`. | `setInterval` polling |
@@ -65,8 +65,8 @@ VibeZoo_forZoocode/
 │       ├── safety/
 │       │   ├── FileGuard.ts          # .yoloignore watch
 │       │   ├── GitStashManager.ts    # YOLO Git Stash
-│       │   ├── GuardGitACL.ts        # OS 레벨 ACL 보호 (icacls/chattr/chmod)
-│       │   ├── GuardGitManager.ts    # Guard.git 전체 관리 (멀티 루트, Worktree, 잔여 ACL 정리)
+│       │   ├── GuardGitACL.ts        # OS-level ACL protection (icacls/chattr/chmod)
+│       │   ├── GuardGitManager.ts    # Guard.git overall management (multi-root, Worktree, residual ACL cleanup)
 │       │   └── YoctoManager.ts       # yocto backup·restore
 │       ├── types/
 │       │   └── index.ts              # Common type definitions
@@ -77,7 +77,7 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard + UI Preview + Diagram
 │
 ├── mcp-servers/
-│   ├── vibezoo_mcp_bridge.py         # 34+ MCP tools (모듈형)
+│   ├── vibezoo_mcp_bridge.py         # 34+ MCP tools (modular)
 │   ├── vibezoo_mcp_bridge.py         # Legacy bridge
 │   └── bridge/
 │       ├── intent_detector.py        # UX Intent Detection
@@ -222,12 +222,12 @@ VibeZoo_forZoocode/
 
 | # | Item | File | Status |
 |:---:|:---|:---|:---:|
-| UX-1 | intent_detector.py (의도 감지) | [`bridge/intent_detector.py`](../mcp-servers/bridge/intent_detector.py) | ✅ |
-| UX-2 | ux_coordinator.py (UX 코디네이터) | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
+| UX-1 | intent_detector.py (Intent Detection) | [`bridge/intent_detector.py`](../mcp-servers/bridge/intent_detector.py) | ✅ |
+| UX-2 | ux_coordinator.py (UX Coordinator) | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
 | UX-3 | ux_coordinator, auto_analyze_after_drop, auto_analyze_whiteboard | [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) | ✅ |
-| UX-4 | capture_screen/analyze_uploaded_file/get_whiteboard_state 설명 개선 | [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py) | ✅ |
-| UX-5 | vibezoo_mcp_bridge.py list_subagents/health check 업데이트 | [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) | ✅ |
-| UX-6 | 설계 문서 작성 | [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md) | ✅ |
+| UX-4 | capture_screen/analyze_uploaded_file/get_whiteboard_state description improvements | [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py) | ✅ |
+| UX-5 | vibezoo_mcp_bridge.py list_subagents/health check updates | [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) | ✅ |
+| UX-6 | Design document writing | [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md) | ✅ |
 
 ---
 
@@ -235,15 +235,15 @@ VibeZoo_forZoocode/
 
 | # | Item | File | Status |
 |:---:|:---|:---|:---:|
-| GG-1 | GuardGitManager — 멀티 루트·Worktree·잔여 ACL 정리 | [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) | ✅ |
-| GG-2 | GuardGitACL — OS 레벨 ACL (icacls/chattr/chmod) | [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) | ✅ |
-| GG-3 | Yocto 스냅샷 — .git 핵심 파일(HEAD, config, refs) 백업 | [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) | ✅ |
-| GG-4 | SelfCheck 통합 — .git 무결성 자가진단 | [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) | ✅ |
-| GG-5 | TreeView Guard.git On/Off 토글 노드 | [`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) | ✅ |
-| GG-6 | `toggleGuardGit` 명령어 등록 | [`extension/src/extension.ts`](../extension/src/extension.ts) | ✅ |
-| GG-7 | 설정 6개 (`guard.enabled`, `guard.autoEnable`, `guard.yoctoBackupEnabled`, `guard.yoctoBackupIntervalMin`, `guard.integrityCheckIntervalMin`, `guard.linuxUseChattr`) | [`extension/package.json`](../extension/package.json) | ✅ |
-| GG-8 | l10n 영문/한글 번들 | [`extension/l10n/bundle.l10n.json`](../extension/l10n/bundle.l10n.json), [`extension/l10n/bundle.l10n.ko.json`](../extension/l10n/bundle.l10n.ko.json) | ✅ |
-| GG-9 | 설계 문서 작성 | [`plans/guard-git-design.md`](plans/guard-git-design.md) | ✅ |
+| GG-1 | GuardGitManager — multi-root·Worktree·residual ACL cleanup | [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) | ✅ |
+| GG-2 | GuardGitACL — OS-level ACL (icacls/chattr/chmod) | [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) | ✅ |
+| GG-3 | Yocto snapshot — .git core files (HEAD, config, refs) backup | [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) | ✅ |
+| GG-4 | SelfCheck integration — .git integrity self-diagnostics | [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) | ✅ |
+| GG-5 | TreeView Guard.git On/Off toggle node | [`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) | ✅ |
+| GG-6 | `toggleGuardGit` command registration | [`extension/src/extension.ts`](../extension/src/extension.ts) | ✅ |
+| GG-7 | 6 settings (`guard.enabled`, `guard.autoEnable`, `guard.yoctoBackupEnabled`, `guard.yoctoBackupIntervalMin`, `guard.integrityCheckIntervalMin`, `guard.linuxUseChattr`) | [`extension/package.json`](../extension/package.json) | ✅ |
+| GG-8 | l10n English/Korean bundles | [`extension/l10n/bundle.l10n.json`](../extension/l10n/bundle.l10n.json), [`extension/l10n/bundle.l10n.ko.json`](../extension/l10n/bundle.l10n.ko.json) | ✅ |
+| GG-9 | Design document writing | [`plans/guard-git-design.md`](plans/guard-git-design.md) | ✅ |
 
 ---
 

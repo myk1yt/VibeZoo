@@ -1,32 +1,32 @@
-# VibeZoo 다국어(C++, Rust, Go 및 일반 소스 파일) 분석 엔진 고도화 설계 제안서
+# VibeZoo Multi-language (C++, Rust, Go and General Source Files) Analysis Engine Enhancement Design Proposal
 
-이온기반 지능(파트너)님, VibeZoo Bridge의 핵심 도구인 `review_code` 및 `find_bugs`가 C++, Rust, Go 등 다양한 시스템 프로그래밍 언어와 일반 소스 파일에서도 TS/JS나 Python 못지않은 **우수한 정밀 버그 탐지 및 코드 품질 검사 도구**로 거듭나기 위한 기술적 수정 및 아키텍처 확장 방안을 제안합니다.
-
----
-
-## 1. 현재 VibeZoo 다국어 분석 아키텍처의 한계 분석
-
-현재 구현되어 있는 [ast_engine.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/ast_engine.py) 및 [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py)를 분석한 결과, 다음과 같은 구조적 보완점이 확인되었습니다.
-
-1. **Rust AST 분석 미연동**:
-   * `ast_engine.py`에는 Rust 파서(`rust_item`, `struct_item` 등)가 이미 구현되어 있으나, [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py#L490)의 실제 분석 분기에서는 `.rs` 파일에 대해 AST를 가동하지 않고 **단순 정규식 기반의 폴백(`unsafe`, `.unwrap()` 개수 카운팅)만 사용**하고 있습니다.
-2. **C/C++ 지원 전무**:
-   * C++(`.cpp`, `.hpp`, `.cc`, `.h`) 파일군은 `ast_engine.py` 내의 `LANGUAGES` 확장자 매핑 목록 및 `NODE_TYPES` 규칙 그룹에 전혀 포함되어 있지 않습니다.
-3. **Go 분석 규칙의 단편성**:
-   * Go(`.go`) 언어는 AST 파싱은 수행하나, 함수 길이 측정 외에 Go 언어 특유의 핵심적인 잠재 버그(채널 누출, 섀도잉, Defer 내 패닉 예방 등) 탐지 로직이 부족합니다.
-4. **`find_bugs`의 특정 언어 의존성**:
-   * [integrated.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/integrated.py#L400)의 `find_bugs` 구현은 Node.js 생태계의 `ESLint`와 `tsc`에 전적으로 의존하고 있어, C++/Rust/Go 등 타 언어 프로젝트에서는 컴파일러 경고와 린터 경고를 전혀 수집하지 못하고 있습니다.
+Ion-based Intelligence (Partner), this document proposes technical modifications and architecture expansion plans to transform VibeZoo Bridge's core tools `review_code` and `find_bugs` into **excellent precision bug detection and code quality inspection tools** for C++, Rust, Go, and other system programming languages as well as general source files, on par with TS/JS or Python.
 
 ---
 
-## 2. 언어별 세부 수정 및 고도화 설계
+## 1. Analysis of Current VibeZoo Multi-language Analysis Architecture Limitations
 
-### A. C++ (C++20/17 표준 대응) 지원 추가
-C++은 정적 분석을 통해 메모리 누수, 세그멘테이션 폴트, 미정의 동작(UB)을 유발하는 코드를 최우선으로 탐지해야 합니다.
+Analysis of the currently implemented [ast_engine.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/ast_engine.py) and [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py) reveals the following structural areas for improvement.
 
-1. **`ast_engine.py` 확장**:
+1. **Rust AST Analysis Not Integrated**:
+   * `ast_engine.py` already implements Rust parsers (`rust_item`, `struct_item`, etc.), but the actual analysis branch in [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py#L490) does **not** run AST for `.rs` files and only uses **simple regex-based fallback** (counting `unsafe`, `.unwrap()` occurrences).
+2. **No C/C++ Support**:
+   * C++ (`.cpp`, `.hpp`, `.cc`, `.h`) file groups are not included in `ast_engine.py`'s `LANGUAGES` extension mapping list or `NODE_TYPES` rule groups at all.
+3. **Fragmented Go Analysis Rules**:
+   * Go (`.go`) language performs AST parsing, but lacks detection logic for Go-specific critical potential bugs (channel leaks, shadowing, panic prevention in Defer, etc.) beyond function length measurement.
+4. **`find_bugs` Language-Specific Dependency**:
+   * The `find_bugs` implementation in [integrated.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/integrated.py#L400) relies entirely on Node.js ecosystem's `ESLint` and `tsc`, failing to collect compiler warnings and linter warnings at all for C++/Rust/Go projects.
+
+---
+
+## 2. Per-Language Detailed Modification and Enhancement Design
+
+### A. C++ (C++20/17 Standard) Support Addition
+C++ should prioritize detecting code that causes memory leaks, segmentation faults, and undefined behavior (UB) through static analysis.
+
+1. **`ast_engine.py` Extension**:
    ```python
-   # 1) LANGUAGES 매핑 추가
+   # 1) Add LANGUAGES mapping
    LANGUAGES = {
        ...
        '.cpp': 'cpp',
@@ -36,7 +36,7 @@ C++은 정적 분석을 통해 메모리 누수, 세그멘테이션 폴트, 미�
        '.c':   'c',
    }
 
-   # 2) NODE_TYPES 매핑 추가
+   # 2) Add NODE_TYPES mapping
    NODE_TYPES = {
        ...
        'cpp': {
@@ -48,28 +48,29 @@ C++은 정적 분석을 통해 메모리 누수, 세그멘테이션 폴트, 미�
    }
    ```
 
-2. **`reviewer.py` 내 C++ 특화 정적 검사 규칙 설계**:
-   * **생 포인터(Raw Pointer) 지양 규칙**: AST에서 `pointer_declarator`를 탐색하여 스마트 포인터(`std::unique_ptr`, `std::shared_ptr`) 대신 raw pointer(`*`)가 남용되었는지 검사합니다.
-   * **메모리 수동 해제 누수 위험**: `new` 예약어 검출 횟수와 `delete` 예약어 검출 횟수의 불일치를 모니터링합니다.
-   * **경계 검사 우회**: `std::vector`나 `std::array`에 대해 `.at()` 대신 경계 검사가 없는 대괄호 오퍼레이터(`[]`)를 사용한 위치를 감지합니다.
-   * **스레드 안전성**: `std::mutex`를 락한 후 `std::lock_guard`나 `std::unique_lock` 같은 RAII 패턴을 사용하지 않고 수동 락/언락을 하는 위험 코드를 경고합니다.
+2. **C++-specific Static Check Rules Design in `reviewer.py`**:
+   * **Raw Pointer Avoidance Rule**: Searches for `pointer_declarator` in AST to check if raw pointers (`*`) are overused instead of smart pointers (`std::unique_ptr`, `std::shared_ptr`).
+   * **Manual Memory Deallocation Leak Risk**: Monitors mismatch between `new` keyword detection count and `delete` keyword detection count.
+   * **Bounds Checking Bypass**: Detects locations using bracket operator (`[]`) without bounds checking instead of `.at()` for `std::vector` or `std::array`.
+   * **Thread Safety**: Warns about risky code that locks `std::mutex` but performs manual lock/unlock without using RAII patterns like `std::lock_guard` or `std::unique_lock`.
 
 ---
 
-### B. Rust AST 분석 실연동 및 고도화
-`ast_engine.py`에 구현된 Rust AST 파서를 실제 [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py)의 동작 흐름으로 끌어올립니다.
+### B. Rust AST Analysis Integration and Enhancement
 
-1. **`reviewer.py` 구조 수정**:
+Elevate the Rust AST parser implemented in `ast_engine.py` into the actual operation flow of [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py).
+
+1. **`reviewer.py` Structure Modification**:
    ```python
    elif ext == ".rs":
-       # 1) AST 엔진을 통해 구조 파악
+       # 1) Parse structure via AST engine
        ast = ast_engine.parse(content, ext)
        functions = ast.get("functions", [])
-       classes = ast.get("classes", [])  # Struct / Enum 매핑
+       classes = ast.get("classes", [])  # Struct / Enum mapping
        stats["functions"] = len(functions)
        stats["classes"] = len(classes)
 
-       # 2) AST 기반의 복잡도 및 깊이 계산 기동
+       # 2) Run AST-based complexity and depth calculation
        comp = _compute_cyclomatic_complexity(content, ext)
        if comp > 15:
            issues.append(("⚠️", f"Cyclomatic complexity: {comp} — consider simplifying"))
@@ -79,80 +80,82 @@ C++은 정적 분석을 통해 메모리 누수, 세그멘테이션 폴트, 미�
            issues.append(("⚠️", f"Maximum nesting depth: {max_depth} — use match or early returns"))
    ```
 
-2. **Rust 특화 정적 검사 규칙 설계**:
-   * **`unsafe` 블록 내부 복잡도 제어**: AST에서 `unsafe_block` 노드를 찾아내고, 해당 블록의 라인 수가 15줄을 초과하거나 분기가 포함되어 있다면 안전성 검증을 위해 모듈 분할을 권장합니다.
-   * **묵살된 Result/Option 처리**: `let _ = ...` 패턴을 통해 에러 전파(`?`)나 명시적 처리를 무시하고 덮어버린 위치를 식별합니다.
-   * **Panic 유발 지점 차단**: `.unwrap()` 및 `panic!` 매크로 사용 외에도, 안전한 `expect()` 및 `unwrap_or()` 권장 경고를 정교화합니다.
-   * **클론 남용 감지**: 소유권(Ownership) 개념을 우회하기 위해 `.clone()`을 지나치게 잦은 빈도로 사용하는 패턴을 정규식 및 AST 노출 빈도로 탐지합니다.
+2. **Rust-specific Static Check Rules Design**:
+   * **`unsafe` Block Complexity Control**: Finds `unsafe_block` nodes in AST and recommends module splitting for safety verification if the block exceeds 15 lines or contains branches.
+   * **Silenced Result/Option Handling**: Identifies locations where error propagation (`?`) or explicit handling is ignored through `let _ = ...` patterns.
+   * **Panic Trigger Point Blocking**: Beyond `.unwrap()` and `panic!` macro usage, refine warnings recommending safer `expect()` and `unwrap_or()`.
+   * **Clone Overuse Detection**: Detects patterns of excessive `.clone()` usage to bypass ownership concepts through regex and AST exposure frequency.
 
 ---
 
-### C. Go 분석 규칙의 고도화
-단순 함수 길이 검사를 넘어, Go 컴파일러가 직접 잡지 못하는 런타임 고루틴 누출(Goroutine Leak) 및 동시성 관련 안티패턴을 탐지합니다.
+### C. Go Analysis Rules Enhancement
 
-1. **`reviewer.py` 내 Go 특화 정적 검사 규칙 설계**:
-   * **고루틴 내 루프 변수 캡처 (Loop Variable Capture)**: Go 1.22 미만 버전과의 호환성을 고려해, `for` 루프 안에서 `go func()`나 `defer func()`를 실행할 때 루프 변수를 매개변수로 넘기지 않고 클로저로 직접 참조하는 버그를 AST 상에서 검출합니다.
-   * **Defer 내 패닉 예방**: `defer`로 실행되는 함수 내에 `recover()`가 없으면서 리소스를 정리하다 패닉이 발생할 수 있는 잠재적 위험 요소를 탐지합니다.
-   * **채널 데드락**: 용량이 없는 버퍼리스 채널(unbuffered channel)을 쓰면서 송신/수신부가 다른 고루틴으로 분리되어 있지 않아 발생하는 데드락 위험 구조를 탐색합니다.
-   * **동시성 락 누수**: `sync.Mutex` 호출 이후 `defer mu.Unlock()`이 즉시 호출되지 않고 긴 함수 블록 뒤에 수동 배치된 구조를 식별합니다.
+Beyond simple function length checking, detect runtime goroutine leaks and concurrency anti-patterns that the Go compiler cannot catch directly.
+
+1. **Go-specific Static Check Rules Design in `reviewer.py`**:
+   * **Loop Variable Capture in Goroutine**: Considering compatibility with Go versions below 1.22, detect bugs on AST where loop variables are directly referenced by closure without passing as parameters when executing `go func()` or `defer func()` inside `for` loops.
+   * **Panic Prevention in Defer**: Detect potential risk factors where functions executed with `defer` lack `recover()` and may panic while cleaning up resources.
+   * **Channel Deadlock**: Detect dangerous structures where unbuffered channels (capacity 0) are used but send/receive sides are not separated into different goroutines, causing deadlock risks.
+   * **Concurrency Lock Leak**: Identify structures where `sync.Mutex` is called but `defer mu.Unlock()` is not immediately invoked, instead placed manually after long function blocks.
 
 ---
 
-## 4. 일반 소스 파일 (Shell Script, YAML, Dockerfile 등)
-구문 트리가 필요하지 않은 구성 파일이나 스크립트에서도 실제 작동 가능한 경고를 도출하도록 범용 규칙을 확장합니다.
+## 4. General Source Files (Shell Script, YAML, Dockerfile, etc.)
+
+Extend general rules to produce actionable warnings for configuration files or scripts that don't require syntax trees.
 
 1. **Shell Script (`.sh`, `.bash`, `.ps1`)**:
-   * 변수 선언 시 따옴표(`"`) 누락으로 인한 공백 분리 버그 감지.
-   * `set -e` 또는 `set -o pipefail` 등의 안전 장치 부재 경고.
-   * 정적 린터 도구 `shellcheck` 연동.
-2. **IaC 및 설정 파일 (`Dockerfile`, `.yaml`, `.json`)**:
-   * `Dockerfile`: `latest` 태그 고정 사용, `apt-get` 실행 시 캐시 미삭제 패턴 검출.
-   * `YAML`/`JSON`: 중복 키 선언, 환경변수에 비밀번호/API 토큰이 하드코딩되었는지 패턴 매칭 검사.
+   * Detection of word splitting bugs due to missing quotes (`"`) in variable declarations.
+   * Warning about absence of safety measures like `set -e` or `set -o pipefail`.
+   * Static linter tool `shellcheck` integration.
+2. **IaC and Configuration Files (`Dockerfile`, `.yaml`, `.json`)**:
+   * `Dockerfile`: Detection of fixed `latest` tag usage, `apt-get` cache cleanup omission patterns.
+   * `YAML`/`JSON`: Pattern matching to check for hardcoded passwords/API tokens in environment variables.
 
 ---
 
-## 5. `find_bugs` 엔진의 다국어 빌드 체인 연동 구조 개편 (거시적)
+## 5. `find_bugs` Engine Multi-language Build Chain Integration Architecture Restructuring (Macro)
 
-`find_bugs` 도구의 핵심은 **실제 동작하는 빌드 경고를 LLM에 공급**하는 것입니다. 이를 위해 [integrated.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/integrated.py) 내에 다국어 빌드 도구 래퍼 체인을 아래와 같이 구축해야 합니다.
+The core of the `find_bugs` tool is **supplying actually occurring build warnings to the LLM**. To this end, a multi-language build tool wrapper chain should be built within [integrated.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/integrated.py) as described below.
 
-### ⚙️ 빌드 엔진 스위처 도입 설계
-프로젝트의 루트 디렉토리에 있는 핵심 파일(`.git`, `Cargo.toml`, `go.mod`, `CMakeLists.txt`, `package.json`)을 기반으로 주 언어와 빌드 툴을 자동 감지합니다.
+### ⚙️ Build Engine Switcher Introduction Design
+Automatically detect the primary language and build tool based on core files (`.git`, `Cargo.toml`, `go.mod`, `CMakeLists.txt`, `package.json`) in the project root directory.
 
 ```mermaid
 graph TD
-    A[find_bugs 호출] --> B{프로젝트 루트 파일 감지}
-    B -- Cargo.toml 존재 --> C[cargo clippy / cargo check 구동]
-    B -- go.mod 존재 --> D[go vet / golangci-lint 구동]
-    B -- CMakeLists.txt 존재 --> E[clang-tidy / cppcheck 구동]
-    B -- package.json 존재 --> F[eslint / tsc 구동]
-    C & D & E & F --> G[컴파일러 로그 및 린트 결과 표준화 파싱]
-    G --> H[LLM-ready 데이터 포맷 변환 및 Crow Memory 병합]
+    A[find_bugs call] --> B{Detect project root file}
+    B -- Cargo.toml exists --> C[Run cargo clippy / cargo check]
+    B -- go.mod exists --> D[Run go vet / golangci-lint]
+    B -- CMakeLists.txt exists --> E[Run clang-tidy / cppcheck]
+    B -- package.json exists --> F[Run eslint / tsc]
+    C & D & E & F --> G[Standardized parsing of compiler logs and lint results]
+    G --> H[LLM-ready data format conversion and Crow Memory merge]
 ```
 
-### 1. Rust (`Cargo.toml`) 감지 시
-* **실행 명령어**: `cargo clippy --message-format=json --all-targets`
-* **장점**: JSON 포맷으로 빌드 경고와 에러 정보를 완벽히 파싱할 수 있으므로, 에러가 발생한 정확한 라인, 코드 스니펫, 수정 제안(`clippy::suggestion`)을 LLM에게 정량적 데이터로 직접 제공 가능합니다.
+### 1. When Rust (`Cargo.toml`) Detected
+* **Execution Command**: `cargo clippy --message-format=json --all-targets`
+* **Advantage**: Build warnings and error information can be fully parsed in JSON format, providing exact lines of errors, code snippets, and fix suggestions (`clippy::suggestion`) directly to the LLM as quantitative data.
 
-### 2. Go (`go.mod`) 감지 시
-* **실행 명령어**: `go vet ./...` 또는 로컬 환경에 `golangci-lint`가 존재하는 경우 `golangci-lint run --out-format=json`
-* **장점**: 단순 컴파일 에러를 넘어 Go 언어 공식 도구가 권장하는 동시성 안전 검사 결과를 통일된 포맷으로 변환합니다.
+### 2. When Go (`go.mod`) Detected
+* **Execution Command**: `go vet ./...` or `golangci-lint run --out-format=json` if `golangci-lint` exists in the local environment.
+* **Advantage**: Converts concurrency safety inspection results recommended by official Go tools into a unified format beyond simple compile errors.
 
-### 3. C++ (`CMakeLists.txt` or `Makefile`) 감지 시
-* **실행 명령어**: `cppcheck --enable=all --xml .` 또는 `clang-tidy`가 구성되어 있는 경우 컴파일 데이터베이스를 참조하여 분석 구동.
-* **장점**: 빌드 과정의 환경적 경고들을 수집하여 초기 빌드 실패 위험을 미연에 방지합니다.
+### 3. When C++ (`CMakeLists.txt` or `Makefile`) Detected
+* **Execution Command**: `cppcheck --enable=all --xml .` or if `clang-tidy` is configured, run analysis referencing the compilation database.
+* **Advantage**: Collects environmental warnings from the build process to prevent early build failure risks.
 
 ---
 
-## 6. 구체적 린터 래핑 파이프라인 구현(예시)
+## 6. Concrete Linter Wrapping Pipeline Implementation (Example)
 
-`integrated.py`의 `find_bugs` 내부에서 아래와 같이 모듈화된 다국어 빌드 피드백 수집 구조를 구현할 수 있습니다.
+Within `integrated.py`'s `find_bugs`, a modular multi-language build feedback collection structure can be implemented as follows.
 
 ```python
 def _run_native_linter(root: Path) -> dict:
-    """프로젝트 언어 환경을 감지하여 알맞은 린터/컴파일러 피드백을 반환합니다."""
+    """Detects project language environment and returns appropriate linter/compiler feedback."""
     diagnostics = {"language": "unknown", "errors": [], "warnings": []}
     
-    # 1. Rust 프로젝트
+    # 1. Rust project
     if (root / "Cargo.toml").exists():
         diagnostics["language"] = "rust"
         try:
@@ -178,7 +181,7 @@ def _run_native_linter(root: Path) -> dict:
         except Exception as e:
             diagnostics["errors"].append({"file": "Cargo.toml", "line": 0, "message": f"Clippy run failed: {e}"})
 
-    # 2. Go 프로젝트
+    # 2. Go project
     elif (root / "go.mod").exists():
         diagnostics["language"] = "go"
         try:
@@ -198,10 +201,10 @@ def _run_native_linter(root: Path) -> dict:
         except Exception as e:
             diagnostics["errors"].append({"file": "go.mod", "line": 0, "message": f"Go vet run failed: {e}"})
 
-    # 3. TS/JS (기존 레거시)
+    # 3. TS/JS (existing legacy)
     elif (root / "package.json").exists():
         diagnostics["language"] = "typescript"
-        # 기존 eslint 및 tsc 파서 로직 실행
+        # Run existing eslint and tsc parser logic
         ...
         
     return diagnostics

@@ -1,6 +1,6 @@
 # VibeZoo Architecture — v0.14.4
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 다국어 분석)
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 Multilingual Analysis)
 > **Baseline Version**: v0.14.4
 > **Project**: VibeZoo — Standalone Companion Extension for Zoo Code
 > **Core Constraint**: Do not modify Zoo Code source code. All features are implemented via VibeZoo Extension + MCP Bridge + configuration changes.
@@ -33,8 +33,8 @@
 | 18 | **Fabric.js Local Bundling** (v0.13.0) | CDN only | [`extension/media/fabric.min.js`](../extension/media/fabric.min.js) — local file + CDN fallback |
 | 19 | **Atomic Backup** (v0.13.0) | fs.copyFileSync | [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) — `atomicCopyFile()` temp file+crypto.randomUUID+rename |
 | 20 | **Crow Exponential Backoff** (v0.13.0) | Simple try/except | [`mcp-servers/vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — 150ms start, 2x increase, max 3 attempts, random jitter |
-| 21 | **Guard.git** (v0.14.3) | Not present | [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) + [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) — OS 레벨 ACL(icacls/chattr/chmod)로 `.git` 폴더 삭제 방지, 멀티 루트/Worktree 대응, Shell injection 방어, Yocto 스냅샷, SelfCheck 통합 |
- 
+| 21 | **Guard.git** (v0.14.3) | Not present | [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) + [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) — OS-level ACL (icacls/chattr/chmod) to prevent `.git` folder deletion, multi-root/Worktree support, Shell injection defense, Yocto snapshot, SelfCheck integration |
+
 ---
 
 ## 1. Executive Summary
@@ -151,8 +151,8 @@ VibeZoo_forZoocode/
 │       ├── safety/
 │       │   ├── FileGuard.ts          # .yoloignore-based protected file watch·restore
 │       │   ├── GitStashManager.ts    # YOLO entry/exit Git Stash automation
-│       │   ├── GuardGitACL.ts        # OS 레벨 ACL 보호 (icacls/chattr/chmod)
-│       │   ├── GuardGitManager.ts    # Guard.git 전체 관리 (멀티 루트, Worktree, 잔여 ACL 정리)
+│       │   ├── GuardGitACL.ts        # OS-level ACL protection (icacls/chattr/chmod)
+│       │   ├── GuardGitManager.ts    # Guard.git overall management (multi-root, Worktree, residual ACL cleanup)
 │       │   └── YoctoManager.ts       # yocto real-time backup·restore (FileSystemWatcher)
 │       ├── types/
 │       │   └── index.ts              # Common types (Diagnostic, SessionSummary, SubagentNode, etc.)
@@ -350,9 +350,9 @@ All status information integrated into a single StatusBar item `$(zap) VibeZoo`:
 ```
 LAYER 1: Prevention (Config-based + OS-level)
 ├── .yoloignore file → FileGuard watches
-├── Guard.git: OS ACL (icacls/chattr/chmod)로 `.git` 폴더 삭제 차단
-│   ├── GuardGitManager: 멀티 루트·Worktree·잔여 ACL 정리
-│   └── GuardGitACL: Windows icacls / Linux chattr / macOS chmod (execFile 전용)
+├── Guard.git: OS ACL (icacls/chattr/chmod) blocks `.git` folder deletion
+│   ├── GuardGitManager: multi-root·Worktree·residual ACL cleanup
+│   └── GuardGitACL: Windows icacls / Linux chattr / macOS chmod (execFile only)
 └── Zoo Code MCP tool permission settings
 
 LAYER 2: Real-time Detection & Recovery (VibeZoo)
@@ -474,9 +474,9 @@ User:                                                   │
 | 29 | `recall_project` | Knowledge (M3-D) | — | Recall project knowledge from Crow |
 | 30 | `learn_preference` | Preferences (M3-E) | — | Save user coding preferences |
 | 31 | `get_preferences` | Preferences (M3-E) | — | Retrieve saved preferences |
-| 32 | `ux_coordinator` | UX (신규) | — | 사용자 의도 분석 + 도구 체인 제안 |
-| 33 | `auto_analyze_after_drop` | UX (신규) | — | 드롭존 업로드 후 자동 분석 파이프라인 (SSA→OCR→MiniCPM) |
-| 34 | `auto_analyze_whiteboard` | UX (신규) | — | 화이트보드 자동 분석 |
+| 32 | `ux_coordinator` | UX (New) | — | User intent analysis + tool chain proposal |
+| 33 | `auto_analyze_after_drop` | UX (New) | — | Auto analysis pipeline after dropzone upload (SSA→OCR→MiniCPM) |
+| 34 | `auto_analyze_whiteboard` | UX (New) | — | Auto whiteboard analysis |
 
 ---
 
@@ -530,7 +530,7 @@ VibeZoo v0.14.3 achieved the following **without modifying a single line of Zoo 
 - **UX Workflow**: Intent detection + automatic tool chain orchestration (intent_detector + ux_coordinator)
 - **Autonomous Fix Loop**: Build failure → LLM analysis → fix → rebuild (oscillation detection + HITL)
 - **Continuous Improvement Mode (CIM)**: File save → auto tsc check → Auto-Fix
-- **Integrated Safety Net**: yocto backup + File Guard + Git Stash + Instant Rewind + **Guard.git** (OS ACL `.git` 삭제 방지)
+- **Integrated Safety Net**: yocto backup + File Guard + Git Stash + Instant Rewind + **Guard.git** (OS ACL `.git` deletion prevention)
 - **3 TreeViews**: Active Subagents, YOLO History, Session Resume (Crow·local·yocto triple fallback)
 - **Unified StatusBar**: Bridge·Crow·YOLO·CIM status displayed in a single item
 - **Visual Collaboration**: Whiteboard (fs.watchFile), UI Preview, Vision AI Pipeline

@@ -1,100 +1,100 @@
-# VibeZoo v2 업그레이드 설계 문서
+# VibeZoo v2 Upgrade Design Document
 
-> 버전: v0.15.0 | 날짜: 2026-06-02 | 실제 사용 피드백 기반
-
----
-
-## 0. 배경 및 문제 진단
-
-2026-06-02 실제 VibeZoo 사용 중 발견된 부족한 점을 진단하고 개선 방안을 설계합니다.
-사용자가 KOICA CTS 공모 PDF 파일을 드랍존에 업로드 → 분석해달라고 요청 → 결과 제공까지의 워크플로우에서 다음과 같은 문제가 발견되었습니다:
-
-| # | 문제 | 심각도 | 근본 원인 |
-|---|------|--------|-----------|
-| 1 | **드랍존이 이미지 전용** | 🔴 높음 | `_DROPZONE_HTML`의 메시지가 "Drag & drop an image"로 제한적, 저장 경로가 `.png` 고정 |
-| 2 | **PDF 스캔문서 분석 실패** | 🔴 높음 | `file_analyzer.py`의 PDF 핸들러가 `page.get_text()`만 수행. 텍스트 없는 스캔 PDF는 빈 결과 반환 |
-| 3 | **auto_analyze_after_drop 미연동** | 🟡 중간 | PDF 타입 처리시 단순히 "analyze_uploaded_file()로 분석 가능" 메시지만 표시 |
-| 4 | **OCR 신뢰도 낮음 (49%)** | 🟡 중간 | Tesseract 한국어 OCR 정확도가 불충분. 이미지 전처리 부재 |
+> Version: v0.15.0 | Date: 2026-06-02 | Based on Real Usage Feedback
 
 ---
 
-## 1. 전체 아키텍처 변경도
+## 0. Background and Problem Diagnosis
+
+Diagnose shortcomings discovered during actual VibeZoo usage on 2026-06-02 and design improvement plans.
+The following problems were found in the workflow of a user uploading a KOICA CTS proposal PDF to the dropzone → requesting analysis → receiving results:
+
+| # | Problem | Severity | Root Cause |
+|---|---------|----------|------------|
+| 1 | **Dropzone image-only** | 🔴 High | `_DROPZONE_HTML` message limited to "Drag & drop an image", save path fixed to `.png` |
+| 2 | **PDF scanned document analysis failure** | 🔴 High | PDF handler in `file_analyzer.py` only performs `page.get_text()`. Textless scanned PDF returns empty results |
+| 3 | **auto_analyze_after_drop not integrated** | 🟡 Medium | PDF type handling only shows "analyzable via analyze_uploaded_file()" message |
+| 4 | **Low OCR confidence (49%)** | 🟡 Medium | Tesseract Korean OCR accuracy insufficient. No image preprocessing |
+
+---
+
+## 1. Overall Architecture Change Diagram
 
 ```mermaid
 graph TD
-    USER[사용자 - 파일 업로드]
+    USER[User - File Upload]
 
     subgraph EXT[VS Code Extension]
-        DZ_WEBVIEW[DZ Webview - 범용 업로드]
+        DZ_WEBVIEW[DZ Webview - Universal Upload]
         FILE_WATCHER[File Watcher]
     end
 
     subgraph BRIDGE[MCP Bridge - 9027]
         DZ[Capture Screen / Dropzone]
-        UP[upload_detected_file - 신규]
-        AAD[auto_analyze_after_drop - 개선]
-        FA[File Analyzer - 개선]
-        PDF2IMG[PDF→Image Pipeline - 신규]
-        OCR[OCR Engine - 개선]
+        UP[upload_detected_file - New]
+        AAD[auto_analyze_after_drop - Improved]
+        FA[File Analyzer - Improved]
+        PDF2IMG[PDF→Image Pipeline - New]
+        OCR[OCR Engine - Improved]
         SSA[SSA Analyzer]
         VISION[MiniCPM-V]
     end
 
-    USER -->|드래그&드롭| DZ_WEBVIEW
-    DZ_WEBVIEW -->|파일 저장| UP
+    USER -->|Drag & Drop| DZ_WEBVIEW
+    DZ_WEBVIEW -->|File Save| UP
     UP --> AAD
-    AAD -->|이미지| FA
+    AAD -->|Image| FA
     AAD -->|PDF| PDF2IMG
-    PDF2IMG -->|fitz 변환| FA
+    PDF2IMG -->|fitz conversion| FA
     FA --> OCR
     FA --> SSA
     FA --> VISION
-    OCR --> RESULT[분석 결과 → 사용자]
+    OCR --> RESULT[Analysis Result → User]
     VISION --> RESULT
 ```
 
-## 2. 수정 대상 파일 및 상세 변경
+## 2. Target Files and Detailed Changes
 
-### Phase 1: 드랍존 범용화 (whiteboard.py + config.py)
+### Phase 1: Dropzone Generalization (whiteboard.py + config.py)
 
-#### 2.1 `config.py` — 업로드 경로 개선
+#### 2.1 `config.py` — Upload Path Improvement
 
-**현재**: `UPLOADED_IMAGE_PATH = str(_TEMP_DIR / "vibezoo_uploaded_image.png")` (항상 `.png`)
+**Current**: `UPLOADED_IMAGE_PATH = str(_TEMP_DIR / "vibezoo_uploaded_image.png")` (always `.png`)
 
-**변경**: 확장자를 보존하는 동적 경로로 변경
+**Change**: Dynamic path preserving extension
 
 ```python
-# config.py — 추가
+# config.py — addition
 import uuid
-UPLOADED_IMAGE_PATH = str(_TEMP_DIR / "vibezoo_uploaded_image.png")  # 하위 호환 유지
+UPLOADED_IMAGE_PATH = str(_TEMP_DIR / "vibezoo_uploaded_image.png")  # Maintain backward compatibility
 DEFAULT_UPLOAD_NAME = "dropped_image.png"
 
 def get_uploaded_path(filename: str = None) -> str:
-    """파일명 기반 업로드 경로 반환. 없으면 기본값."""
+    """Returns upload path based on filename. Default if none."""
     if filename and os.path.splitext(filename)[1]:
         safe_name = str(uuid.uuid4())[:8] + "_" + os.path.basename(filename)
         return str(HOME_DIR / ".vibezoo-cache" / safe_name)
     return str(HOME_DIR / ".vibezoo-cache" / DEFAULT_UPLOAD_NAME)
 ```
 
-#### 2.2 `whiteboard.py` — 드롭존 HTML 멀티타입 지원
+#### 2.2 `whiteboard.py` — Dropzone HTML Multi-type Support
 
-**_DROPZONE_HTML 변경 (58번째 줄 근처)**:
+**`_DROPZONE_HTML` Change (around line 58)**:
 
 ```html
-<!-- 현재 -->
+<!-- Current -->
 <p>Drag & drop an image here<br>or <strong>click to browse</strong></p>
 <p class="hint">Supports all file types: images, PDF, DOCX, TXT, code, etc.</p>
 
-<!-- 변경 (아이콘 + 더 명확한 메시지) -->
+<!-- Change (icon + clearer message) -->
 <p>Drag & drop a file here<br>or <strong>click to browse</strong></p>
 <p class="hint">📸 Images 📄 PDF 📝 DOCX 📋 TXT 💻 Code — all file types supported</p>
 ```
 
-**_open_dropzone_in_webview() 변경 (815번째 줄)**:
+**`_open_dropzone_in_webview()` Change (line 815)**:
 
 ```python
-# 반환 메시지 업데이트
+# Return message update
 return (_markdown_header("File Drop Zone", "📎")
         + "Drop zone opened in VS Code Webview.\n\n"
         + "1. Drag & drop any file (images, PDF, DOCX, TXT, code) into the Webview\n"
@@ -104,19 +104,19 @@ return (_markdown_header("File Drop Zone", "📎")
         + _markdown_footer())
 ```
 
-### Phase 2: PDF 스캔문서 파이프라인 (file_analyzer.py 신규)
+### Phase 2: PDF Scanned Document Pipeline (file_analyzer.py New)
 
-#### 2.3 `file_analyzer.py` — `_analyze_pdf_fallback()` 함수 추가
+#### 2.3 `file_analyzer.py` — Add `_analyze_pdf_fallback()` Function
 
-PDF에서 텍스트가 추출되지 않을 때 이미지 변환 → OCR 파이프라인으로 폴백:
+When text cannot be extracted from PDF, fallback to image conversion → OCR pipeline:
 
 ```python
-# file_analyzer.py — 신규 함수 (214번째 줄, 기존 PDF 처리 블록 내부에서 호출)
+# file_analyzer.py — new function (line 214, called inside existing PDF processing block)
 
 def _analyze_pdf_as_image(path: str, lines: list) -> None:
-    """PDF를 이미지로 변환하여 분석 파이프라인 (SSA → OCR → MiniCPM) 실행.
+    """Convert PDF to image and run analysis pipeline (SSA → OCR → MiniCPM).
     
-    텍스트 추출 불가능한 스캔 문서 PDF 처리.
+    Handles scanned document PDFs where text extraction is impossible.
     """
     try:
         import fitz
@@ -126,8 +126,8 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
             doc.close()
             return
         
-        page = doc[0]  # 첫 페이지만 분석
-        pix = page.get_pixmap(dpi=200)  # 200 DPI로 렌더링
+        page = doc[0]  # Analyze only first page
+        pix = page.get_pixmap(dpi=200)  # Render at 200 DPI
         img_path = path + "_page1.png"
         pix.save(img_path)
         doc.close()
@@ -153,7 +153,7 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
         except Exception as e:
             lines.append(f"SSA analysis skipped: {e}")
         
-        # OCR (한국어 우선)
+        # OCR (Korean priority)
         try:
             from bridge.ocr_engine import OcrEngine
             ocr = OcrEngine()
@@ -169,14 +169,14 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
             from bridge.vision.minicpm import describe_image, is_available
             if is_available():
                 desc = describe_image(img_path, 
-                    "이 PDF 문서의 내용을 한국어로 자세히 읽어주세요. 모든 텍스트를 추출해주세요.")
+                    "Please read this PDF document's content in detail. Extract all text.")
                 if desc:
                     lines.append("### 🤖 Vision Analysis (MiniCPM-V)")
                     lines.append(desc)
         except Exception:
             pass
         
-        # 임시 파일 정리
+        # Cleanup temp file
         try:
             os.remove(img_path)
         except Exception:
@@ -188,140 +188,140 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
         lines.append(f"⚠️ PDF image analysis failed: {e}")
 ```
 
-**기존 PDF 블록 수정 (213-231행)**:
+**Existing PDF Block Modification (lines 213-231)**:
 
-`page.get_text()`가 빈 텍스트를 반환할 경우 `_analyze_pdf_as_image()` 호출:
+When `page.get_text()` returns empty text, call `_analyze_pdf_as_image()`:
 
 ```python
-# 224행 부근 변경
+# Around line 224
 text = page.get_text()
 if text.strip():
     lines.append(f"\n**Page {i+1}:**")
     lines.append(f"```\n{text[:2000]}\n```")
 else:
-    # 스캔 문서: 이미지 변환 → OCR/MiniCPM 파이프라인
+    # Scanned document: image conversion → OCR/MiniCPM pipeline
     _analyze_pdf_as_image(path, lines)
-    break  # 첫 페이지만 처리하고 종료
+    break  # Process only first page and exit
 ```
 
-### Phase 3: auto_analyze_after_drop 강화 (ux_coordinator.py)
+### Phase 3: auto_analyze_after_drop Enhancement (ux_coordinator.py)
 
-#### 2.4 `ux_coordinator.py` — PDF 파일 자동 분석 추가
+#### 2.4 `ux_coordinator.py` — Add PDF File Auto Analysis
 
-`auto_analyze_after_drop()`의 doc_exts 처리 부분(159-186행)에서 PDF에 대해 `analyze_uploaded_file()`을 직접 호출하도록 변경:
+Change the doc_exts processing part (lines 159-186) in `auto_analyze_after_drop()` to directly call `analyze_uploaded_file()` for PDF:
 
 ```python
 elif ext in doc_exts:
-    response.append("📄 **문서 파일**이 감지되었습니다.")
-    response.append("분석을 위해 내용을 추출합니다...")
+    response.append("📄 **Document file** detected.")
+    response.append("Extracting content for analysis...")
     
     try:
         if ext in {'.txt', '.md', '.rst', '.csv', '.tsv'}:
-            # ... (기존 텍스트 읽기 코드 유지) ...
+            # ... (existing text reading code kept) ...
         elif ext == '.pdf':
-            # PDF: file_analyzer의 analyze_file() 직접 호출 (스캔 문서 대응)
+            # PDF: directly call file_analyzer's analyze_file() (for scanned documents)
             from bridge.tools.file_analyzer import analyze_file
             analysis = analyze_file(file_path)
             response.append(analysis)
         else:
-            response.append(f"DOCX/XLSX 파일입니다. `analyze_uploaded_file()`로 상세 분석 가능합니다.")
+            response.append(f"DOCX/XLSX file. Can analyze with `analyze_uploaded_file()` for details.")
     except Exception as e:
-        response.append(f"파일 읽기 실패: {e}")
+        response.append(f"File read failed: {e}")
 ```
 
-### Phase 4: OCR 전처리 개선 (ocr_engine.py)
+### Phase 4: OCR Preprocessing Improvement (ocr_engine.py)
 
-#### 2.5 `ocr_engine.py` — 이미지 전처리 추가
+#### 2.5 `ocr_engine.py` — Add Image Preprocessing
 
 ```python
-# _ocr_tesseract 메서드에 이미지 전처리 단계 추가 (234행 근처, pil_img 변환 후)
+# Add image preprocessing step to _ocr_tesseract method (near line 234, after pil_img conversion)
 
 def _preprocess_for_ocr(self, pil_img) -> Image:
-    """OCR 정확도 향상을 위한 이미지 전처리"""
+    """Image preprocessing for improved OCR accuracy"""
     try:
         import cv2
         import numpy as np
         
-        # PIL → OpenCV 변환
+        # PIL → OpenCV conversion
         cv_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         
-        # 그레이스케일 변환
+        # Grayscale conversion
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
         
-        # Adaptive Thresholding (조명 불균일 보정)
+        # Adaptive Thresholding (uneven illumination correction)
         binary = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY, 31, 10
         )
         
-        # 노이즈 제거
+        # Noise removal
         denoised = cv2.fastNlMeansDenoising(binary, None, 10, 7, 21)
         
         return Image.fromarray(denoised)
     except Exception:
-        # OpenCV 없으면 원본 반환
+        # Return original if OpenCV not available
         return pil_img
 
-# _ocr_tesseract에서 pil_img = Image.open(image_path) 후에:
+# In _ocr_tesseract, after pil_img = Image.open(image_path):
 pil_img = self._preprocess_for_ocr(pil_img)
 ```
 
-### Phase 5: cleanup 및 테스트 파일 정리
+### Phase 5: Cleanup and Test File Cleanup
 
-#### 2.6 `_extract_pdf.py`, `_extract_pdf_v2.py` 삭제
+#### 2.6 Delete `_extract_pdf.py`, `_extract_pdf_v2.py`
 
-임시 테스트 파일 제거.
-
----
-
-## 3. 구현 순서
-
-| Phase | 항목 | 파일 | 변경 규모 |
-|-------|------|------|-----------|
-| **P1** | 드랍존 범용화 | [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | ~10줄 |
-| **P1** | 업로드 경로 개선 | [`config.py`](mcp-servers/bridge/config.py) | ~15줄 신규 |
-| **P2** | PDF 스캔문서 파이프라인 | [`file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | ~70줄 신규 + 5줄 수정 |
-| **P3** | auto_analyze_after_drop 강화 | [`ux_coordinator.py`](mcp-servers/bridge/tools/ux_coordinator.py) | ~10줄 수정 |
-| **P4** | OCR 이미지 전처리 | [`ocr_engine.py`](mcp-servers/bridge/ocr_engine.py) | ~25줄 신규 + 2줄 수정 |
-| **P5** | cleanup | `_extract_pdf.py`, `_extract_pdf_v2.py` | 삭제 |
-
-**예상 총 변경량**: ~140줄 신규 + ~27줄 수정
+Remove temporary test files.
 
 ---
 
-## 4. 변경 후 예상 워크플로우
+## 3. Implementation Order
+
+| Phase | Item | File | Change Size |
+|-------|------|------|-------------|
+| **P1** | Dropzone generalization | [`whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | ~10 lines |
+| **P1** | Upload path improvement | [`config.py`](mcp-servers/bridge/config.py) | ~15 lines new |
+| **P2** | PDF scanned document pipeline | [`file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | ~70 lines new + 5 lines modified |
+| **P3** | auto_analyze_after_drop enhancement | [`ux_coordinator.py`](mcp-servers/bridge/tools/ux_coordinator.py) | ~10 lines modified |
+| **P4** | OCR image preprocessing | [`ocr_engine.py`](mcp-servers/bridge/ocr_engine.py) | ~25 lines new + 2 lines modified |
+| **P5** | Cleanup | `_extract_pdf.py`, `_extract_pdf_v2.py` | Delete |
+
+**Estimated total change**: ~140 lines new + ~27 lines modified
+
+---
+
+## 4. Expected Workflow After Changes
 
 ```
-사용자: "드랍존 열어줘"
+User: "Open dropzone"
   → Zoo: capture_screen(dropzone)
-  → 드랍존 오픈 (📎 File Drop Zone)
+  → Dropzone opens (📎 File Drop Zone)
 
-사용자: PDF 파일 드래그&드롭
-  → upload_{uuid}_{filename}.pdf 저장
+User: Drag & drop PDF file
+  → upload_{uuid}_{filename}.pdf saved
   
 Zoo: auto_analyze_after_drop(upload_path)
-  → PDF 감지 → analyze_file() 호출
-  → PyMuPDF로 텍스트 추출 시도
-  → 텍스트 없으면: fitz로 이미지 변환 (200 DPI)
-  → SSA 공간 분석
-  → OCR (Tesseract, 전처리 적용, kor+eng)
-  → MiniCPM-V 비전 분석
-  → 결과 종합 → 사용자에게 제시
-  → "무엇을 해드릴까요?" 후속 질문
+  → PDF detected → analyze_file() called
+  → PyMuPDF text extraction attempt
+  → No text: fitz image conversion (200 DPI)
+  → SSA spatial analysis
+  → OCR (Tesseract, preprocessing applied, kor+eng)
+  → MiniCPM-V vision analysis
+  → Results compiled → presented to user
+  → "How can I help you?" follow-up question
 ```
 
 ---
 
-## 5. 영향도 및 위험
+## 5. Impact and Risk
 
-| 항목 | 영향 | 위험 |
-|------|------|------|
-| 드랍존 메시지 변경 | 하위 호환 OK (기능 변경 없음) | 없음 |
-| 업로드 경로 개선 | 기존 `dropped_image.png` 하위 호환 유지 | 없음 |
-| PDF 스캔문서 파이프라인 | 기존 PDF 분석에 폴백 추가 (정상 PDF 영향 없음) | PyMuPDF 메모리 사용 (단일 페이지만 처리) |
-| OCR 전처리 | 기존 OCR 결과 품질 향상 | OpenCV 없으면 원본 폴백 |
-| auto_analyze_after_drop 강화 | 문서 타입 처리 강화 | 없음 |
+| Item | Impact | Risk |
+|------|--------|------|
+| Dropzone message change | Backward compatible OK (no functional change) | None |
+| Upload path improvement | Maintain backward compatibility with existing `dropped_image.png` | None |
+| PDF scanned document pipeline | Fallback added to existing PDF analysis (no impact on normal PDF) | PyMuPDF memory usage (processes only single page) |
+| OCR preprocessing | Improved quality of existing OCR results | Returns original if OpenCV not available |
+| auto_analyze_after_drop enhancement | Strengthened document type processing | None |
 
 ---
 
-> **이 설계는 Code 모드에서 구현됩니다. `switch_mode`로 Code 모드 전환 후 Phase 1~5 순차 구현하세요.**
+> **This design will be implemented in Code mode. Switch to Code mode via `switch_mode` and implement Phase 1~5 sequentially.**

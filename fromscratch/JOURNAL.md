@@ -5,10 +5,10 @@
 
 ---
 
-- [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
-- [2026-06-05 - v0.14.3: Guard.git — .git 폴더 삭제 방지 기능](#2026-06-05---v0143-guardgit----git-폴더-삭제-방지-기능)
-- [2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)](#2026-06-02---v0141-vibezoo-v2-업그레이드-드랍존-범용화--pdf-파이프라인--ocr-전처리)
-- [2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)](#2026-06-02---v0140-ux-workflow-구현-의도-감지--자동-도구-체인)
+- [2026-06-02 - v0.14.1: VibeZoo v2 Upgrade (Dropzone Generalization + PDF Pipeline + OCR Preprocessing)](#2026-06-02---v0141-vibezoo-v2-upgrade-dropzone-generalization--pdf-pipeline--ocr-preprocessing)
+- [2026-06-05 - v0.14.3: Guard.git — .git Folder Deletion Prevention](#2026-06-05---v0143-guardgit----git-folder-deletion-prevention)
+- [2026-06-02 - v0.14.1: VibeZoo v2 Upgrade (Dropzone Generalization + PDF Pipeline + OCR Preprocessing)](#2026-06-02---v0141-vibezoo-v2-upgrade-dropzone-generalization--pdf-pipeline--ocr-preprocessing)
+- [2026-06-02 - v0.14.0: UX Workflow Implementation (Intent Detection + Auto Tool Chain)](#2026-06-02---v0140-ux-workflow-implementation-intent-detection--auto-tool-chain)
 - [2026-05-29 - v0.13.0: Performance optimization + bug fixes + documentation](#2026-05-29---v0130-performance-optimization--bug-fixes--documentation)
 - [2026-05-28 - v0.13.0: Phase 1~6 Full Implementation](#2026-05-28-v0130-phase-16-full-implementation)
 - [2026-05-27 - v0.10.0 Final: Go file cleanup, SSE path fix](#2026-05-27-v0100-final-go-file-cleanup-sse-path-fix)
@@ -20,70 +20,70 @@
 
 ---
 
-## 2026-06-05 - v0.14.3: Guard.git — .git 폴더 삭제 방지 기능
+## 2026-06-05 - v0.14.3: Guard.git — .git Folder Deletion Prevention
 
 **Changes**:
-- 신규: [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) — 멀티 루트 워크스페이스, Git Worktree 대응, 잔여 ACL 자동 정리
-- 신규: [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) — OS 레벨 ACL 보호 (Windows `icacls` / Linux `chattr` / macOS `chmod`)
-- 신규: [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) — `.git` 핵심 파일(HEAD, config, refs) 스냅샷 (`yoctoBackupEnabled`)
-- 수정: [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) — `.git` 무결성 자가진단 통합
-- 수정: [`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) — Guard.git On/Off 토글 노드 추가
-- 수정: [`extension/src/extension.ts`](../extension/src/extension.ts) — `toggleGuardGit` 명령어 등록, Guard.git 초기화
-- 수정: [`extension/package.json`](../extension/package.json) — 6개 Guard.git 설정, `toggleGuardGit` command 추가
-- l10n: 영문/한글 로컬라이제이션 (`bundle.l10n.json`, `bundle.l10n.ko.json`)
+- New: [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts) — Multi-root workspace, Git Worktree support, automatic residual ACL cleanup
+- New: [`extension/src/safety/GuardGitACL.ts`](../extension/src/safety/GuardGitACL.ts) — OS-level ACL protection (Windows `icacls` / Linux `chattr` / macOS `chmod`)
+- New: [`extension/src/safety/YoctoManager.ts`](../extension/src/safety/YoctoManager.ts) — `.git` core files (HEAD, config, refs) snapshot (`yoctoBackupEnabled`)
+- Modified: [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) — `.git` integrity self-diagnostics integration
+- Modified: [`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) — Added Guard.git On/Off toggle node
+- Modified: [`extension/src/extension.ts`](../extension/src/extension.ts) — Registered `toggleGuardGit` command, Guard.git initialization
+- Modified: [`extension/package.json`](../extension/package.json) — 6 Guard.git settings, added `toggleGuardGit` command
+- l10n: English/Korean localization (`bundle.l10n.json`, `bundle.l10n.ko.json`)
 
-**주요 결정 사항**:
-- OS ACL(icacls/chattr/chmod) 사용 — VS Code Extension은 `sudo` 불가, Linux `capabilities`도 불가능하므로 프로세스 권한 내에서 최선의 방어
-- 멀티 루트 지원 — `workspace.workspaceFolders` 순회하여 각 폴더의 `.git` 보호
-- Worktree 대응 — `git rev-parse --git-common-dir`로 실제 git 디렉토리 추적
-- Shell injection 방어 — `execFile()`만 사용, Shell 절대 사용 금지, 경로 정규식 검증 + 10초 타임아웃
-- 잔여 ACL 정리 — Extension crash 시 남은 ACL 자동 복구 (`_cleanupResidualACL`)
+**Key Decisions**:
+- Using OS ACL (icacls/chattr/chmod) — VS Code Extension cannot use `sudo`, Linux `capabilities` also unavailable, so best defense within process permissions
+- Multi-root support — Iterates `workspace.workspaceFolders` to protect `.git` in each folder
+- Worktree support — Tracks actual git directory via `git rev-parse --git-common-dir`
+- Shell injection defense — Uses only `execFile()`, absolute prohibition of Shell, path regex validation + 10-second timeout
+- Residual ACL cleanup — Automatic restoration of remaining ACL on Extension crash (`_cleanupResidualACL`)
 
-**설계 문서**: [`plans/guard-git-design.md`](plans/guard-git-design.md)
-**GitHub**: commit & push 완료
+**Design Document**: [`plans/guard-git-design.md`](plans/guard-git-design.md)
+**GitHub**: commit & push completed
 
-### 버그 수정
+### Bug Fixes
 
-1. **한글 경로 문제** (`DANGEROUS_PATH_REGEX`)
-   - 기존 `SAFE_PATH_REGEX`는 ASCII 경로만 허용하여 한글/유니코드 경로에서 Guard.git 활성화 실패
-   - `DANGEROUS_PATH_REGEX`로 변경하여 유니코드 문자(한글 포함)가 경로에 포함되어도 정상 작동하도록 수정
-   - 관련 파일: [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts)
+1. **Korean path issue** (`DANGEROUS_PATH_REGEX`)
+   - Existing `SAFE_PATH_REGEX` only allowed ASCII paths, causing Guard.git activation failure on Korean/Unicode paths
+   - Changed to `DANGEROUS_PATH_REGEX` to operate correctly even with Unicode characters (including Korean) in paths
+   - Related file: [`extension/src/safety/GuardGitManager.ts`](../extension/src/safety/GuardGitManager.ts)
 
-2. **Race condition 수정**
-   - `activate()`와 `enable()` 메서드에 `await` 누락으로 Guard.git 활성화 순서가 보장되지 않던 문제 수정
-   - 확장 로딩 초기에 Guard.git이 완전히 초기화되지 않은 상태에서 ACL 설정이 시도되는 버그 해결
+2. **Race condition fix**
+   - Fixed issue where Guard.git activation order was not guaranteed due to missing `await` in `activate()` and `enable()` methods
+   - Resolved bug where ACL setup was attempted before Guard.git was fully initialized during early extension loading
 
-3. **확장 로딩 경로 문제 해결**
-   - VS Code Extension이 설치된 확장 디렉토리와 동기화되도록 TypeScript 컴파일 대상 경로 변경
-   - `out/` 디렉토리가 Git에 트래킹되도록 `.gitignore` 우회 설정
-   - 로컬 개발 환경과 설치된 확장 간의 Guard.git 동작 불일치 해소
+3. **Extension loading path issue resolved**
+   - Changed TypeScript compilation target path to synchronize with installed extension directory
+   - Bypassed `.gitignore` to track `out/` directory in Git
+   - Resolved Guard.git operation mismatch between local development environment and installed extension
 
 ---
 
-## 2026-06-02 - v0.14.1: VibeZoo v2 업그레이드 (드랍존 범용화 + PDF 파이프라인 + OCR 전처리)
+## 2026-06-02 - v0.14.1: VibeZoo v2 Upgrade (Dropzone Generalization + PDF Pipeline + OCR Preprocessing)
 
 **Changes**:
-- 실제 사용 피드백 기반 개선 (KOICA CTS PDF 업로드 → 분석 워크플로우)
-- config.py: `get_uploaded_path()` 함수 추가 — 확장자 보존 동적 경로
-- whiteboard.py: 드랍존 HTML/메시지 멀티파일 지원 (📎 모든 파일 타입)
-- file_analyzer.py: `_analyze_pdf_as_image()` 신규 — PDF→이미지 변환(fitz)→SSA→OCR→MiniCPM 자동 연계
-- ux_coordinator.py: PDF 파일 `analyze_file()` 직접 호출로 강화
-- ocr_engine.py: `_preprocess_for_ocr()` — AdaptiveThresholding + 노이즈 제거 전처리
-- 설계 문서: [`plans/vibezoo-v2-upgrade.md`](plans/vibezoo-v2-upgrade.md)
-- GitHub: 6 files changed, 481 insertions, push 완료 (commit 20b8943)
-- Cleanup: `_extract_pdf.py`, `_extract_pdf_v2.py` 삭제
+- Real usage feedback-based improvement (KOICA CTS PDF upload → analysis workflow)
+- config.py: Added `get_uploaded_path()` function — extension-preserving dynamic path
+- whiteboard.py: Dropzone HTML/message multi-file support (📎 all file types)
+- file_analyzer.py: New `_analyze_pdf_as_image()` — PDF→image conversion (fitz)→SSA→OCR→MiniCPM automatic pipeline
+- ux_coordinator.py: Enhanced PDF file handling with direct `analyze_file()` call
+- ocr_engine.py: `_preprocess_for_ocr()` — AdaptiveThresholding + noise removal preprocessing
+- Design document: [`plans/vibezoo-v2-upgrade.md`](plans/vibezoo-v2-upgrade.md)
+- GitHub: 6 files changed, 481 insertions, push completed (commit 20b8943)
+- Cleanup: Deleted `_extract_pdf.py`, `_extract_pdf_v2.py`
 
 ---
 
-## 2026-06-02 - v0.14.0: UX Workflow 구현 (의도 감지 + 자동 도구 체인)
+## 2026-06-02 - v0.14.0: UX Workflow Implementation (Intent Detection + Auto Tool Chain)
 
 **Changes**:
-- 신규: [`bridge/intent_detector.py`](../mcp-servers/bridge/intent_detector.py) — 키워드 기반 자연어 의도 감지 모듈 (`file_share`, `drawing_request`, `whiteboard_input`, `code_analysis`, `general_question`)
-- 신규: [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) — UX 코디네이터 (3개 도구: `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard`)
-- 수정: [`tools/__init__.py`](../mcp-servers/bridge/tools/__init__.py), [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py) (v2는 _archive/로 이동)
-- 설계 문서: [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md)
-- GitHub: 7 files changed, 918 insertions, push 완료
-- MiniCPM 우선 사용 피드백 반영
+- New: [`bridge/intent_detector.py`](../mcp-servers/bridge/intent_detector.py) — Keyword-based natural language intent detection module (`file_share`, `drawing_request`, `whiteboard_input`, `code_analysis`, `general_question`)
+- New: [`bridge/tools/ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py) — UX Coordinator (3 tools: `ux_coordinator`, `auto_analyze_after_drop`, `auto_analyze_whiteboard`)
+- Modified: [`tools/__init__.py`](../mcp-servers/bridge/tools/__init__.py), [`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py), [`file_analyzer.py`](../mcp-servers/bridge/tools/file_analyzer.py) (v2 moved to _archive/)
+- Design document: [`plans/ux-workflow-design.md`](../plans/ux-workflow-design.md)
+- GitHub: 7 files changed, 918 insertions, push completed
+- MiniCPM priority usage feedback reflected
 
 ---
 
