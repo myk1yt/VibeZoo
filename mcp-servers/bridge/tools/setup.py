@@ -1,11 +1,12 @@
 # VibeZoo Bridge — Setup Tool
 # Phase A: 통합 설치/설정 관리자 (vibezoo_setup)
-# pip 패키지 설치, 시스템 도구 설치, MCP 설정, Zoo 설정을 한 번에 처리
+# pip 패키지 설치, 시스템 도구 설치, MCP 설정, Zoo 설정, custom_modes 설치를 한 번에 처리
 
 import io
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -108,6 +109,7 @@ class SetupManager:
         system_tools: bool = False,
         configure_mcp: bool = True,
         configure_zoo: bool = True,
+        configure_custom_modes: bool = True,
         download_models: bool = True,
     ) -> dict:
         """통합 설치 실행 — SetupManager의 주 진입점
@@ -118,6 +120,7 @@ class SetupManager:
             system_tools: 시스템 도구 설치 여부
             configure_mcp: .roo/mcp.json 설정 여부
             configure_zoo: .zoo/config.json 설정 여부
+            configure_custom_modes: Zoo Code custom_modes.yaml에 VibeZoo 모드 설치 여부
 
         Returns:
             전체 결과 보고서 (dict)
@@ -131,6 +134,7 @@ class SetupManager:
             "models_download": None,
             "mcp_config": None,
             "zoo_config": None,
+            "custom_modes_config": None,
             "summary": {},
         }
 
@@ -156,12 +160,17 @@ class SetupManager:
             zoo_result = self.configure_zoo()
             report["zoo_config"] = zoo_result
 
-        # 5. 모델 다운로드
+        # 5. Custom Modes 설정 (Zoo Code custom_modes.yaml)
+        if configure_custom_modes:
+            cm_result = self.configure_custom_modes()
+            report["custom_modes_config"] = cm_result
+
+        # 6. 모델 다운로드
         if download_models and target in ("recommended", "full"):
             models_result = self.download_vision_models()
             report["models_download"] = models_result
 
-        # 6. 요약
+        # 7. 요약
         elapsed = time.time() - self._start_time
         report["summary"] = self._build_summary(report, elapsed)
 
@@ -672,6 +681,226 @@ class SetupManager:
                 "detail": str(e),
             }
 
+    # ── Custom Modes 설정 ─────────────────────────────
+
+    @staticmethod
+    def _get_zoo_custom_modes_path() -> Path:
+        """Zoo Code custom_modes.yaml 경로 반환 (OS 대응)
+
+        Returns:
+            custom_modes.yaml의 Path
+        """
+        home = Path.home()
+        if platform.system() == "Windows":
+            # Windows: ~/AppData/Roaming/Code/User/globalStorage/...
+            base = home / "AppData" / "Roaming" / "Code" / "User" / "globalStorage"
+        else:
+            # Linux/macOS: ~/.config/Code/User/globalStorage/...
+            base = home / ".config" / "Code" / "User" / "globalStorage"
+
+        return (
+            base
+            / "zoocodeorganization.zoo-code"
+            / "settings"
+            / "custom_modes.yaml"
+        )
+
+    @staticmethod
+    def _parse_yaml_mode_blocks(yaml_text: str) -> list[dict]:
+        """YAML customModes 목록을 파싱하여 slug → raw_block 매핑 반환
+
+        YAML의 `  - slug: ...` 블록 단위로 분할하여 각 블록의 slug와
+        원본 텍스트를 추출합니다. (PyYAML 없이 동작)
+
+        Args:
+            yaml_text: custom_modes.yaml 전체 텍스트
+
+        Returns:
+            [{"slug": "mode-slug", "block": "  - slug: ...\n    ..."}, ...]
+        """
+        blocks: list[dict] = []
+        # 각 mode 블록은 '  - slug:'로 시작 (들여쓰기 2칸 + '- slug:')
+        pattern = r"^  - slug: .*$(?:\n(?:[ ]{4,}.*|(?:[ ]{2}[^-].*)?))*"
+        # 더 정확한 파싱: '  - slug:' 행을 찾고 그 뒤에 오는
+        # 들여쓰기된 행들(공백 4칸 이상 또는 '  - '가 아닌 2칸 들여쓰기)을 모은다
+        lines = yaml_text.split("\n")
+        current_slug: str | None = None
+        current_block: list[str] = []
+        in_block = False
+
+        for line in lines:
+            # 새 mode 블록 시작 감지: '  - slug:' 패턴
+            slug_match = re.match(r"^  - slug:\s*(\S+)", line)
+            if slug_match:
+                # 이전 블록 저장
+                if current_slug and current_block:
+                    blocks.append({
+                        "slug": current_slug,
+                        "block": "\n".join(current_block),
+                    })
+                current_slug = slug_match.group(1)
+                current_block = [line]
+                in_block = True
+            elif in_block:
+                # 블록 내 라인: 4칸 들여쓰기 or 2칸 들여쓰기(목록 항목 아님)
+                # 또는 빈 줄
+                if line == "" or line.startswith("    ") or (line.startswith("  ") and not line.startswith("  - ")):
+                    current_block.append(line)
+                else:
+                    # 새 최상위 키 (customModes:) or 블록 외부 — 블록 종료
+                    in_block = False
+
+        # 마지막 블록 저장
+        if current_slug and current_block:
+            blocks.append({
+                "slug": current_slug,
+                "block": "\n".join(current_block),
+            })
+
+        return blocks
+
+    @staticmethod
+    def _build_yaml_from_blocks(blocks: list[dict]) -> str:
+        """mode 블록 목록을 YAML 문자열로 재조립
+
+        Args:
+            blocks: [{"slug": ..., "block": "..."}, ...]
+
+        Returns:
+            'customModes:\n' + 각 블록 텍스트
+        """
+        header = "customModes:\n"
+        mode_texts = [b["block"] for b in blocks]
+        return header + "\n".join(mode_texts) + "\n"
+
+    def configure_custom_modes(self) -> dict:
+        """Zoo Code custom_modes.yaml에 VibeZoo 모드 정의 설치
+
+        템플릿 소스: <vibezoo_root>/global_install_templates/vibezoo_mode.yaml
+        대상: Zoo Code 글로벌 settings/custom_modes.yaml
+
+        병합 규칙:
+        - 템플릿 모드 중 대상에 없는 slug만 추가 (기존 모드 보존)
+        - slug를 기준으로 중복 방지
+
+        Returns:
+            {"status": "created" | "merged" | "skipped" | "error",
+             "path": "설정 파일 경로",
+             "detail": "추가 정보",
+             "added_modes": [slug, ...]}
+        """
+        if self._dry_run:
+            self._results.append({
+                "action": "configure_custom_modes",
+                "dry_run": True,
+            })
+            return {
+                "status": "dry_run",
+                "path": "",
+                "detail": "Would add VibeZoo custom modes to Zoo Code settings",
+                "added_modes": [],
+            }
+
+        # 1. 템플릿 파일 찾기
+        # 현재 스크립트: mcp-servers/bridge/tools/setup.py
+        # 템플릿:      global_install_templates/vibezoo_mode.yaml
+        template_path = (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "global_install_templates"
+            / "vibezoo_mode.yaml"
+        )
+
+        if not template_path.exists():
+            return {
+                "status": "error",
+                "path": "",
+                "detail": f"Template not found: {template_path}",
+                "added_modes": [],
+            }
+
+        # 2. 대상 파일 경로
+        target_path = self._get_zoo_custom_modes_path()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 3. 템플릿 읽기 & 파싱
+        try:
+            template_text = template_path.read_text(encoding="utf-8")
+        except Exception as e:
+            return {
+                "status": "error",
+                "path": str(target_path),
+                "detail": f"Failed to read template: {e}",
+                "added_modes": [],
+            }
+
+        template_blocks = self._parse_yaml_mode_blocks(template_text)
+        template_slugs = {b["slug"] for b in template_blocks}
+
+        if not template_blocks:
+            return {
+                "status": "error",
+                "path": str(target_path),
+                "detail": "No mode blocks found in template",
+                "added_modes": [],
+            }
+
+        # 4. 대상 파일 읽기 & 파싱 (있으면)
+        target_blocks: list[dict] = []
+        target_slugs: set[str] = set()
+
+        if target_path.exists():
+            try:
+                target_text = target_path.read_text(encoding="utf-8")
+                target_blocks = self._parse_yaml_mode_blocks(target_text)
+                target_slugs = {b["slug"] for b in target_blocks}
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "path": str(target_path),
+                    "detail": f"Failed to read target file: {e}",
+                    "added_modes": [],
+                }
+
+        # 5. 병합: 템플릿 모드 중 대상에 없는 slug만 추가
+        added_modes: list[str] = []
+        for tb in template_blocks:
+            if tb["slug"] not in target_slugs:
+                target_blocks.append(tb)
+                added_modes.append(tb["slug"])
+
+        if not added_modes:
+            return {
+                "status": "skipped",
+                "path": str(target_path),
+                "detail": "All VibeZoo modes already present in custom_modes.yaml",
+                "added_modes": [],
+            }
+
+        # 6. 쓰기
+        try:
+            output_text = self._build_yaml_from_blocks(target_blocks)
+            target_path.write_text(output_text, encoding="utf-8")
+            status = "merged"
+            self._results.append({
+                "action": "configure_custom_modes",
+                "status": status,
+                "path": str(target_path),
+                "added_modes": added_modes,
+            })
+            return {
+                "status": status,
+                "path": str(target_path),
+                "detail": f"Added {len(added_modes)} mode(s): {', '.join(added_modes)}",
+                "added_modes": added_modes,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "path": str(target_path),
+                "detail": f"Failed to write: {e}",
+                "added_modes": [],
+            }
+
     # ── AI 모델 다운로드 ────────────────────────────────────
 
     def download_vision_models(self) -> dict:
@@ -804,6 +1033,22 @@ class SetupManager:
             lines.append("\n## 🏠 Zoo Configuration\n")
             lines.append("| _(skipped)_ | — | — |")
             
+        # Custom Modes Configuration
+        cm = report.get("custom_modes_config")
+        if cm:
+            lines.append("\n## 🎭 Custom Modes Configuration\n")
+            status_icon = {"created": "✅", "merged": "✅", "skipped": "⏭️", "error": "❌", "dry_run": "🔍"}
+            icon = status_icon.get(cm.get("status", ""), "❓")
+            lines.append(f"- **Status**: {icon} {cm.get('status', 'unknown')}")
+            lines.append(f"- **Path**: `{cm.get('path', '')}`")
+            lines.append(f"- **Detail**: {cm.get('detail', '')}")
+            added = cm.get("added_modes", [])
+            if added:
+                lines.append(f"- **Modes added**: {', '.join(added)}")
+        else:
+            lines.append("\n## 🎭 Custom Modes Configuration\n")
+            lines.append("| _(skipped)_ | — | — |")
+
         # Models Download
         models = report.get("models_download")
         if models:
@@ -825,6 +1070,8 @@ class SetupManager:
             lines.append(f"- 🔌 MCP config: {summary['mcp_status']}")
         if summary.get("zoo_status"):
             lines.append(f"- 🏠 Zoo config: {summary['zoo_status']}")
+        if summary.get("custom_modes_status"):
+            lines.append(f"- 🎭 Custom modes: {summary['custom_modes_status']}")
         lines.append(f"\n---\n*Report generated in {elapsed:.1f}s*")
 
         return "\n".join(lines)
@@ -836,6 +1083,7 @@ class SetupManager:
         sys_tools = report.get("system_tools", {})
         mcp = report.get("mcp_config", {})
         zoo = report.get("zoo_config", {})
+        cm = report.get("custom_modes_config", {})
 
         return {
             "installed_packages": len(pip.get("success", [])),
@@ -845,6 +1093,7 @@ class SetupManager:
             "manual_tools": len(sys_tools.get("manual", [])),
             "mcp_status": mcp.get("status", "skipped") if mcp else "skipped",
             "zoo_status": zoo.get("status", "skipped") if zoo else "skipped",
+            "custom_modes_status": cm.get("status", "skipped") if cm else "skipped",
             "models_status": report.get("models_download", {}).get("status", "skipped") if report.get("models_download") else "skipped",
             "elapsed": round(elapsed, 1),
         }
@@ -884,6 +1133,11 @@ class SetupManager:
         icon = "✅" if zoo_path.exists() else "⬜"
         lines.append(f"- {icon} `{zoo_path}`")
 
+        lines.append("\n### Custom Modes\n")
+        cm_path = self._get_zoo_custom_modes_path()
+        icon = "✅" if cm_path.exists() else "⬜"
+        lines.append(f"- {icon} `{cm_path}`")
+
         return "\n".join(lines)
 
     @staticmethod
@@ -914,13 +1168,14 @@ def register(mcp):
         system_tools: bool = False,
         configure_mcp: bool = True,
         configure_zoo: bool = True,
+        configure_custom_modes: bool = True,
         download_models: bool = True,
         dry_run: bool = False,
     ) -> str:
         """🚀 VibeZoo 통합 설치/설정 도구.
 
         한 번의 호출로 VibeZoo 운영에 필요한 모든 의존성을 설치하고,
-        MCP 글로벌 설정 및 .zoo/config.json을 자동 구성합니다.
+        MCP 글로벌 설정, .zoo/config.json, Zoo Code custom_modes.yaml을 자동 구성합니다.
 
         **설치 대상 (target):**
         - `minimal`: 필수 코어 패키지만 (fastmcp, uvicorn, starlette)
@@ -933,6 +1188,7 @@ def register(mcp):
             system_tools: 시스템 도구 설치 여부 (Windows: winget 필요)
             configure_mcp: .roo/mcp.json SSE MCP 설정 자동 구성 여부
             configure_zoo: .zoo/config.json 설정 자동 구성 여부
+            configure_custom_modes: Zoo Code custom_modes.yaml에 VibeZoo 6개 모드(orchestrator-crow, project-research, architect, code, debug, ask) 자동 설치 여부
             download_models: MiniCPM-V 등 대용량 AI 모델 자동 다운로드 여부 (target=recommended/full 일때만)
             dry_run: 실제 설치 없이 필요한 항목만 출력 (안전 확인)
 
@@ -975,6 +1231,7 @@ def register(mcp):
 
             plan_lines.append(f"\n**Configure MCP**: {'yes' if configure_mcp else 'no'}")
             plan_lines.append(f"**Configure Zoo**: {'yes' if configure_zoo else 'no'}")
+            plan_lines.append(f"**Configure Custom Modes**: {'yes' if configure_custom_modes else 'no'}")
 
             return "\n".join(plan_lines)
 
@@ -985,6 +1242,7 @@ def register(mcp):
             system_tools=system_tools,
             configure_mcp=configure_mcp,
             configure_zoo=configure_zoo,
+            configure_custom_modes=configure_custom_modes,
             download_models=download_models,
         )
 
