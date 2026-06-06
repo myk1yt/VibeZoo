@@ -18,7 +18,7 @@ if _EXT_ROOT not in sys.path:
 from typing import Optional
 
 from bridge.config import (
-    VERSION, DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS,
+    VERSION, DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS, CONFIG_FILES,
 )
 from bridge.utils import (
     _markdown_header, _markdown_footer,
@@ -97,6 +97,203 @@ def _run_tsc(root: Path) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def _run_native_linter(root: Path) -> dict:
+    """프로젝트 루트의 빌드 파일을 감지하여 모든 매칭되는 네이티브 린터를 순차 실행.
+
+    감지 순서 (모두 실행, 결과 누적):
+    1. Cargo.toml → cargo clippy --frozen
+    2. go.mod → go vet -mod=readonly
+    3. CMakeLists.txt / Makefile → cppcheck
+    4. package.json → eslint + tsc (기존)
+
+    Returns:
+        {
+            "language": str,           # primary language detected
+            "tool": str,               # primary tool name
+            "success": bool,
+            "results": list[dict],     # C2 fix: 모든 린터 결과 누적
+            "raw_output": str (truncated),
+        }
+    """
+    diagnostics = {
+        "language": "unknown",
+        "tool": "none",
+        "success": False,
+        "results": [],     # C2: return 제거, 모든 결과 누적
+        "raw_output": "",
+    }
+
+    # ── 1. Rust: cargo clippy (C4: --frozen 추가, M4: timeout 120s) ──
+    if (root / "Cargo.toml").exists():
+        diagnostics["language"] = "rust"
+        diagnostics["tool"] = "cargo-clippy"
+        try:
+            res = subprocess.run(
+                ["cargo", "clippy", "--message-format=json", "--all-targets", "--frozen"],
+                cwd=str(root), capture_output=True, text=True, timeout=120
+            )
+            diagnostics["raw_output"] = _truncate(res.stdout + res.stderr, 3000)
+            warnings_list = []
+            errors_list = []
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if data.get("reason") == "compiler-message":
+                    msg = data.get("message", {})
+                    spans = msg.get("spans", [])
+                    item = {
+                        "file": spans[0].get("file_name", "unknown") if spans else "unknown",
+                        "line": spans[0].get("line_start", 0) if spans else 0,
+                        "column": spans[0].get("column_start", 0) if spans else 0,
+                        "message": msg.get("message", ""),
+                        "rule": (msg.get("code") or {}).get("code", "clippy"),
+                        "level": msg.get("level", "warning"),
+                    }
+                    if msg.get("level") == "error":
+                        errors_list.append(item)
+                    else:
+                        warnings_list.append(item)
+            diagnostics["results"].append({
+                "tool": "cargo-clippy",
+                "success": True,
+                "errors": errors_list,
+                "warnings": warnings_list,
+            })
+        except FileNotFoundError:
+            diagnostics["results"].append({
+                "tool": "cargo-clippy", "success": False,
+                "error": "cargo not found in PATH. Install Rust: https://rustup.rs",
+            })
+        except subprocess.TimeoutExpired:
+            diagnostics["results"].append({
+                "tool": "cargo-clippy", "success": False,
+                "error": "cargo clippy timed out (120s)",
+            })
+        except Exception as e:
+            diagnostics["results"].append({
+                "tool": "cargo-clippy", "success": False,
+                "error": f"cargo clippy error: {e}",
+            })
+        # C2 fix: return 제거 → 다음 린터 계속 실행
+
+    # ── 2. Go: go vet (C4: -mod=readonly 추가, M4: timeout 60s) ──
+    if (root / "go.mod").exists():
+        if diagnostics["language"] == "unknown":
+            diagnostics["language"] = "go"
+            diagnostics["tool"] = "go-vet"
+        try:
+            res = subprocess.run(
+                ["go", "vet", "-mod=readonly", "./..."],
+                cwd=str(root), capture_output=True, text=True, timeout=60
+            )
+            diagnostics["raw_output"] = _truncate(
+                diagnostics["raw_output"] + "\n" + _truncate(res.stderr, 2000), 3000)
+            warnings_list = []
+            for line in res.stderr.splitlines():
+                m = re.match(r'^([^:]+):(\d+):(?:\d+:)?\s*(.*)$', line.strip())
+                if m:
+                    warnings_list.append({
+                        "file": m.group(1),
+                        "line": int(m.group(2)),
+                        "message": m.group(3).strip(),
+                        "rule": "go_vet",
+                        "level": "warning",
+                    })
+            diagnostics["results"].append({
+                "tool": "go-vet",
+                "success": True,
+                "warnings": warnings_list,
+            })
+        except FileNotFoundError:
+            diagnostics["results"].append({
+                "tool": "go-vet", "success": False,
+                "error": "go not found in PATH. Install Go: https://go.dev/dl",
+            })
+        except subprocess.TimeoutExpired:
+            diagnostics["results"].append({
+                "tool": "go-vet", "success": False,
+                "error": "go vet timed out (60s)",
+            })
+        except Exception as e:
+            diagnostics["results"].append({
+                "tool": "go-vet", "success": False,
+                "error": f"go vet error: {e}",
+            })
+        # C2 fix: return 제거
+
+    # ── 3. C++: cppcheck (M3: xml.etree.ElementTree 사용, M4: timeout 120s) ──
+    if (root / "CMakeLists.txt").exists() or any(root.glob("Makefile*")):
+        if diagnostics["language"] == "unknown":
+            diagnostics["language"] = "c/c++"
+            diagnostics["tool"] = "cppcheck"
+        try:
+            res = subprocess.run(
+                ["cppcheck", "--enable=all", "--xml", "."],
+                cwd=str(root), capture_output=True, text=True, timeout=120
+            )
+            diagnostics["raw_output"] = _truncate(
+                diagnostics["raw_output"] + "\n" + _truncate(res.stdout + res.stderr, 2000), 3000)
+            # M3: xml.etree.ElementTree 로 속성 순서 무관 파싱
+            import xml.etree.ElementTree as ET
+            try:
+                root_elem = ET.fromstring(res.stderr + res.stdout)
+                warnings_list = []
+                for error_elem in root_elem.findall(".//error"):
+                    item = {
+                        "file": error_elem.get("file", "unknown"),
+                        "line": int(error_elem.get("line", 0)),
+                        "message": error_elem.get("msg", ""),
+                        "rule": f"cppcheck:{error_elem.get('id', '')}",
+                        "level": error_elem.get("severity", "warning"),
+                    }
+                    warnings_list.append(item)
+                diagnostics["results"].append({
+                    "tool": "cppcheck",
+                    "success": True,
+                    "warnings": warnings_list,
+                })
+            except ET.ParseError:
+                diagnostics["results"].append({
+                    "tool": "cppcheck", "success": False,
+                    "error": "Failed to parse cppcheck XML output",
+                })
+        except FileNotFoundError:
+            diagnostics["results"].append({
+                "tool": "cppcheck", "success": False,
+                "error": "cppcheck not found in PATH. Install: `winget install cppcheck` or `apt install cppcheck`",
+            })
+        except subprocess.TimeoutExpired:
+            diagnostics["results"].append({
+                "tool": "cppcheck", "success": False,
+                "error": "cppcheck timed out (120s)",
+            })
+        except Exception as e:
+            diagnostics["results"].append({
+                "tool": "cppcheck", "success": False,
+                "error": f"cppcheck error: {e}",
+            })
+        # C2 fix: return 제거
+
+    # ── 4. TS/JS: eslint + tsc (기존) ──
+    if (root / "package.json").exists():
+        if diagnostics["language"] == "unknown":
+            diagnostics["language"] = "typescript/javascript"
+            diagnostics["tool"] = "eslint+tsc"
+        diagnostics["results"].append({
+            "tool": "eslint+tsc",
+            "success": True,
+            "note": "ESLint/tsc results integrated separately",
+        })
+
+    diagnostics["success"] = any(r.get("success", False) for r in diagnostics["results"])
+    return diagnostics
 
 
 def register(mcp):
@@ -230,7 +427,7 @@ def register(mcp):
             todo_count = 0
             func_count = 0
             class_count = 0
-            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES):
                 total_files += 1
                 content = _read_file_content(p)
                 if content:
@@ -282,9 +479,9 @@ def register(mcp):
             root = Path(get_project_root(target_path))
             reviewed = 0
             total_files = 0
-            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES):
                 total_files += 1
-            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES):
                 if reviewed >= 5:
                     sections.append(f"\n> ... and more files (reviewed top 5 of {total_files} total)\n")
                     break
@@ -397,24 +594,48 @@ def register(mcp):
             else:
                 sections.append("- No suspicious patterns found.\n")
 
-            # ESLint/tsc 빠른 체크 (요약)
+            # ── Native Linter 실행 (모든 매칭 린터 순차 실행, C2 반영) ──
             root = Path(get_project_root(target_path))
-            eslint_data = _run_eslint(root)
-            tsc_output = _run_tsc(root)
+            native_diag = _run_native_linter(root)
 
-            if eslint_data:
-                total_issues = sum(len(f.get("messages", [])) for f in eslint_data if isinstance(f, dict))
-                files_with_issues = len([f for f in eslint_data if isinstance(f, dict) and f.get('messages')])
-                if total_issues > 0:
-                    sections.append(f"\n## 🔬 ESLint\n\n")
-                    sections.append(f"- **Issues**: {total_issues} in {files_with_issues} file(s)\n")
+            if native_diag.get("results"):
+                sections.append(f"\n## 🔬 Native Linter Results\n\n")
+                for result in native_diag["results"]:
+                    tool = result.get("tool", "unknown")
+                    if result.get("success"):
+                        total_warnings = len(result.get("warnings", []))
+                        total_errors = len(result.get("errors", []))
+                        if total_errors > 0 or total_warnings > 0:
+                            sections.append(f"### {tool} — ⚠️ {total_errors} errors, {total_warnings} warnings\n")
+                            for w in result.get("errors", [])[:3]:
+                                sections.append(f"- ❌ `{w['file']}:{w['line']}` — [{w.get('rule','')}] {w.get('message','')[:100]}\n")
+                            for w in result.get("warnings", [])[:3]:
+                                sections.append(f"- ⚠️ `{w['file']}:{w['line']}` — [{w.get('rule','')}] {w.get('message','')[:100]}\n")
+                        else:
+                            sections.append(f"### {tool} — ✅ No issues\n")
+                    else:
+                        sections.append(f"### {tool} — ❌ {result.get('error', 'Unknown error')}\n")
+            else:
+                sections.append("\n## 🔬 Native Linter\n\n- No supported linter environment detected.\n")
 
-            if tsc_output:
-                ts_errors = len(re.findall(r'error TS\d+', tsc_output))
-                ts_warnings = len(re.findall(r'warning TS\d+', tsc_output))
-                if ts_errors > 0 or ts_warnings > 0:
-                    sections.append(f"\n## 🔷 tsc\n\n")
-                    sections.append(f"- **Errors**: {ts_errors}, **Warnings**: {ts_warnings}\n")
+            # ESLint/tsc (native linter 미감지 시에만 fallback)
+            if native_diag["language"] in ("unknown", "typescript/javascript"):
+                eslint_data = _run_eslint(root)
+                tsc_output = _run_tsc(root)
+
+                if eslint_data:
+                    total_issues = sum(len(f.get("messages", [])) for f in eslint_data if isinstance(f, dict))
+                    files_with_issues = len([f for f in eslint_data if isinstance(f, dict) and f.get('messages')])
+                    if total_issues > 0:
+                        sections.append(f"\n## 🔬 ESLint\n\n")
+                        sections.append(f"- **Issues**: {total_issues} in {files_with_issues} file(s)\n")
+
+                if tsc_output:
+                    ts_errors = len(re.findall(r'error TS\d+', tsc_output))
+                    ts_warnings = len(re.findall(r'warning TS\d+', tsc_output))
+                    if ts_errors > 0 or ts_warnings > 0:
+                        sections.append(f"\n## 🔷 tsc\n\n")
+                        sections.append(f"- **Errors**: {ts_errors}, **Warnings**: {ts_warnings}\n")
 
             sections.append("\n## 🧠 Crow Memory\n\n")
             crow_results = try_crow_recall(query="bug pattern error in project", register="bug", limit=5)
@@ -568,7 +789,7 @@ def register(mcp):
 
             # File stats
             total_files = 0
-            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES):
                 total_files += 1
 
             sections.append("## Refactoring Suggestions (Summary)\n\n")
@@ -709,7 +930,7 @@ def register(mcp):
             found_techs = [tech for file, tech in techs.items() if (root / file).exists()]
 
             total_files = 0
-            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS):
+            for p in _iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES):
                 total_files += 1
 
             output = f"- **Project**: `{root.name}`\n"

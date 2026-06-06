@@ -27,6 +27,12 @@ class AstEngine:
         '.py':   'python',
         '.go':   'go',
         '.rs':   'rust',
+        # ── 신규: C/C++ ── (.c도 'cpp'로 통일 — tree-sitter-cpp가 C/C++ 모두 지원)
+        '.cpp':  'cpp',
+        '.hpp':  'cpp',
+        '.cc':   'cpp',
+        '.h':    'cpp',
+        '.c':    'cpp',        # C1 fix: 'c' → 'cpp' 통일
     }
 
     NODE_TYPES = {
@@ -55,6 +61,23 @@ class AstEngine:
             'enum':     ['enum_item'],
             'import':   ['use_declaration'],
             'call':     ['call_expression'],
+        },
+        'cpp': {
+            'function': [
+                'function_definition',        # 일반 함수
+                'template_declaration',       # template<T> 함수
+                'lambda_expression',          # 람다
+            ],
+            'class': [
+                'class_specifier',            # class X { ... }
+                'struct_specifier',           # struct X { ... }
+            ],
+            'import': [
+                'preproc_include',            # #include <...>
+            ],
+            'call': [
+                'call_expression',
+            ],
         },
     }
 
@@ -158,7 +181,7 @@ class AstEngine:
         missing_langs = set()
         for err in self._init_errors:
             # 에러 메시지에서 언어명 추출 (예: "[python] not available")
-            for lang in ['python', 'go', 'rust', 'typescript', 'javascript']:
+            for lang in ['python', 'go', 'rust', 'typescript', 'javascript', 'cpp', 'c']:
                 if lang in err.lower():
                     missing_langs.add(lang)
 

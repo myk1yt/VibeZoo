@@ -17,6 +17,7 @@ from typing import Optional
 
 from bridge.config import (
     VERSION, DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS, TS_JS_EXTS,
+    CPP_EXTS, GENERIC_EXTS, REVIEWABLE_EXTS, CONFIG_FILES,
 )
 from bridge.utils import (
     _markdown_header, _markdown_footer,
@@ -62,12 +63,38 @@ def _compute_cyclomatic_complexity(content: str, ext: str) -> int:
             + len(re.findall(r'\bexcept\s+', content))
             + len(re.findall(r'\belif\s+', content))
         )
-    else:
+    elif ext in CPP_EXTS:
         branches = (
             len(re.findall(r'\bif\s*\(', content))
             + len(re.findall(r'\bfor\s*\(', content))
             + len(re.findall(r'\bwhile\s*\(', content))
+            + len(re.findall(r'\bswitch\s*\(', content))
+            + len(re.findall(r'\bcatch\s*\(', content))
+            + len(re.findall(r'\bcase\s+', content))
         )
+    elif ext == '.rs':
+        branches = (
+            len(re.findall(r'\bif\s+', content))
+            + len(re.findall(r'\bfor\s+', content))
+            + len(re.findall(r'\bwhile\s+', content))
+            + len(re.findall(r'\bmatch\s+', content))
+            + len(re.findall(r'\bloop\s*\{', content))
+        )
+    else:
+        if ext == '.go':
+            branches = (
+                len(re.findall(r'\bif\s+', content))
+                + len(re.findall(r'\bfor\s+', content))
+                + len(re.findall(r'\bswitch\s+', content))
+                + len(re.findall(r'\bcase\s+', content))
+                + len(re.findall(r'\bselect\s*\{', content))
+            )
+        else:
+            branches = (
+                len(re.findall(r'\bif\s+', content))
+                + len(re.findall(r'\bfor\s+', content))
+                + len(re.findall(r'\bwhile\s+', content))
+            )
     return branches + 1  # 기본 경로 + 분기
 
 
@@ -105,7 +132,7 @@ def _review_project_core(target_path: Optional[str] = None, mode: str = "quality
     root = Path(get_project_root(target_path))
     output = _markdown_header("Code Quality Check")
 
-    source_files = list(_iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS))
+    source_files = list(_iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES))
     total_files = len(source_files)
     total_lines = 0
     long_lines = 0
@@ -139,8 +166,10 @@ def _review_project_core(target_path: Optional[str] = None, mode: str = "quality
         empty_catch_count += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', content))
         console_log_count += len(re.findall(r'console\.(log|warn|error|debug)', content))
         debugger_count += len(re.findall(r'\bdebugger\b', content))
-        any_type_count += len(re.findall(r':\s*any\b', content))
-        ts_ignore_count += len(re.findall(r'@ts-ignore|@ts-nocheck', content))
+        # TS 전용 지표: ext in TS_JS_EXTS 일 때만 카운트 (M2 fix)
+        if ext in TS_JS_EXTS:
+            any_type_count += len(re.findall(r':\s*any\b', content))
+            ts_ignore_count += len(re.findall(r'@ts-ignore|@ts-nocheck', content))
         empty_except_count += len(re.findall(r'except\s*:', content))
         func_count_total += len(re.findall(r'(?:function|async function|def\s+)', content))
         class_count_total += len(re.findall(r'\bclass\s+\w+', content))
@@ -348,7 +377,18 @@ def register(mcp):
         ast_engine = _get_ast_engine()
         ast_engine._init_legacy_tree_sitter()
 
-        # AST 분석 (TS/JS)
+        # M5: 지원하지 않는 파일 형식은 얼리 리턴
+        if ext not in REVIEWABLE_EXTS and p.name not in CONFIG_FILES:
+            return _markdown_header(f"Review: `{rel}`", "⚠️") \
+                   + f"File type `{ext}` is not reviewable. Supported: {sorted(REVIEWABLE_EXTS)}\n" \
+                   + _markdown_footer()
+
+        # ════════════════════════════════════════════════════════════
+        # if/elif 체인 순서 (M7):
+        #   TS_JS → .py → .rs → CPP → Go → GENERIC (Shell/Docker/YAML/JSON)
+        # ════════════════════════════════════════════════════════════
+
+        # ── TS/JS AST 분석 (변경 없음) ──
         if ext in TS_JS_EXTS:
             ast = ast_engine.parse(content, ext)
             functions = ast.get("functions", [])
@@ -419,8 +459,8 @@ def register(mcp):
             if max_depth > 4:
                 issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
 
+        # ── Python AST 분석 (변경 없음) ──
         elif ext == ".py":
-            # ── Python AST 분석 ──
             ast = ast_engine.parse(content, ext)
             functions = ast.get("functions", [])
             classes = ast.get("classes", [])
@@ -487,8 +527,224 @@ def register(mcp):
             if max_depth > 4:
                 issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
 
+        # ── Rust AST 완전 분석 (M8: 기존 else 블록 Rust 코드 제거) ──
+        elif ext == ".rs":
+            ast = ast_engine.parse(content, ext)
+            functions = ast.get("functions", [])
+            classes = ast.get("classes", [])  # struct + enum
+            enums = ast.get("enums", [])
+            stats["functions"] = len(functions)
+            stats["classes"] = len(classes)
+
+            # ── 함수 길이 검사 ──
+            if functions:
+                long_funcs = []
+                for fn in functions:
+                    fn_start = fn.get('line', 0)
+                    fn_end = fn.get('end_line', fn_start)
+                    fn_lines = fn_end - fn_start
+                    if fn_lines > 50:
+                        long_funcs.append((fn.get('name', 'anonymous'), fn_lines, fn_start))
+                for name, fn_lines, ln in long_funcs[:5]:
+                    issues.append(("📏",
+                        f"Long function `{name}()`: {fn_lines} lines (line {ln})"))
+
+            if classes:
+                for cls in classes:
+                    cls_start = cls.get('line', 0)
+                    cls_end = cls.get('end_line', cls_start)
+                    cls_lines = cls_end - cls_start
+                    if cls_lines > 200:
+                        issues.append(("📏",
+                            f"Large struct/enum `{cls.get('name', 'anonymous')}`: "
+                            f"{cls_lines} lines (line {cls_start})"))
+
+            # ── Cyclomatic complexity ──
+            comp = _compute_cyclomatic_complexity(content, ext)
+            if comp > 15:
+                issues.append(("⚠️", f"Cyclomatic complexity: {comp}"))
+
+            # ── 중첩 깊이 ──
+            max_depth = _compute_nesting_depth(content, ext)
+            stats["max_depth"] = max_depth
+            if max_depth > 4:
+                issues.append(("⚠️",
+                    f"Maximum nesting depth: {max_depth} — use match or early returns"))
+
+            # ═══ Rust 특화 규칙 ═══
+
+            # R1. unsafe 블록 복잡도 제어
+            unsafe_blocks = re.findall(r'\bunsafe\s*\{', content)
+            if unsafe_blocks:
+                unsafe_lines = []
+                for m in re.finditer(r'\bunsafe\s*\{', content):
+                    start = m.start()
+                    depth = 1
+                    pos = m.end()
+                    while depth > 0 and pos < len(content):
+                        if content[pos] == '{':
+                            depth += 1
+                        elif content[pos] == '}':
+                            depth -= 1
+                        pos += 1
+                    block = content[m.start():pos]
+                    block_lines = block.count('\n')
+                    if block_lines > 15:
+                        unsafe_lines.append((m.start(), block_lines))
+                if unsafe_lines:
+                    issues.append(("⚠️",
+                        f"`unsafe` block(s) exceed 15 lines: "
+                        f"{len(unsafe_lines)} occurrence(s) — extract safe wrappers"))
+                elif len(unsafe_blocks) > 0:
+                    issues.append(("⚠️",
+                        f"`unsafe` block(s) found: {len(unsafe_blocks)} — review for safety"))
+
+            # R2. 묵살된 Result/Option (`let _ = ...`)
+            let_underscore = len(re.findall(r'\blet\s+_\s*=', content))
+            if let_underscore > 0:
+                issues.append(("⚠️",
+                    f"`let _ = ...` pattern found {let_underscore} time(s) — "
+                    f"Result/Option silently ignored, use `?` or proper match"))
+
+            # R3. Panic 유발 지점
+            unwrap_count = len(re.findall(r'\.unwrap\(\)', content))
+            expect_count = len(re.findall(r'\.expect\(', content))
+            panic_count = len(re.findall(r'panic!\(', content))
+            if unwrap_count > 0:
+                issues.append(("⚠️",
+                    f"`.unwrap()` found {unwrap_count} time(s) — "
+                    f"use `.expect()` with message or proper error handling"))
+            if panic_count > 0:
+                issues.append(("❌",
+                    f"`panic!` macro found {panic_count} time(s) — "
+                    f"consider graceful error propagation"))
+
+            # R4. clone 남용 감지
+            clone_count = len(re.findall(r'\.clone\(\)', content))
+            if clone_count > 5:
+                issues.append(("⚠️",
+                    f"`.clone()` called {clone_count} times — "
+                    f"consider borrowing or refactoring ownership"))
+
+            # R5. `as` 타입 캐스트 (H4: 숫자 타입 캐스트만 감지, use ... as 제외)
+            as_cast_count = len(re.findall(
+                r'\b(\w+)\s+as\s+(?!_)(u8|u16|u32|u64|i8|i16|i32|i64|f32|f64|usize|isize)\b',
+                content))
+            if as_cast_count > 5:
+                issues.append(("📝",
+                    f"`as` numeric cast used {as_cast_count} times — "
+                    f"consider `From`/`Into`/`TryFrom` for safe conversions"))
+
+            # R6. `println!` 디버그 로그
+            println_count = len(re.findall(r'println!\(', content))
+            if println_count > 0:
+                issues.append(("📝",
+                    f"`println!()` found {println_count} time(s) — use `log` crate"))
+
+            todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
+            if todos > 0:
+                issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+
+        # ── C/C++ AST 분석 (신규) ──
+        elif ext in CPP_EXTS:
+            ast = ast_engine.parse(content, ext)
+            functions = ast.get("functions", [])
+            classes = ast.get("classes", [])
+            stats["functions"] = len(functions)
+            stats["classes"] = len(classes)
+
+            # 주석 제거한 코드 (H2: new/delete 오탐 방지)
+            code_only = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', content)
+
+            # ── 함수 길이 검사 ──
+            if functions:
+                long_funcs = []
+                for fn in functions:
+                    fn_start = fn.get('line', 0)
+                    fn_end = fn.get('end_line', fn_start)
+                    fn_lines = fn_end - fn_start
+                    if fn_lines > 50:
+                        long_funcs.append((fn.get('name', 'anonymous'), fn_lines, fn_start))
+                for name, fn_lines, ln in long_funcs[:5]:
+                    issues.append(("📏",
+                        f"Long function `{name}()`: {fn_lines} lines (line {ln}) — consider splitting"))
+
+            # ── Cyclomatic complexity ──
+            comp = _compute_cyclomatic_complexity(content, ext)
+            if comp > 15:
+                issues.append(("⚠️", f"Cyclomatic complexity: {comp} — consider simplifying"))
+
+            # ── 중첩 깊이 ──
+            max_depth = _compute_nesting_depth(content, ext)
+            stats["max_depth"] = max_depth
+            if max_depth > 4:
+                issues.append(("⚠️",
+                    f"Maximum nesting depth: {max_depth} levels — consider early returns"))
+
+            # ═══ C++ 특화 규칙 ═══
+
+            # R1. Raw pointer vs smart pointer (H1: 정규식 개선)
+            raw_ptr_count = len(re.findall(
+                r'(?<!\w)(?:\w+\s*\*+\s+\w+|(?:int|char|float|double|void|bool|long|short|unsigned|signed)\s*\*+\s*\w+)',
+                code_only))
+            smart_ptr_count = len(re.findall(
+                r'(std::unique_ptr|std::shared_ptr|std::weak_ptr)', code_only))
+            if raw_ptr_count > 0 and smart_ptr_count == 0:
+                issues.append(("⚠️",
+                    f"Raw pointer(s) found ({raw_ptr_count}) — "
+                    f"consider std::unique_ptr or std::shared_ptr (C++11+)"))
+
+            # R2. new/delete 불일치 (H2: 주석 제거, placement new 제외, 임계값 도입)
+            new_count = len(re.findall(
+                r'\bnew\s+(?!\(\))(?!\s*std::make_unique)(?!\s*std::make_shared)', code_only))
+            delete_count = len(re.findall(r'\bdelete\s+(?!\[\])', code_only))
+            delete_array_count = len(re.findall(r'\bdelete\[\]\s+', code_only))
+            if (new_count - (delete_count + delete_array_count)) > 3:
+                issues.append(("❌",
+                    f"Potential memory leak: {new_count} `new` vs "
+                    f"{delete_count + delete_array_count} `delete`/`delete[]` (diff > 3)"))
+
+            # R3. 경계검사 우회 (H3: 초기화/할당 컨텍스트만 매칭)
+            bracket_access = len(re.findall(r'\w+\s*\[[^\]]*\]\s*[=;]', code_only))
+            at_access = len(re.findall(r'\.at\(', code_only))
+            if bracket_access > 10 and at_access == 0:
+                issues.append(("⚠️",
+                    f"Index operator `[]` used {bracket_access} times without `.at()` — "
+                    f"no bounds checking"))
+
+            # R4. RAII 락 누락: std::mutex without std::lock_guard/unique_lock
+            mutex_count = len(re.findall(r'std::mutex\s+\w+', code_only))
+            lock_guard_count = len(re.findall(
+                r'(std::lock_guard|std::unique_lock|std::scoped_lock)', code_only))
+            if mutex_count > 0 and lock_guard_count == 0:
+                issues.append(("⚠️",
+                    f"`std::mutex` used without RAII lock guard — "
+                    f"consider std::lock_guard or std::scoped_lock (C++17)"))
+
+            # R5. C 스타일 캐스트 (C++ 프로젝트에서, .c 제외)
+            if ext in (".cpp", ".hpp", ".cc", ".h"):
+                c_cast = len(re.findall(r'\(int\)|\(char\*\)|\(void\*\)|\(double\)|\(float\)',
+                                        code_only))
+                if c_cast > 0:
+                    issues.append(("📝",
+                        f"C-style cast found {c_cast} time(s) — "
+                        f"use static_cast, dynamic_cast, const_cast, reinterpret_cast"))
+
+            # R6. printf/scanf 대신 iostream 사용 권장 (.c 제외)
+            if ext != ".c":
+                printfs = len(re.findall(r'\b(printf|scanf|fprintf|sprintf)\s*\(', code_only))
+                if printfs > 0:
+                    issues.append(("📝",
+                        f"`printf`/`scanf` family used {printfs} time(s) — "
+                        f"consider std::cout / std::format (C++20)"))
+
+            # TODO/디버그
+            todos = len(re.findall(r'(TODO|FIXME|HACK|XXX)', code_only))
+            if todos > 0:
+                issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+
+        # ── Go AST 분석 + 고도화 규칙 ──
         elif ext == ".go":
-            # ── Go AST 분석 ──
             ast = ast_engine.parse(content, ext)
             functions = ast.get("functions", [])
             classes = ast.get("classes", [])  # Go structs
@@ -543,29 +799,182 @@ def register(mcp):
             if max_depth > 4:
                 issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
 
-        else:
-            # ── 기타 언어 (regex 폴백) ──
-            if ext == ".rs":
-                # Rust 특화 검사
-                unsafe_blocks = len(re.findall(r'\bunsafe\s*\{', content))
-                if unsafe_blocks > 0:
-                    issues.append(("⚠️", f"`unsafe` block(s) found: {unsafe_blocks} — review for safety"))
-                unwrap_calls = len(re.findall(r'\.unwrap\(\)', content))
-                if unwrap_calls > 0:
-                    issues.append(("⚠️", f"`.unwrap()` found {unwrap_calls} time(s) — use proper error handling"))
-                todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
-                if todos > 0:
-                    issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
-            else:
-                todos = len(re.findall(r'(TODO|FIXME|HACK)', content))
-                if todos > 0:
-                    issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+            # ═══ Go 고도화 규칙 (신규) ═══
 
-            # ── 중첩 깊이 검사 (기타 언어) ──
+            # G1. 고루틴 내 루프 변수 캡처 (H5: re.DOTALL + non-greedy)
+            go_stmt_pattern = re.findall(
+                r'for\s+\w+\s*:?=\s*range\s+.+?go\s+func\s*\(', content, re.DOTALL)
+            if go_stmt_pattern:
+                issues.append(("❌",
+                    f"Goroutine inside range loop detected ({len(go_stmt_pattern)} time(s)) — "
+                    f"loop variable may be captured by reference. "
+                    f"Pass as parameter or use Go 1.22+"))
+
+            # G2. defer 내 recover() 부재
+            defer_funcs = re.findall(r'defer\s+func\s*\(\s*\)\s*\{', content)
+            recover_calls = len(re.findall(r'\brecover\(\)', content))
+            if defer_funcs and recover_calls == 0:
+                issues.append(("⚠️",
+                    f"`defer func()` found but no `recover()` — "
+                    f"potential unhandled panic in deferred cleanup"))
+
+            # G3. 채널 데드락 위험 (H6: flat_content 사용)
+            flat_content = content.replace('\n', ' ')
+            unbuffered_chan = re.findall(r'make\s*\(\s*chan\s+(?!.*,\s*\d+)', flat_content)
+            if unbuffered_chan:
+                issues.append(("⚠️",
+                    f"Unbuffered channel(s) found ({len(unbuffered_chan)}) — "
+                    f"ensure send/receive happen in different goroutines"))
+
+            # G4. Mutex Unlock 누락 (defer mu.Unlock() 없는 경우)
+            mutex_locks = len(re.findall(r'\.Lock\(\)', content))
+            defer_unlocks = len(re.findall(r'defer\s+\w+\.Unlock\(\)', content))
+            if mutex_locks > 0 and defer_unlocks < mutex_locks:
+                issues.append(("❌",
+                    f"Mutex `.Lock()` without matching `defer ... .Unlock()` — "
+                    f"potential deadlock on panic/early return"))
+
+            # G5. nil map assignment (var m map[K]V; m[key] = value)
+            nil_map_assign = re.findall(
+                r'(?:var\s+\w+\s+map\[)|(?:\w+\s*:=\s*(?:map\[|nil))', content)
+            if nil_map_assign:
+                issues.append(("⚠️",
+                    f"Potential nil map assignment — use `make(map[...]...)` or "
+                    f"composite literal"))
+
+        # ── 일반 소스 파일 (Shell / Dockerfile / YAML / JSON) ──
+        elif ext in GENERIC_EXTS:
+            # ── Shell Script ──
+            if ext in (".sh", ".bash"):
+                # S1. 따옴표 누락 감지 (H7: 확장된 패턴)
+                unquoted_vars = len(re.findall(
+                    r'\$\{?\w+\}?|\$[@*#?!0-9]|\$\{[\w#%:-]+\}', content))
+                quotes_ok = len(re.findall(r'"\$\{?\w+\}?"', content))
+                if unquoted_vars > quotes_ok:
+                    issues.append(("⚠️",
+                        f"Unquoted variable expansion(s) — "
+                        f"may cause word splitting on whitespace"))
+
+                # S2. set -e / set -o pipefail 부재
+                has_set_e = bool(re.search(r'set\s+-e', content))
+                has_pipefail = bool(re.search(r'set\s+-o\s+pipefail', content))
+                if not has_set_e:
+                    issues.append(("⚠️",
+                        "`set -e` not found — script continues on error"))
+                if not has_pipefail:
+                    issues.append(("📝",
+                        "`set -o pipefail` not found — pipeline errors may be masked"))
+
+                # S3. shellcheck 연동 시도 (optional, subprocess)
+                try:
+                    result = subprocess.run(
+                        ["shellcheck", "-f", "json", str(p)],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if result.returncode != 0 and result.stdout:
+                        sc_data = json.loads(result.stdout)
+                        for item in sc_data[:10]:
+                            issues.append(("⚠️",
+                                f"ShellCheck[{item.get('code','')}]: "
+                                f"{item.get('message','')} "
+                                f"(line {item.get('line','?')})"))
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    pass
+                except Exception:
+                    pass
+
+            elif ext == ".ps1":
+                has_strict_mode = bool(re.search(r'Set-StrictMode', content))
+                if not has_strict_mode:
+                    issues.append(("📝",
+                        "`Set-StrictMode` not found — consider enabling for safer scripts"))
+
+            # ── YAML ──
+            if ext in (".yaml", ".yml"):
+                # Y1. 중복 키 탐지 (H8: 들여쓰기 기반 복합 키)
+                key_paths = {}
+                for i, line in enumerate(lines, 1):
+                    m = re.match(r'^(\s*)(\w[\w.-]*)\s*:', line)
+                    if m:
+                        key = m.group(2)
+                        indent = len(m.group(1))
+                        composite_key = f"{indent}:{key}"
+                        if composite_key in key_paths:
+                            issues.append(("❌",
+                                f"Duplicate key `{key}` at indent level {indent}, line {i} "
+                                f"(first at line {key_paths[composite_key]})"))
+                        key_paths[composite_key] = i
+
+                # Y2. 하드코딩된 시크릿
+                secret_patterns = [
+                    (r'(password|passwd|pwd)\s*:\s*\S+', 'password'),
+                    (r'(secret|SECRET)\s*:\s*\S+', 'secret'),
+                    (r'(api_key|apikey|api-key)\s*:\s*\S+', 'API key'),
+                    (r'(token|TOKEN)\s*:\s*\S+', 'token'),
+                ]
+                for pattern, label in secret_patterns:
+                    matches = re.findall(pattern, content, re.IGNORECASE)
+                    if matches:
+                        issues.append(("❌",
+                            f"Hardcoded {label}(s) found ({len(matches)}) — "
+                            f"use environment variables or secrets manager"))
+
+            # ── JSON ──
+            elif ext == ".json":
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError as e:
+                    issues.append(("❌",
+                        f"Invalid JSON: {e.msg} (line {e.lineno}, col {e.colno})"))
+
+                secret_matches = re.findall(
+                    r'"(password|secret|api_key|token)"\s*:\s*"[^"]+"',
+                    content, re.IGNORECASE)
+                if secret_matches:
+                    issues.append(("❌",
+                        f"Hardcoded sensitive value(s) found ({len(secret_matches)})"))
+
+            # ── 공통: 중첩 깊이, TODO ──
             max_depth = _compute_nesting_depth(content, ext)
             stats["max_depth"] = max_depth
             if max_depth > 4:
-                issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels — consider early returns or extracting logic"))
+                issues.append(("⚠️", f"Maximum nesting depth: {max_depth} levels"))
+
+            todos = len(re.findall(r'(TODO|FIXME|HACK|XXX)', content))
+            if todos > 0:
+                issues.append(("📝", f"TODO/FIXME/HACK: {todos} marker(s)"))
+
+        # ── Dockerfile (확장자 없는 파일명 기반) ──
+        elif p.name == "Dockerfile" or p.suffix.lower() == ".dockerfile":
+            # D1. latest 태그 사용
+            latest_tags = re.findall(r'FROM\s+\S+:latest', content)
+            if latest_tags:
+                issues.append(("⚠️",
+                    f"`FROM ... :latest` tag(s) found ({len(latest_tags)}) — "
+                    f"pin to specific version for reproducible builds"))
+
+            # D2. apt-get 캐시 미삭제
+            apt_installs = len(re.findall(r'apt-get\s+install', content))
+            apt_cleans = len(re.findall(
+                r'(rm -rf /var/lib/apt/lists|apt-get clean|apt-get autoclean)',
+                content))
+            if apt_installs > 0 and apt_cleans == 0:
+                issues.append(("⚠️",
+                    f"`apt-get install` without cache cleanup — "
+                    f"add `rm -rf /var/lib/apt/lists/*` to reduce image size"))
+
+            # D3. root 유저 사용
+            if "USER" not in content:
+                issues.append(("📝",
+                    "No `USER` directive — container runs as root"))
+
+            # D4. COPY 대신 ADD
+            add_count = len(re.findall(r'\bADD\s+', content))
+            copy_count = len(re.findall(r'\bCOPY\s+', content))
+            if add_count > copy_count:
+                issues.append(("📝",
+                    f"`ADD` used {add_count} times — prefer `COPY` unless "
+                    f"auto-extraction is needed"))
 
         # 기본 검사 (모든 언어)
         long_lines = sum(1 for l in lines if len(l) > 120)

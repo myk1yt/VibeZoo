@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from bridge.config import SOURCE_EXTS, DEFAULT_EXCLUDE_DIRS, TS_JS_EXTS
+from bridge.config import SOURCE_EXTS, DEFAULT_EXCLUDE_DIRS, TS_JS_EXTS, CONFIG_FILES
 
 
 # ── 시간/포맷 ────────────────────────────────────────
@@ -84,8 +84,13 @@ def _validate_int(value: int, name: str, min_val: int = 0, max_val: int = 1000) 
 
 
 def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = None,
-                        max_depth: int = -1) -> list:
-    """성능 최적화된 프로젝트 파일 순회 (os.walk, 단일 패스)."""
+                        max_depth: int = -1, include_names: Optional[set[str]] = None) -> list:
+    """성능 최적화된 프로젝트 파일 순회 (os.walk, 단일 패스).
+
+    Args:
+        include_names: 확장자 없는 파일명 집합 (예: {"Dockerfile", "Makefile"}).
+                       extensions와 OR 조건으로 매칭.
+    """
     if extensions is None:
         extensions = SOURCE_EXTS
     if exclude_dirs is None:
@@ -114,7 +119,7 @@ def _iter_project_files(root: Path, extensions: set = None, exclude_dirs: set = 
 
             for fname in filenames:
                 ext = os.path.splitext(fname)[1]
-                if ext in extensions:
+                if ext in extensions or (include_names and fname in include_names):
                     results.append(Path(dirpath) / fname)
     except (PermissionError, OSError):
         pass
@@ -128,19 +133,20 @@ _file_scan_cache_ttl: int = 5
 
 
 def _iter_project_files_cached(root: Path, extensions: set = None, exclude_dirs: set = None,
-                                max_depth: int = -1) -> list:
+                                max_depth: int = -1, include_names: Optional[set[str]] = None) -> list:
     """_iter_project_files 결과를 캐싱하는 래퍼."""
     cache_key = (
         str(root),
         tuple(sorted(extensions)) if extensions else tuple(sorted(SOURCE_EXTS)),
         tuple(sorted(exclude_dirs)) if exclude_dirs else tuple(sorted(DEFAULT_EXCLUDE_DIRS)),
         max_depth,
+        tuple(sorted(include_names)) if include_names else None,
     )
     cached = _file_scan_cache.get(cache_key)
     if cached and (time.time() - cached["time"]) < _file_scan_cache_ttl:
         return cached["results"]
 
-    results = _iter_project_files(root, extensions, exclude_dirs, max_depth)
+    results = _iter_project_files(root, extensions, exclude_dirs, max_depth, include_names)
     _file_scan_cache[cache_key] = {"results": results, "time": time.time()}
     return results
 

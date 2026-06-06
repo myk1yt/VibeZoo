@@ -41,8 +41,31 @@ DEFAULT_EXCLUDE_DIRS = {
     ".next", "coverage", "target", "vendor", "__pycache__",
     ".venv", "env", ".env", ".vibezoo-uploads",
 }
-SOURCE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs"}
+SOURCE_EXTS = {
+    ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs",
+    # C/C++
+    ".cpp", ".hpp", ".cc", ".h", ".c",
+    # Shell
+    ".sh", ".bash", ".ps1",
+    # 설정 파일
+    ".yaml", ".yml", ".json",
+}
 TS_JS_EXTS = {".ts", ".tsx", ".js", ".jsx"}
+
+# C/C++ 확장자 그룹 (→ reviewer.py, ast_engine.py 에서 import)
+CPP_EXTS = {".cpp", ".hpp", ".cc", ".h", ".c"}
+
+# Shell 확장자 그룹
+SHELL_EXTS = {".sh", ".bash", ".ps1"}
+
+# 확장자 없는 설정 파일명 (→ _iter_project_files()의 include_names 파라미터에서 사용)
+CONFIG_FILES = {"Dockerfile", "docker-compose.yml", "docker-compose.yaml"}
+
+# Generic / non-AST 파일 (reviewer 기본 패턴만 적용) (→ reviewer.py 에서 import)
+GENERIC_EXTS = {".sh", ".bash", ".ps1", ".yaml", ".yml", ".json"}
+
+# 모든 리뷰 가능 확장자 (→ review_code() 진입 검증에 사용) (M5)
+REVIEWABLE_EXTS = SOURCE_EXTS | GENERIC_EXTS
 
 # ── SSA ──────────────────────────────────────────────
 
