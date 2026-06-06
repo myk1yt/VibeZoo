@@ -55,5 +55,6 @@
   "vibezoo.guard.yoctoBackupEnabled.description": "Guard.git: .git 핵심 파일을 yocto에 주기적으로 스냅샷합니다",
   "vibezoo.guard.yoctoBackupIntervalMin.description": "Guard.git: .git 스냅샷 간격 (분)",
   "vibezoo.guard.integrityCheckIntervalMin.description": "Guard.git: .git 무결성 자동 진단 간격 (분) — H5 대응",
-  "vibezoo.guard.linuxUseChattr.description": "Guard.git: Linux에서 chattr +a 사용 (내부 파일 삭제도 방지 → git gc 실패 가능) — H2 대응"
+  "vibezoo.guard.linuxUseChattr.description": "Guard.git: Linux에서 chattr +a 사용 (내부 파일 삭제도 방지 → git gc 실패 가능) — H2 대응",
+  "vibezoo.openErrorDashboard.title": "VibeZoo: Open Error Dashboard (에러 대시보드)"
 }

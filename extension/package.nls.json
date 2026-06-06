@@ -55,5 +55,6 @@
   "vibezoo.guard.yoctoBackupEnabled.description": "Guard.git: Periodically snapshot .git core files to yocto",
   "vibezoo.guard.yoctoBackupIntervalMin.description": "Guard.git: .git snapshot interval (minutes)",
   "vibezoo.guard.integrityCheckIntervalMin.description": "Guard.git: .git integrity auto-check interval (minutes) — H5 response",
-  "vibezoo.guard.linuxUseChattr.description": "Guard.git: Use chattr +a on Linux (also prevents file deletion inside .git → may break git gc) — H2 response"
+  "vibezoo.guard.linuxUseChattr.description": "Guard.git: Use chattr +a on Linux (also prevents file deletion inside .git → may break git gc) — H2 response",
+  "vibezoo.openErrorDashboard.title": "VibeZoo: Open Error Dashboard"
 }
