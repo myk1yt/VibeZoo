@@ -1,10 +1,58 @@
 """
 VibeZoo UX Coordinator — 사용자 의도에 따라 최적의 도구 체인을 제안/실행.
 Zoo(LLM)가 이 도구를 호출하여 워크플로우 자동화.
+
+Pillar 2: Crow-Aware Contextual Intent Routing
+  - _write_dz_session(): Dropzone 세션 기록 (v2.0 D1)
+  - detect_intent_v2() 기반 의도 감지 + 메타데이터 표시
 """
 
+import json
 import os
-from bridge.intent_detector import detect_intent, get_workflow_hints
+import time
+from bridge.config import DZ_SESSION_FILE
+from bridge.intent_detector import detect_intent_v2, get_workflow_hints
+
+
+# ── Dropzone Session Writer ──────────────────────────────
+
+
+def _write_dz_session(file_path: str):
+    """드롭존 세션 정보를 dz_session.json에 기록.
+
+    [v2.0 D1] 이 함수가 없으면 Pillar 2의 _check_dropzone_session()이
+    항상 None을 반환하여 Dropzone 시간적 바인딩이 완전히 무력화됨.
+    """
+    dz_file = os.path.expanduser(DZ_SESSION_FILE)
+    dz_dir = os.path.dirname(dz_file)
+    os.makedirs(dz_dir, exist_ok=True)
+
+    session_entry = {
+        "file_path": file_path,
+        "file_name": os.path.basename(file_path),
+        "timestamp": time.time(),
+    }
+
+    session = {"last_upload": session_entry, "history": [session_entry]}
+
+    # 기존 세션 유지 + 새 업로드 추가
+    try:
+        if os.path.exists(dz_file):
+            with open(dz_file, 'r', encoding='utf-8', errors='replace') as f:
+                existing = json.load(f)
+            existing["last_upload"] = session_entry
+            history = existing.get("history", [])
+            history.insert(0, session_entry)
+            existing["history"] = history[:10]
+            session = existing
+    except Exception:
+        pass
+
+    with open(dz_file, 'w', encoding='utf-8') as f:
+        json.dump(session, f, indent=2, ensure_ascii=False)
+
+
+# ── MCP 도구 등록 ────────────────────────────────────────
 
 
 def register(mcp):
@@ -27,16 +75,33 @@ def register(mcp):
         Returns:
             마크다운 형식의 워크플로우 제안
         """
+        metadata = {}
+
         if intent == "auto" and user_message:
-            detected = detect_intent(user_message)
-            if detected:
-                intent = detected[0][0]
+            # [v2.0] detect_intent_v2 사용
+            result = detect_intent_v2(user_message)
+            intents = result["intents"]
+            metadata = result["metadata"]
+
+            if intents:
+                intent = intents[0][0]
+
+                # [NEW] Dropzone 바인딩: file_path 자동 주입
+                if intent == "file_share" and metadata.get("dz_file_path"):
+                    pass
 
         hints = get_workflow_hints(intent)
 
-        # 기본 응답 구성
+        # 응답 구성
         response_parts = [f"## 🧠 의도 분석 결과"]
         response_parts.append(f"- **감지된 의도**: `{intent}`")
+
+        # 메타데이터 표시
+        if metadata.get("crow_used"):
+            response_parts.append(f"- **Crow 컨텍스트**: 활성화됨")
+        if metadata.get("dz_recent"):
+            file_name = os.path.basename(metadata.get("dz_file_path", ""))
+            response_parts.append(f"- **최근 업로드**: `{file_name}` (Dropzone 바인딩)")
 
         if hints["primary_tool"]:
             response_parts.append(f"- **권장 도구**: `{hints['primary_tool']}`")
@@ -52,6 +117,14 @@ def register(mcp):
             response_parts.append(hints["suggested_response"])
         else:
             response_parts.append("어떻게 도와드릴까요?")
+
+        # [NEW] file_share + dz_file_path → 자동 분석 제안
+        if intent == "file_share" and metadata.get("dz_file_path"):
+            dz_path = metadata["dz_file_path"]
+            response_parts.append("")
+            response_parts.append("### 📎 Dropzone 자동 바인딩")
+            response_parts.append(f"최근 업로드된 파일이 감지되었습니다: `{os.path.basename(dz_path)}`")
+            response_parts.append(f"`auto_analyze_after_drop(file_path=\"{dz_path}\")` 호출을 제안합니다.")
 
         if context:
             response_parts.append("")
@@ -74,6 +147,9 @@ def register(mcp):
         Returns:
             종합 분석 보고서 + 후속 제안
         """
+        # [v2.0 D1] 세션 기록 — Pillar 2가 이 파일을 읽어 최근 업로드 감지
+        _write_dz_session(file_path)
+
         if not os.path.exists(file_path):
             return f"⚠️ 파일을 찾을 수 없습니다: {file_path}"
 
