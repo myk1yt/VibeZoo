@@ -55,7 +55,6 @@ class WebSearchEngine:
             return self._search_mojeek(query, max_results)
         elif preferred_engine == "wikipedia":
             return self._search_wikipedia(query, max_results)
-        elif preferred_engine == :
         elif preferred_engine == "google":
             return self._search_google_api(query, max_results)
         elif preferred_engine == "bing":
@@ -79,8 +78,6 @@ class WebSearchEngine:
             # Wikipedia (빠른 API)
             future = pool.submit(self._search_wikipedia, query, max_results)
             future_map[future] = "wikipedia"
-
-            future_map[future] = 
 
             # Google (키 있으면)
             if os.environ.get("GOOGLE_API_KEY"):
@@ -195,18 +192,6 @@ class WebSearchEngine:
             return results
         except Exception:
             return []
-
-                for r in json_data.get("results", [])[:max_results]:
-                    results.append({
-                        "title": r.get("title", "No title"),
-                        "url": r.get("url", ""),
-                        "snippet": r.get("content", r.get("snippet", "No description available.")),
-                    })
-                if results:
-                    return results
-            except Exception:
-                continue
-        return []
 
     def _search_google_api(self, query: str, max_results: int) -> list:
         """Google Custom Search API 검색 (환경변수: GOOGLE_API_KEY, GOOGLE_CX)"""
