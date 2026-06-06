@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5 (Unreleased)
+
+### UX Upgrade — Pillar 1 & 2
+- **Smart Ellipsis Patching**: `apply_patch` now detects and resolves `// ...` / `# ...` / `/* ... */` placeholders using AST-guided wildcard resolution
+- **Transactional Apply**: Dry-run all blocks in memory, commit only if all succeed, rollback on any failure
+- **Crow-Aware Intent**: `ux_coordinator` now queries Crow Memory for recent context when keyword matching is uncertain
+- **Dropzone Binding**: Automatically detects recently uploaded files (within 3 min) and routes intent to file analysis
+- **fix_loop Intent**: New intent signature for bug fix / error recovery scenarios
+
 ## v0.14.4 (2026-06-06)
 
 ### 🆕 New Feature: Multi-language Analysis Engine Enhancement

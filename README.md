@@ -73,6 +73,8 @@ The `web_search` tool leverages a **Quad-Core Async Search Engine** architecture
 ### 1.1 UX (3 Tools) — Intent Detection + Auto Tool Chains
 When you say "I'll show you a file", the Dropzone opens. Uploaded files are automatically analyzed through the SSA→OCR→MiniCPM pipeline.
 
+The [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py) tool is now **Crow Memory-aware** — when keyword-based intent detection has low confidence, it queries Crow Memory for recent context (dropzone uploads, conversation history) to disambiguate. Detected intents include `file_share`, `drawing_request`, `code_analysis`, `project_setup`, and the new **`fix_loop`** — automatic bug fix / error recovery.
+
 ### 1.2 Scout (3 Tools) — Code Search and Exploration
 Quickly grasp the project structure and find symbols or functions accurately using tree-sitter AST.
 **`target_path` parameter added**: Enables global search in a specific directory (e.g., `search_codebase(query=..., target_path="C:/Projects/MyApp")`).
@@ -91,6 +93,8 @@ The AI draws on a Fabric.js canvas, reads user modifications, and can capture th
 
 ### 1.7 Fix Loop (3 Tools) — Autonomous Build & Fix Loop
 If a build fails, the LLM automatically analyzes the error, looks up past fix patterns in Crow Memory, and suggests fixes. Supports Human-in-the-Loop.
+
+New **`fix_loop` intent** — the [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py) can now route bug-fix and error-recovery scenarios directly to the Fix Loop workflow, enabling seamless transitions from intent detection to autonomous repair.
 
 ### 1.8 Integrated (4 Tools) — Unified Scenario Tools
 Combines multiple tools into a single workflow. Just say "Review this", and it runs search → review → quality → patterns sequentially.
@@ -111,9 +115,11 @@ Used to reference external documentation or search for the latest technical info
 Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, including OCR.
 
 ### 1.14 Editor (2 Tools) — AI-Safe File Editing
-Apply patches to files without worrying about missing parameters. The `apply_patch` tool:
+Apply patches to files without worrying about missing parameters. The [`apply_patch`](mcp-servers/bridge/tools/editor.py) tool:
 - **`path` optional**: Auto-detects target file from diff content
 - **Fuzzy matching**: Auto-corrects up to 85% similarity (ignores whitespace/indentation differences)
+- **AST-Guided Smart Ellipsis**: Detects `// ...`, `# ...`, `/* ... */` placeholders in SEARCH blocks and resolves them via text fuzzy matching + optional AST scope verification — LLMs can safely use `// ... existing code ...` placeholders
+- **Transactional Apply**: All SEARCH/REPLACE blocks are validated in an in-memory dry-run first (Phase 1). Only if all blocks succeed does the atomic commit (Phase 2) proceed; on any failure, the entire operation rolls back — no partial modifications
 - **Auto backup**: Backs up to `~/.vibezoo-backup/` before modification
 - **Supports both `=======` / `-------`**: Compatible with `apply_diff`
 
