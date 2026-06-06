@@ -74,6 +74,23 @@ export interface Diagnostic {
   source: string;
 }
 
+// ── Error Collection (P3/P4) ─────────────────────────────
+
+export type FixLoopSource = 'build' | 'mcp_error';
+
+export interface McpErrorInfo {
+  /** 에러가 발생한 MCP 도구 이름 */
+  toolName: string;
+  /** 예외 타입 (e.g. "TypeError") */
+  exceptionType: string;
+  /** 예외 메시지 */
+  exceptionMessage: string;
+  /** 도구 호출 시 사용된 파라미터 */
+  parameters: Record<string, any>;
+  /** ErrorRegistry에서 할당된 entry ID */
+  entryId: string;
+}
+
 export interface ProjectInfo {
   type: 'node' | 'rust' | 'go' | 'python' | 'java' | 'unknown';
   rootPath: string;

@@ -26,6 +26,7 @@ import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetecto
 import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
+import { activateErrorCollection } from './flow/ErrorCollection';
 
 // ── 조기 브릿지 Spawn (모듈 로드 시점) ─────────────────────
 // activate()보다 먼저 실행되어 Python 브릿지를 미리 띄운다.
@@ -249,6 +250,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ★ 생성자에서 startWatching()을 호출하지 않으므로 명시적 activate() 필요
   visualPanels.activate();
 
+  // ── P3: Error Collection ────────────────────────────────
+  activateErrorCollection(context, statusBar);
+
   // ── Commands ─────────────────────────────────────────────
 
   // Instant Rewind (선택적 sessionName 인자 — YOLO History TreeItem에서 전달)
@@ -371,6 +375,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.openDropzone', () => {
       visualPanels.openDropzone();
+    })
+  );
+
+  // Open Error Dashboard (P3)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.openErrorDashboard', () => {
+      visualPanels.openErrorDashboard();
     })
   );
 

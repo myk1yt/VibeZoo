@@ -32,8 +32,17 @@ class BaseTool:
 
     @staticmethod
     def report_error(name: str, error: Exception, context: dict = None) -> str:
-        """구조화된 에러 보고"""
+        """구조화된 에러 보고 (ErrorRegistry 자동 기록 포함)"""
         import json
+        
+        # ErrorRegistry에 에러 기록 (best-effort, 도구 호출에 영향 없음)
+        try:
+            from bridge.error_handler import ErrorRegistry
+            registry = ErrorRegistry()
+            registry.record(name, error, context)
+        except Exception:
+            pass  # Graceful degradation: 레지스트리 실패가 보고에 영향 없음
+        
         error_info = {
             "tool": name,
             "error": str(error),

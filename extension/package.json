@@ -137,6 +137,10 @@
       {
         "command": "vibezoo.toggleGuardGit",
         "title": "%vibezoo.toggleGuardGit.title%"
+      },
+      {
+        "command": "vibezoo.openErrorDashboard",
+        "title": "%vibezoo.openErrorDashboard.title%"
       }
     ],
     "viewsContainers": {
@@ -289,6 +293,18 @@
           "type": "boolean",
           "default": false,
           "description": "%vibezoo.guard.linuxUseChattr.description%"
+        },
+        "vibezoo.errorCollection.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.errorCollection.enabled.description%"
+        },
+        "vibezoo.errorCollection.maxEntries": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 500,
+          "description": "%vibezoo.errorCollection.maxEntries.description%"
         }
       }
     },

@@ -30,7 +30,7 @@ DEFAULT_REGISTERS = {
     'style': {'description': 'Coding style', 'entries': []},
     'life_context': {'description': 'Life context', 'entries': []},
 }
-VALID_REGISTERS = set(DEFAULT_REGISTERS.keys()) | {'coding_style','naming','formatting','architecture','workflow'}
+VALID_REGISTERS = set(DEFAULT_REGISTERS.keys()) | {'coding_style','naming','formatting','architecture','workflow','error'}
 MAX_ENTRIES_PER_REGISTER = 500
 
 def ensure_dirs():

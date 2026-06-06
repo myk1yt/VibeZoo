@@ -115,5 +115,8 @@
   "⚠️ .git 폴더가 이름 변경되었습니다! (ACL bypass 가능) Yocto에서 복구하시겠습니까?": "⚠️ .git folder was renamed! (ACL bypass possible) Restore from Yocto?",
   "복구하기": "Restore",
   "무시": "Ignore",
-  "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?": "⚠️ .git folder was deleted! Guard.git attempted protection but may have been bypassed. Restore from Yocto?"
+  "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?": "⚠️ .git folder was deleted! Guard.git attempted protection but may have been bypassed. Restore from Yocto?",
+  "vibezoo.openErrorDashboard.title": "🐞 Open Error Dashboard",
+  "vibezoo.errorCollection.enabled.description": "Enable automatic MCP tool error collection",
+  "vibezoo.errorCollection.maxEntries.description": "Maximum error entries in registry.json"
 }

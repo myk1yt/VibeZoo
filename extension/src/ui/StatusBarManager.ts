@@ -108,6 +108,10 @@ export class StatusBarManager {
   private _yoloActive: boolean = false;
   private _guardMode: GuardMode = 'safe';
 
+  /** P4: 에러 카운트 표시 */
+  private _errorCount: number = 0;
+  private _criticalErrorCount: number = 0;
+
   /** setActive()로 설정된 base tooltip (Crow 접미사 제외) */
   private _baseTooltip: string = vscode.l10n.t('VibeZoo: Active');
 
@@ -117,6 +121,13 @@ export class StatusBarManager {
       100
     );
     this.item.command = 'vibezoo.verifyFoundation';
+  }
+
+  /** 에러 카운트 업데이트 (P4) */
+  setErrorCount(total: number, critical: number): void {
+    this._errorCount = total;
+    this._criticalErrorCount = critical;
+    this._refreshDisplay();
   }
 
   /** 내부: _baseTooltip + Crow 접미사 + CIM/YOLO 상태로 tooltip 재구성 */
@@ -139,7 +150,7 @@ export class StatusBarManager {
     return tooltip;
   }
 
-  /** 내부: CIM/YOLO/GUARD 상태를 텍스트에 반영 */
+  /** 내부: CIM/YOLO/GUARD 상태를 텍스트에 반영 + 에러 카운트 통합 */
   private _composeText(): string {
     if (this._guardMode === 'active') return '$(zap) VibeZoo Guard';
     if (this._guardMode === 'warning') return '$(warning) VibeZoo';
@@ -151,6 +162,24 @@ export class StatusBarManager {
       text = '$(flame) VibeZoo YOLO';
     }
     return text;
+  }
+
+  /** 내부: _composeText() + 에러 카운트 반영 (P4) */
+  private _refreshDisplay(): void {
+    let text = this._composeText();
+
+    // 에러 카운트 표시 (0이면 숨김)
+    if (this._errorCount > 0) {
+      const icon = this._criticalErrorCount > 0 ? '$(error)' : '$(warning)';
+      text += ` ${icon} ${this._errorCount}`;
+    }
+
+    this.item.text = text;
+    this.item.tooltip = this._composeTooltip() +
+      (this._errorCount > 0
+        ? ` | Errors: ${this._errorCount} (Critical: ${this._criticalErrorCount})`
+        : '');
+    this.item.show();
   }
 
   /** VibeZoo 활성 상태 표시 */
@@ -165,48 +194,43 @@ export class StatusBarManager {
       this._baseTooltip = vscode.l10n.t('VibeZoo: Active');
       this.item.backgroundColor = undefined;
     }
-    this.item.text = this._composeText();
-    this.item.tooltip = this._composeTooltip();
-    this.item.show();
+    this._refreshDisplay();
   }
 
   /** Crow 연결 상태 표시 */
   setCrowStatus(connected: boolean): void {
     this._crowConnected = connected;
-    this.item.tooltip = this._composeTooltip();
-    this.item.show();
+    this._refreshDisplay();
   }
 
   /** YOLO 모드 상태 표시 */
   setYoloStatus(active: boolean): void {
     this._yoloActive = active;
-    this.item.text = this._composeText();
-    this.item.tooltip = this._composeTooltip();
+    this._refreshDisplay();
     if (active) {
       this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     } else {
       this.item.backgroundColor = undefined;
     }
-    this.item.show();
   }
 
   /** CIM (Continuous Improvement Mode) 상태 표시 */
   setCimStatus(active: boolean): void {
     this._cimActive = active;
-    this.item.text = this._composeText();
-    this.item.tooltip = this._composeTooltip();
     if (active) {
       // CIM 활성화 시 반짝이는 효과
       this.item.text = '$(eye) VibeZoo CIM';
+    } else {
+      this._refreshDisplay();
     }
+    this.item.tooltip = this._composeTooltip();
     this.item.show();
   }
 
   /** Guard Mode 설정 (I_instability) */
   setGuardMode(mode: GuardMode): void {
     this._guardMode = mode;
-    this.item.text = this._composeText();
-    this.item.tooltip = this._composeTooltip();
+    this._refreshDisplay();
     // Guard active 시 배경색 변경
     if (mode === 'active') {
       this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -215,7 +239,6 @@ export class StatusBarManager {
     } else {
       this.item.backgroundColor = undefined;
     }
-    this.item.show();
   }
 
   /** 현재 Guard Mode 반환 */

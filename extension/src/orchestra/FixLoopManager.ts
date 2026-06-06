@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { Diagnostic, BuildResult } from '../types';
+import { Diagnostic, BuildResult, McpErrorInfo } from '../types';
 import { StatusBarManager, GuardMode, NotificationThrottle } from '../ui/StatusBarManager';
 import { ConfigService } from '../config/ConfigService';
 // NotificationThrottle is used for all user-facing notifications
@@ -175,6 +175,9 @@ export class FixLoopManager {
       this.writeFixRequest();
       this.updateStatusBar(true);
 
+      // P4: MCP 에러 복구 결과 기록
+      this.markAutoFixResult(true);
+
       // 성공 메시지
       const attemptCount = this.currentSession.history.length;
       NotificationThrottle.showInfo(
@@ -218,6 +221,10 @@ export class FixLoopManager {
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
+
+      // P4: MCP 에러 복구 실패 기록
+      this.markAutoFixResult(false);
+
       NotificationThrottle.showWarning(
         `⚠️ VibeZoo: I_instability=${instability.toFixed(2)} (Guard: Safe/Halt). Auto-Fix를 중단합니다. 수동 확인이 필요합니다.`
       );
@@ -232,6 +239,10 @@ export class FixLoopManager {
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
+
+      // P4: MCP 에러 복구 실패 기록
+      this.markAutoFixResult(false);
+
       NotificationThrottle.showWarning(
         `⚠️ VibeZoo: 최대 ${this.maxAttempts}회 시도 초과. Auto-Fix를 중단합니다.`
       );
@@ -247,6 +258,38 @@ export class FixLoopManager {
     this.updateStatusBar();
 
     console.log(`[VibeZoo] FixLoopManager: 빌드 실패 → pending (attempt ${attemptNum}/${this.maxAttempts})`);
+  }
+
+  /**
+   * MCP 도구 에러 발생 시 호출 (P4).
+   * FixLoop 상태 머신에 진입하여 자동 복구를 시도한다.
+   * @param errorInfo MCP 에러 정보
+   */
+  onMcpError(errorInfo: McpErrorInfo): void {
+    const projectRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+
+    // 진단 정보 생성 (FixLoop 호환 포맷)
+    const diagnostics: Diagnostic[] = [{
+      file: `mcp:${errorInfo.toolName}`,
+      line: 1,
+      column: 1,
+      severity: 'error',
+      message: `[${errorInfo.exceptionType}] ${errorInfo.exceptionMessage}`,
+      code: errorInfo.exceptionType,
+      source: 'vibezoo-mcp',
+    }];
+
+    // FixLoop 상태 머신 진입 (build 실패와 동일한 메커니즘)
+    this.onBuildFailure(
+      diagnostics,
+      JSON.stringify(errorInfo.parameters),
+      `mcp:${errorInfo.toolName}`
+    );
+
+    console.log(
+      `[VibeZoo] FixLoopManager.onMcpError: ${errorInfo.toolName} ` +
+      `${errorInfo.exceptionType} → 상태 머신 진입 (entryId: ${errorInfo.entryId})`
+    );
   }
 
   /**
@@ -408,6 +451,10 @@ export class FixLoopManager {
         this.state = 'abandoned';
         this.writeFixRequest();
         this.updateStatusBar();
+
+        // P4: MCP 에러 복구 실패 기록 (시간 초과)
+        this.markAutoFixResult(false);
+
         console.log('[VibeZoo] FixLoopManager: → abandoned (timeout)');
         NotificationThrottle.showWarning(
           '⏰ VibeZoo: Auto-Fix 시간 초과 (120초). 수동 확인이 필요합니다.'
@@ -510,6 +557,10 @@ export class FixLoopManager {
       this.clearSessionTimeout();
       this.writeFixRequest();
       this.updateStatusBar();
+
+      // P4: MCP 에러 복구 실패 기록 (사용자 중단)
+      this.markAutoFixResult(false);
+
       NotificationThrottle.showInfo('🛑 VibeZoo: Auto-Fix가 사용자에 의해 중단되었습니다.');
     }
   }
@@ -659,6 +710,38 @@ export class FixLoopManager {
   /** 감시 상태 확인 */
   isWatching(): boolean {
     return this._isWatching;
+  }
+
+  /**
+   * markResolved에서 ErrorRegistry.mark_auto_fix 호출 (P4).
+   * FixLoop이 MCP 에러로 시작된 경우 성공/실패를 registry.json에 기록한다.
+   */
+  private markAutoFixResult(success: boolean): void {
+    // 현재 세션이 MCP 에러로 시작된 것인지 확인
+    if (!this.currentSession) return;
+    const taskName = this.currentSession.taskName;
+    if (!taskName.startsWith('mcp:')) return; // MCP 에러가 아닌 경우 skip
+
+    // 브릿지 HTTP API를 통해 mark_auto_fix 호출 (best-effort)
+    try {
+      const http = require('http');
+      const payload = JSON.stringify({
+        entry_id: taskName.replace('mcp:', ''),
+        success,
+      });
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: 9027, // Bridge port
+        path: '/api/error/mark_auto_fix',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      });
+      req.write(payload);
+      req.end();
+      console.log(`[VibeZoo] FixLoopManager: markAutoFixResult(${success}) sent to bridge`);
+    } catch {
+      // Bridge 없어도 정상 동작
+    }
   }
 
   /** dispose */

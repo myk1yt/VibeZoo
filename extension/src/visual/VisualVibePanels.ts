@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
+import { ErrorDashboard } from './ErrorDashboard';
 
 // ── 상수 ──────────────────────────────────────────────────
 const WB_FILE = () => path.join(os.homedir(), '.vibezoo-whiteboard.json');
@@ -94,8 +95,12 @@ export class VisualVibePanels {
   /** Whiteboard가 아직 열리지 않았을 때 대기 중인 드로잉 명령 */
   private _pendingDrawCommands: DrawCommand[] | null = null;
 
+  /** P3: Error Dashboard 인스턴스 */
+  private errorDashboard: ErrorDashboard;
+
   constructor() {
     this.homedir = os.homedir();
+    this.errorDashboard = new ErrorDashboard();
   }
 
   // ── 수명주기 ──────────────────────────────────────────────
@@ -113,6 +118,7 @@ export class VisualVibePanels {
     this.uiPreviewPanel?.dispose();
     this.diagramPanel?.dispose();
     this.dropzonePanel?.dispose();
+    this.errorDashboard?.dispose();
   }
 
   // ── 파일 감시 ─────────────────────────────────────────────
@@ -235,6 +241,7 @@ export class VisualVibePanels {
     try { fs.unwatchFile(WB_FILE()); } catch { /* ignore */ }
     try { fs.unwatchFile(WB_ACTION_FILE()); } catch { /* ignore */ }
     try { fs.unwatchFile(UI_ACTION_FILE()); } catch { /* ignore */ }
+    try { fs.unwatchFile(DZ_ACTION_FILE()); } catch { /* ignore */ } // ★ BUG FIX: dropzone unwatch 누락
     this._watching = false;
     log('File watching stopped');
   }
@@ -407,6 +414,13 @@ export class VisualVibePanels {
     this.diagramPanel.webview.html = this.diagramHtml(diagramType);
     this.diagramPanel.onDidDispose(() => { this.diagramPanel = null; });
     return this.diagramPanel;
+  }
+
+  // ── Error Dashboard ───────────────────────────────────
+
+  /** Error Dashboard 열기 (P3) */
+  openErrorDashboard(): vscode.WebviewPanel {
+    return this.errorDashboard.open();
   }
 
   // ── Dropzone ────────────────────────────────────────────
