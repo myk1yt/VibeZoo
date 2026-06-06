@@ -56,5 +56,7 @@
   "vibezoo.guard.yoctoBackupIntervalMin.description": "Guard.git: .git snapshot interval (minutes)",
   "vibezoo.guard.integrityCheckIntervalMin.description": "Guard.git: .git integrity auto-check interval (minutes) — H5 response",
   "vibezoo.guard.linuxUseChattr.description": "Guard.git: Use chattr +a on Linux (also prevents file deletion inside .git → may break git gc) — H2 response",
-  "vibezoo.openErrorDashboard.title": "VibeZoo: Open Error Dashboard"
+  "vibezoo.openErrorDashboard.title": "VibeZoo: Open Error Dashboard",
+  "vibezoo.errorCollection.enabled.description": "Enable automatic MCP tool error collection",
+  "vibezoo.errorCollection.maxEntries.description": "Maximum error entries in registry.json"
 }
