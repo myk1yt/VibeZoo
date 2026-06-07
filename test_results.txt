@@ -1,1 +1,3 @@
-detect_ellipsis tests:
+exact_upper=3
+exact_lower=0
+auto_lower=0

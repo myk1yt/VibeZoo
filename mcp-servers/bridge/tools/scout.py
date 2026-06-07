@@ -25,12 +25,13 @@ from bridge.utils import (
     _validate_string, _validate_int, _validate_file_path,
     _read_file_content, _truncate, _normalize_path,
     _iter_project_files, _iter_project_files_cached,
-    _npx_cmd, _bm25_score, _fuzzy_match, _auto_detect_query_type,
+    _npx_cmd, _fuzzy_match, _auto_detect_query_type,
     _extract_regex_imports, _extract_python_imports, _extract_go_imports,
     get_project_root,
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.search_engine import SearchEngine
+from bridge.result_ranker import ResultRanker
 from bridge.ast_engine import AstEngine
 from bridge.file_cache import FileCache
 from bridge.tools._base import BaseTool
@@ -82,9 +83,9 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
         import subprocess
         rg_check = subprocess.run(["rg", "--version"], capture_output=True, timeout=2)
         if rg_check.returncode != 0:
-            rg_note = "<!-- NOTE: ripgrep not installed. Install with vibezoo_setup(target=\"full\") -->\n"
+            rg_note = "> ⚠️ **Note:** ripgrep not installed - falling back to os.walk (slower, extension-limited). Install with vibezoo_setup(target=full) for faster search.\n\n"
     except Exception:
-        rg_note = "<!-- NOTE: ripgrep not installed. Install with vibezoo_setup(target=\"full\") -->\n"
+        rg_note = "> ⚠️ **Note:** ripgrep not installed - falling back to os.walk (slower, extension-limited). Install with vibezoo_setup(target=full) for faster search.\n\n"
 
     if target_path and not Path(target_path).exists():
         rg_note += f"<!-- WARNING: target_path '{target_path}' not found, using current directory -->\n"
@@ -93,37 +94,10 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
     engine = _get_search_engine(root)
     search_results = engine.search(query, file_patterns, max_results, mode, context_lines)
 
-    # ── mode="semantic": BM25 + 컨텍스트 밀도 기반 reranking ──
+    # ── mode="semantic": ResultRanker 기반 reranking ──
     if mode == "semantic" and search_results:
-        # BM25 점수 계산
-        def _bm25_term_freq(doc: str, term: str) -> float:
-            doc_lower = doc.lower()
-            term_lower = term.lower()
-            count = doc_lower.count(term_lower)
-            return count / (len(doc_lower.split()) + 1)
-
-        query_terms = query.lower().split()
-        scored = []
-        for r in search_results:
-            doc_text = (r.get("content", "") + " " +
-                       " ".join(r.get("context_before", [])) +
-                       " ".join(r.get("context_after", [])))
-            # BM25-like scoring
-            score = 0.0
-            for term in query_terms:
-                tf = _bm25_term_freq(doc_text, term)
-                if tf > 0:
-                    score += tf * 1.5  # simplified IDF
-            # 컨텍스트 밀도 보너스
-            ctx_before = len(r.get("context_before", []))
-            ctx_after = len(r.get("context_after", []))
-            density_bonus = min((ctx_before + ctx_after) / 10.0, 2.0)
-            score += density_bonus
-            r["score"] = score
-            scored.append(r)
-        # 재정렬
-        scored.sort(key=lambda x: -x.get("score", 0))
-        search_results = scored[:max_results]
+        ranker = ResultRanker()
+        search_results = ranker.rank(query, search_results)[:max_results]
 
     # AST 검색 (보완)
     ast_engine = _get_ast_engine()
@@ -151,10 +125,17 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
 
     # AST 검색 (심볼 검색 시)
     ast_results = []
-    is_ast_query = any(keyword in query.lower() for keyword in [
-        "function ", "class ", "interface ", "type ", "method ",
-        "함수", "클래스", "인터페이스"
-    ])
+    query_stripped = query.strip()
+    is_single_symbol = bool(re.match(r'^[\w.]+$', query_stripped))
+    is_ast_query = (
+        mode == "ast"
+        or is_single_symbol
+        or any(keyword in query.lower() for keyword in [
+            "function ", "class ", "interface ", "type ", "method ",
+            "def ", "fn ", "func ", "struct ", "enum ", "trait ",
+            "함수", "클래스", "인터페이스"
+        ])
+    )
 
     if is_ast_query and ast_engine.is_available():
         for pattern in patterns:

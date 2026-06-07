@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.14.5 (Unreleased)
+## [0.14.5] - 2026-06-07
 
 ### UX Upgrade — Pillar 1 & 2
 - **Smart Ellipsis Patching**: `apply_patch` now detects and resolves `// ...` / `# ...` / `/* ... */` placeholders using AST-guided wildcard resolution
@@ -8,6 +8,18 @@
 - **Crow-Aware Intent**: `ux_coordinator` now queries Crow Memory for recent context when keyword matching is uncertain
 - **Dropzone Binding**: Automatically detects recently uploaded files (within 3 min) and routes intent to file analysis
 - **fix_loop Intent**: New intent signature for bug fix / error recovery scenarios
+
+### Fixed
+- `search_codebase`: `_fallback_to_walk` 확장자 제한 해제 — `.md`, `.txt`, `.toml` 등 모든 파일 검색 가능
+- `search_codebase`: `mode` 파라미터(`exact`/`fuzzy`/`ast`/`semantic`)가 실제 동작하도록 수정
+- `search_codebase`: ripgrep 미설치 경고를 HTML 주석에서 블록쿼트로 변경 (AI가 인지 가능)
+- `search_codebase`: `is_ast_query` 조건 완화 — 단일 심볼명도 AST 검색 활성화
+- `search_codebase`: `_parse_ripgrep_output` 컨텍스트 수집 개선 (`context_after` 정상 동작)
+- `search_codebase`: `_fallback_to_walk` 패턴 매칭 로직 단순화
+- `ResultRanker` 데드코드 통합 (`scout.py` 인라인 BM25 → `ResultRanker.rank()` 호출)
+- `auto_fixer.py`: 존재하지 않는 `regex` 파라미터 참조 수정 → `query` 키 사용
+- `search_codebase`: 폴백 호출 4곳에서 누락된 `mode` 파라미터 전달 (회귀 버그 수정)
+- `scout.py`: 미사용 `_bm25_score` import 제거
 
 ## v0.14.4 (2026-06-06)
 

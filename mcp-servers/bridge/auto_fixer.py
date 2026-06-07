@@ -17,10 +17,14 @@ logger = logging.getLogger(__name__)
 KNOWN_PATTERNS = {
     ("search_codebase", "TypeError"): {
         "action": "retry_with_fix",
-        "fix_params": lambda p: {**p, "regex": p.get("query", p.get("regex", ""))},
+        "fix_params": lambda p: {
+            k: v for k, v in
+            ({**p, "query": p.get("query", p.get("regex", ""))}).items()
+            if k != "regex"
+        },
         "hint": (
-            "Missing required 'regex' parameter. "
-            "Automatically converting 'query' value to 'regex' for retry."
+            "Missing required 'query' parameter (was passed as 'regex'). "
+            "Automatically converting 'regex' value to 'query' for retry."
         ),
     },
     ("search_files", "TypeError"): {

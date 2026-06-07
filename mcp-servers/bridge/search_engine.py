@@ -71,11 +71,11 @@ class SearchEngine:
         각 결과: {file, line, column, content, context_before, context_after, score}
         """
         if self.ripgrep_available():
-            return self._search_ripgrep(query, file_patterns, max_results, context_lines)
+            return self._search_ripgrep(query, file_patterns, max_results, context_lines, mode)
         elif self._is_git_repo() and self.git_grep_available():
-            return self._search_git_grep(query, file_patterns, max_results)
+            return self._search_git_grep(query, file_patterns, max_results, context_lines, mode)
         else:
-            return self._fallback_to_walk(query, file_patterns, max_results)
+            return self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
 
     def search_fast(self, query: str, max_results: int = 50) -> List[dict]:
         """점진적 검색 — 먼저 50개 결과를 빠르게 반환"""
@@ -84,10 +84,13 @@ class SearchEngine:
     # ── ripgrep ──────────────────────────────────────
 
     def _search_ripgrep(self, query: str, file_patterns: Optional[str],
-                        max_results: int, context_lines: int) -> List[dict]:
+                        max_results: int, context_lines: int,
+                        mode: str = "auto") -> List[dict]:
         """ripgrep 호출 + 결과 파싱"""
         cmd = ["rg", "--no-heading", "--line-number", "--column", "--color", "never",
                "--max-count", str(max_results)]
+        if mode == "exact":
+            cmd.append("-s")  # case-sensitive
         if context_lines > 0:
             cmd.extend(["-C", str(context_lines)])
         if file_patterns:
@@ -106,19 +109,19 @@ class SearchEngine:
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode not in (0, 1):  # 1 = no matches
-                return self._fallback_to_walk(query, file_patterns, max_results)
+                return self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
 
             return self._parse_ripgrep_output(result.stdout, max_results)
         except Exception:
-            return self._fallback_to_walk(query, file_patterns, max_results)
+            return self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
 
     def _parse_ripgrep_output(self, output: str, max_results: int) -> List[dict]:
         """ripgrep 출력 파싱"""
         results = []
-        current = {}
+        current = None
         context_before = []
         context_after = []
-        collecting_after = False
+        collecting_after = True
 
         for line in output.split("\n"):
             if not line.strip():
@@ -155,17 +158,22 @@ class SearchEngine:
                 current["score"] = 1.0
                 context_before = []
                 context_after = []
-                collecting_after = False
+                collecting_after = True
                 if len(results) >= max_results:
                     break
             elif current:
-                # 컨텍스트 라인
-                if not collecting_after:
+                # 컨텍스트 라인 (current match 존재)
+                if collecting_after:
+                    context_after.append(line.strip()[:200])
+                else:
                     context_before.append(line.strip()[:200])
                     if len(context_before) > 3:
                         context_before = context_before[-3:]
-                else:
-                    context_after.append(line.strip()[:200])
+            else:
+                # 첫 매칭 전 컨텍스트 라인 → context_before 축적
+                context_before.append(line.strip()[:200])
+                if len(context_before) > 3:
+                    context_before = context_before[-3:]
 
         if current:
             current["context_after"] = context_after
@@ -176,7 +184,8 @@ class SearchEngine:
     # ── git grep ─────────────────────────────────────
 
     def _search_git_grep(self, query: str, file_patterns: Optional[str],
-                         max_results: int) -> List[dict]:
+                         max_results: int, context_lines: int = 3,
+                         mode: str = "auto") -> List[dict]:
         """git grep 호출"""
         cmd = ["git", "grep", "-n", "--no-color",
                "--max-count", str(max_results)]
@@ -193,7 +202,7 @@ class SearchEngine:
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode not in (0, 1):
-                return self._fallback_to_walk(query, file_patterns, max_results)
+                return self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
 
             results = []
             for line in result.stdout.strip().split("\n"):
@@ -212,17 +221,18 @@ class SearchEngine:
                     })
             return results[:max_results]
         except Exception:
-            return self._fallback_to_walk(query, file_patterns, max_results)
+            return self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
 
     # ── Fallback (os.walk) ───────────────────────────
 
     def _fallback_to_walk(self, query: str, file_patterns: Optional[str],
-                          max_results: int) -> List[dict]:
-        """os.walk 기반 폴백 검색 (기존 동작 유지)"""
+                          max_results: int, context_lines: int = 3,
+                          mode: str = "auto") -> List[dict]:
+        """os.walk 기반 폴백 검색"""
         results = []
-        query_lower = query.lower()
+        query_lower = query.lower() if mode != "exact" else query
 
-        # 파일 패턴 결정
+        # 파일 패턴 결정 — 확장자 미지정 시 None (모든 파일 허용)
         if file_patterns:
             patterns = [p.strip() for p in file_patterns.split(",") if p.strip()]
             ext_set = set()
@@ -231,9 +241,9 @@ class SearchEngine:
                 if ext:
                     ext_set.add(ext)
             if not ext_set:
-                ext_set = SOURCE_EXTS
+                ext_set = None  # 확장자 제한 없음
         else:
-            ext_set = SOURCE_EXTS
+            ext_set = None  # 확장자 제한 없음
 
         try:
             for dirpath, dirnames, filenames in os.walk(str(self._root)):
@@ -247,7 +257,7 @@ class SearchEngine:
 
                 for fname in filenames:
                     ext = os.path.splitext(fname)[1]
-                    if ext not in ext_set:
+                    if ext_set is not None and ext not in ext_set:
                         continue
                     fpath = Path(dirpath) / fname
                     try:
@@ -261,34 +271,60 @@ class SearchEngine:
                     if file_patterns:
                         matched = False
                         for pat in patterns:
-                            if any(fname.endswith(p.strip().lstrip("*.")) for p in [pat]):
+                            clean = pat.strip().lstrip("*.")
+                            if fname.endswith(clean):
                                 matched = True
                                 break
                         if not matched:
                             continue
 
-                    for i, line in enumerate(lines, 1):
-                        if query_lower not in line.lower():
-                            continue
+                    if mode == "exact":
+                        # 대소문자 구분 매칭
+                        for i, line in enumerate(lines, 1):
+                            if query not in line:
+                                continue
 
-                        ctx_before = lines[max(0, i - 4):i - 1] if i > 1 else []
-                        ctx_after = lines[i:min(len(lines), i + 3)] if i < len(lines) else []
+                            ctx_before = lines[max(0, i - 1 - context_lines):i - 1] if i > 1 else []
+                            ctx_after = lines[i:min(len(lines), i + context_lines)] if i < len(lines) else []
 
-                        results.append({
-                            "file": os.path.relpath(str(fpath), str(self._root)),
-                            "line": i,
-                            "column": line.lower().find(query_lower) + 1,
-                            "content": line.strip()[:200],
-                            "context_before": ctx_before,
-                            "context_after": ctx_after,
-                            "score": 0.5,
-                        })
+                            results.append({
+                                "file": os.path.relpath(str(fpath), str(self._root)),
+                                "line": i,
+                                "column": line.find(query) + 1,
+                                "content": line.strip()[:200],
+                                "context_before": ctx_before,
+                                "context_after": ctx_after,
+                                "score": 0.5,
+                            })
+
+                            if len(results) >= max_results:
+                                return results
 
                         if len(results) >= max_results:
-                            return results
+                            break
+                    else:
+                        for i, line in enumerate(lines, 1):
+                            if query_lower not in line.lower():
+                                continue
 
-                    if len(results) >= max_results:
-                        break
+                            ctx_before = lines[max(0, i - 1 - context_lines):i - 1] if i > 1 else []
+                            ctx_after = lines[i:min(len(lines), i + context_lines)] if i < len(lines) else []
+
+                            results.append({
+                                "file": os.path.relpath(str(fpath), str(self._root)),
+                                "line": i,
+                                "column": line.lower().find(query_lower) + 1,
+                                "content": line.strip()[:200],
+                                "context_before": ctx_before,
+                                "context_after": ctx_after,
+                                "score": 0.5,
+                            })
+
+                            if len(results) >= max_results:
+                                return results
+
+                        if len(results) >= max_results:
+                            break
         except (PermissionError, OSError):
             pass
 
