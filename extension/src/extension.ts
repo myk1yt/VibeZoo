@@ -99,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ensureDirectories();
   ensureTemplates();
 
-  crowServer = new CrowServerManager();
+  crowServer = new CrowServerManager(context.extensionPath);
   statusBar = new StatusBarManager();
 
   // VibeZoo는 항상 active (Crow/Bridge 상태와 무관)

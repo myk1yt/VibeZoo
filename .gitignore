@@ -65,3 +65,7 @@ line*.txt
 global_*.txt
 check_*.txt
 models/
+
+# Runtime logs
+*.log
+!extension/package-lock.json

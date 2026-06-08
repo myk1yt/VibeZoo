@@ -1,9 +1,10 @@
-// VibeZoo: Crow Memory 연결 감지 관리자
-// VibeZoo는 Crow 서버를 직접 실행하지 않는다.
-// Crow는 Zoo Code가 관리하는 외부 독립 시스템이다.
-// VibeZoo는 Zoo Code의 Crow 서버 연결 상태를 감지만 한다.
+// VibeZoo: Crow Memory 연결 감지 및 자동 시작 관리자
+// Bridge(port 9027)와 동일한 패턴으로 Crow Memory 서버(port 9020)를 자동 spawn한다.
 
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
 import { CrowServerConfig } from '../types';
 import { ConfigService } from '../config/ConfigService';
 
@@ -16,6 +17,8 @@ export class CrowServerManager {
   readonly onStatusChange = this._onStatusChange.event;
   /** 마지막 healthCheck 결과 캐시 (외부에서 재사용 가능) */
   private _lastHealthy: boolean = false;
+  /** spawn한 child process (중복 실행 방지) */
+  private child: ChildProcess | null = null;
 
   /** Bridge 통합 모드에서 직접 healthy 상태 설정 */
   markHealthy(): void {
@@ -24,7 +27,7 @@ export class CrowServerManager {
     this.startHealthCheck();
   }
 
-  constructor() {
+  constructor(private extensionPath?: string) {
     this.config = {
       port: vscode.workspace.getConfiguration('vibezoo').get('crow.port', 9020),
       healthCheckIntervalMs: 30000,
@@ -55,7 +58,74 @@ export class CrowServerManager {
     }
   }
 
-  /** Zoo Code의 Crow 서버 연결 확인 (기존 서버 재시작 없이 감지만) */
+  /** Crow Memory 서버 spawn (Bridge와 동일한 패턴) */
+  async spawnCrowServer(): Promise<boolean> {
+    // 이미 실행 중이거나 spawn한 프로세스가 있으면 중복 방지
+    if (this.child) {
+      console.log('[VibeZoo] Crow 서버가 이미 spawn됨 — 중복 실행 방지');
+      return true;
+    }
+
+    if (!this.extensionPath) {
+      console.warn('[VibeZoo] extensionPath 없음 — Crow 서버 spawn 불가');
+      return false;
+    }
+
+    // Python 스크립트 경로 찾기 (SubagentManager 패턴과 동일)
+    const candidates = [
+      path.join(this.extensionPath, 'mcp-servers', 'crow_memory_server.py'),
+      path.join(this.extensionPath, '..', 'mcp-servers', 'crow_memory_server.py'),
+      path.join(this.extensionPath, '..', '..', 'mcp-servers', 'crow_memory_server.py'),
+    ];
+
+    let scriptPath: string | null = null;
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        scriptPath = c;
+        break;
+      }
+    }
+
+    if (!scriptPath) {
+      console.warn('[VibeZoo] crow_memory_server.py를 찾을 수 없음 — 후보 경로:', candidates);
+      return false;
+    }
+
+    console.log(`[VibeZoo] Crow 서버 spawn: ${path.basename(scriptPath)} on port ${this.config.port}`);
+
+    try {
+      this.child = spawn('python', [scriptPath, '--port', String(this.config.port)], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      this.child.unref();
+      console.log(`[VibeZoo] ✅ Crow 서버 백그라운드 실행 중 (port ${this.config.port})`);
+      return true;
+    } catch (err: any) {
+      console.error(`[VibeZoo] Crow 서버 spawn 실패: ${err.message}`);
+      this.child = null;
+      return false;
+    }
+  }
+
+  /** 서버 준비 대기 (health check 폴링) */
+  private async waitForReady(timeoutMs: number = 15000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    let delay = 200;
+    while (Date.now() < deadline) {
+      const healthy = await this.healthCheck();
+      if (healthy) {
+        console.log(`[VibeZoo] Crow 서버 준비 완료 (port ${this.config.port})`);
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 1.5, 1000);
+    }
+    console.warn(`[VibeZoo] Crow 서버 준비 대기 시간 초과 (${timeoutMs}ms)`);
+    return false;
+  }
+
+  /** Crow 서버 연결 확인 (서버가 없으면 자동 spawn) */
   async reconnect(maxRetries: number = 3): Promise<boolean> {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       this._onStatusChange.fire({ connected: false });
@@ -63,20 +133,37 @@ export class CrowServerManager {
       const healthy = await this.healthCheck();
       if (healthy) {
         this._lastHealthy = true;
-        console.log(`[VibeZoo] ✅ Zoo Code Crow 서버 연결 확인: 포트 ${this.config.port}`);
+        console.log(`[VibeZoo] ✅ Crow 서버 연결 확인: 포트 ${this.config.port}`);
         this.startHealthCheck();
         this._onStatusChange.fire({ connected: true });
         return true;
       }
 
-      console.log(`[VibeZoo] ⏳ Zoo Code Crow 서버 응답 없음 (${attempt + 1}/${maxRetries}). 5초 후 재시도…`);
+      // health check 실패 시 Crow 서버 spawn 시도 (첫 번째 시도에서만)
+      if (attempt === 0) {
+        console.log('[VibeZoo] Crow 서버 없음 — 자동 spawn 시도');
+        const spawned = await this.spawnCrowServer();
+        if (spawned) {
+          console.log('[VibeZoo] Crow 서버 spawn 완료 — 준비 대기 중...');
+          const ready = await this.waitForReady(15000);
+          if (ready) {
+            this._lastHealthy = true;
+            console.log(`[VibeZoo] ✅ Crow 서버 자동 시작 성공: 포트 ${this.config.port}`);
+            this.startHealthCheck();
+            this._onStatusChange.fire({ connected: true });
+            return true;
+          }
+        }
+      }
+
+      console.log(`[VibeZoo] ⏳ Crow 서버 응답 없음 (${attempt + 1}/${maxRetries}). 5초 후 재시도…`);
       if (attempt < maxRetries - 1) {
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
 
     this._lastHealthy = false;
-    console.warn(`[VibeZoo] ❌ Zoo Code Crow 서버 연결 최종 실패 (${maxRetries}회 시도).`);
+    console.warn(`[VibeZoo] ❌ Crow 서버 연결 최종 실패 (${maxRetries}회 시도).`);
     this._onStatusChange.fire({ connected: false });
     return false;
   }
@@ -86,7 +173,7 @@ export class CrowServerManager {
     this.stopHealthCheck();
     this._lastHealthy = false;
     this._onStatusChange.fire({ connected: false });
-    console.log('[VibeZoo] Crow 연결 해제됨 (Zoo Code 서버는 계속 실행 중)');
+    console.log('[VibeZoo] Crow 연결 해제됨 (서버는 계속 실행 중)');
   }
 
   /** Extension 비활성화 시 정리 */
