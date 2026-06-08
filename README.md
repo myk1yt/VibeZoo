@@ -242,7 +242,7 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 - 📊 **Enterprise Analytics** (Memory usage dashboards, drift alerts)
 
 > **Contact us for enterprise, secure, or custom-tailored Crow Memory development:**
-📧 **support@vibezoo.dev**
+📧 **myk1yt@gmail.com**
 
 ---
 *VibeZoo v0.14.4 — June 2026*
