@@ -8,7 +8,7 @@ REM ============================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 set "PORT=9027"
-set "PYTHON=C:\Users\k1yt\AppData\Local\Programs\Python\Python312\python.exe"
+set "PYTHON=python"
 set "LOG_DIR=%USERPROFILE%\.vibezoo"
 set "LOG_FILE=%LOG_DIR%\watchdog_bridge.log"
 set "FAIL_COUNT=0"

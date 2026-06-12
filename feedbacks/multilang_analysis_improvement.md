@@ -6,16 +6,16 @@ Ion-based Intelligence (Partner), this document proposes technical modifications
 
 ## 1. Analysis of Current VibeZoo Multi-language Analysis Architecture Limitations
 
-Analysis of the currently implemented [ast_engine.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/ast_engine.py) and [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py) reveals the following structural areas for improvement.
+Analysis of the currently implemented [ast_engine.py](../mcp-servers/bridge/ast_engine.py) and [reviewer.py](../mcp-servers/bridge/tools/reviewer.py) reveals the following structural areas for improvement.
 
 1. **Rust AST Analysis Not Integrated**:
-   * `ast_engine.py` already implements Rust parsers (`rust_item`, `struct_item`, etc.), but the actual analysis branch in [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py#L490) does **not** run AST for `.rs` files and only uses **simple regex-based fallback** (counting `unsafe`, `.unwrap()` occurrences).
+   * `ast_engine.py` already implements Rust parsers (`rust_item`, `struct_item`, etc.), but the actual analysis branch in [reviewer.py](../mcp-servers/bridge/tools/reviewer.py#L490) does **not** run AST for `.rs` files and only uses **simple regex-based fallback** (counting `unsafe`, `.unwrap()` occurrences).
 2. **No C/C++ Support**:
    * C++ (`.cpp`, `.hpp`, `.cc`, `.h`) file groups are not included in `ast_engine.py`'s `LANGUAGES` extension mapping list or `NODE_TYPES` rule groups at all.
 3. **Fragmented Go Analysis Rules**:
    * Go (`.go`) language performs AST parsing, but lacks detection logic for Go-specific critical potential bugs (channel leaks, shadowing, panic prevention in Defer, etc.) beyond function length measurement.
 4. **`find_bugs` Language-Specific Dependency**:
-   * The `find_bugs` implementation in [integrated.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/integrated.py#L400) relies entirely on Node.js ecosystem's `ESLint` and `tsc`, failing to collect compiler warnings and linter warnings at all for C++/Rust/Go projects.
+   * The `find_bugs` implementation in [integrated.py](../mcp-servers/bridge/tools/integrated.py#L400) relies entirely on Node.js ecosystem's `ESLint` and `tsc`, failing to collect compiler warnings and linter warnings at all for C++/Rust/Go projects.
 
 ---
 
@@ -58,7 +58,7 @@ C++ should prioritize detecting code that causes memory leaks, segmentation faul
 
 ### B. Rust AST Analysis Integration and Enhancement
 
-Elevate the Rust AST parser implemented in `ast_engine.py` into the actual operation flow of [reviewer.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/reviewer.py).
+Elevate the Rust AST parser implemented in `ast_engine.py` into the actual operation flow of [reviewer.py](../mcp-servers/bridge/tools/reviewer.py).
 
 1. **`reviewer.py` Structure Modification**:
    ```python
@@ -116,7 +116,7 @@ Extend general rules to produce actionable warnings for configuration files or s
 
 ## 5. `find_bugs` Engine Multi-language Build Chain Integration Architecture Restructuring (Macro)
 
-The core of the `find_bugs` tool is **supplying actually occurring build warnings to the LLM**. To this end, a multi-language build tool wrapper chain should be built within [integrated.py](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/integrated.py) as described below.
+The core of the `find_bugs` tool is **supplying actually occurring build warnings to the LLM**. To this end, a multi-language build tool wrapper chain should be built within [integrated.py](../mcp-servers/bridge/tools/integrated.py) as described below.
 
 ### ⚙️ Build Engine Switcher Introduction Design
 Automatically detect the primary language and build tool based on core files (`.git`, `Cargo.toml`, `go.mod`, `CMakeLists.txt`, `package.json`) in the project root directory.

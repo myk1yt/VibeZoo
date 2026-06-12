@@ -379,7 +379,7 @@ const diagnostics: Diagnostic[] = [{
 
 ```python
 def _anonymize_path(p: str) -> str:
-    home = str(HOME_DIR)  # Path.home() → "C:\\Users\\k1yt"
+    home = str(HOME_DIR)  # Path.home() → "C:\\Users\\username"
     if p.startswith(home):
         return "~" + p[len(home):]
     return p

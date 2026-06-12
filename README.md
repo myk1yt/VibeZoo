@@ -169,7 +169,7 @@ Includes tools like `crow_recall`, `crow_ingest`, `crow_diagnostics`, `crow_mana
 VibeZoo Bridge는 Windows 부팅 시 자동 실행되며, Watchdog이 지속적으로 서버 상태를 모니터링합니다.
 
 ### Auto-Start (Windows Startup)
-[`start_mcp_servers.bat`](C:/Users/k1yt/AppData/Roaming/Microsoft/Windows/Start%20Menu/Programs/Startup/start_mcp_servers.bat)이 Windows 부팅 시 다음을 자동 실행합니다:
+[`start_mcp_servers.bat`](start_mcp_servers.bat)이 Windows 부팅 시 다음을 자동 실행합니다:
 1. **Crow Memory Server** (port 9020) — `start_crow_sse.bat`에 위임 (락 정리 + 헬스체크 내장)
 2. **VibeZoo Bridge** (port 9027) — Python 절대경로로 실행, stderr/stdout 로깅
 3. **Health Check** — 각 서버가 준비될 때까지 최대 60초 대기 (backoff: 2→2→3→5초)

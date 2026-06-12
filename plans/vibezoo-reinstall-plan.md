@@ -6,7 +6,7 @@
 |------|------|
 | **Global MCP 설정** (`mcp_settings.json`) | ✅ `vibezoo` 이미 등록됨 (`http://localhost:9027/sse`) |
 | **브릿지** (port 9027) | ❌ 미실행 또는 구버전 |
-| **Global mcp-servers** (`C:\Users\k1yt\.vscode\extensions\mcp-servers\`) | ⚠️ 구버전 코드일 가능성 - 업데이트 필요 |
+| **Global mcp-servers** (`%USERPROFILE%\.vscode\extensions\mcp-servers\`) | ⚠️ 구버전 코드일 가능성 - 업데이트 필요 |
 | **Python deps** (fastmcp, uvicorn, starlette) | ⚠️ 미확인 |
 | **mcp_settings.json 툴 목록** | ⚠️ `learn_project` 누락, `open_image_dropzone`/`open_dropzone` (폐기됨) 잔존 |
 
@@ -33,15 +33,15 @@ pip install fastmcp uvicorn starlette
 
 ```powershell
 # 소스: 워크스페이스 mcp-servers/
-# 대상: C:\Users\k1yt\.vscode\extensions\mcp-servers\
-robocopy "mcp-servers" "C:\Users\k1yt\.vscode\extensions\mcp-servers" /E /XO /NFL /NDL
+# 대상: %USERPROFILE%\.vscode\extensions\mcp-servers\
+robocopy "mcp-servers" "%USERPROFILE%\.vscode\extensions\mcp-servers" /E /XO /NFL /NDL
 ```
 
 `/XO` = 대상보다 최신 파일만 덮어쓰기.
 
 ### Step 3: Global MCP 설정 툴 목록 동기화
 
-파일: `C:\Users\k1yt\AppData\Roaming\Code\User\globalStorage\zoocodeorganization.zoo-code\settings\mcp_settings.json`
+파일: `%APPDATA%\Code\User\globalStorage\zoocodeorganization.zoo-code\settings\mcp_settings.json`
 
 현재 `vibezoo.alwaysAllow` 배열에서:
 - **추가**: `"learn_project"` (신규 Knowledge 툴)
@@ -66,7 +66,7 @@ robocopy "mcp-servers" "C:\Users\k1yt\.vscode\extensions\mcp-servers" /E /XO /NF
 
 ```powershell
 # 4-a. 브릿지 시작 (백그라운드)
-start /B python "C:\Users\k1yt\.vscode\extensions\mcp-servers\vibezoo_mcp_bridge.py" --port 9027
+start /B python "%USERPROFILE%\.vscode\extensions\mcp-servers\vibezoo_mcp_bridge.py" --port 9027
 
 # 4-b. 헬스체크
 curl http://127.0.0.1:9027/health

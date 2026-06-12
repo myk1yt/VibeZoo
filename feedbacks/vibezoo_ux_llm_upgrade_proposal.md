@@ -6,7 +6,7 @@
 ---
 
 ## 1. Upgrade Pillar 1: AST-Guided Smart Ellipsis & Transactional Patching
-> **Target Component**: [`mcp-servers/bridge/tools/editor.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/editor.py) (`apply_patch` Tool)
+> **Target Component**: [`mcp-servers/bridge/tools/editor.py`](../mcp-servers/bridge/tools/editor.py) (`apply_patch` Tool)
 
 ### 1.1 The Pain Point & Architectural Gap
 Currently, VibeZoo's `apply_patch` tool parses standard `SEARCH/REPLACE` blocks and applies them via exact matching or fuzzy string matching (85% cutoff ratio). However, this introduces two major bottlenecks:
@@ -67,7 +67,7 @@ Modify `_apply_patch_impl` to run in a transactional loop:
 ---
 
 ## 2. Upgrade Pillar 2: Crow-Aware Contextual Intent Routing
-> **Target Component**: [`intent_detector.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/intent_detector.py) & [`ux_coordinator.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/ux_coordinator.py)
+> **Target Component**: [`intent_detector.py`](../mcp-servers/bridge/intent_detector.py) & [`ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py)
 
 ### 2.1 The Pain Point & Architectural Gap
 Currently, `intent_detector.py` relies on static string and keyword matchings (e.g., looking for "파일", "그림", "코드"). When an ion-based intelligence enters a natural, contextual dialogue (e.g., *"그거 분석해줘"* or *"방금 작성한 거 고쳐줘"*), the static detector falls back to `general_question`. This forces the LLM to waste cognitive cycles asking for clarification, degrading the UX flow.
@@ -127,7 +127,7 @@ Query `dz_session.json` during intent detection. If a file was uploaded within a
 ---
 
 ## 3. Upgrade Pillar 3: Synaptic Memory Map & Vibe Dashboard
-> **Target Component**: [`knowledge.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/knowledge.py) / [`preferences.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/preferences.py) and VS Code Extension Webview UI ([`whiteboard.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/whiteboard.py))
+> **Target Component**: [`knowledge.py`](../mcp-servers/bridge/tools/knowledge.py) / [`preferences.py`](../mcp-servers/bridge/tools/preferences.py) and VS Code Extension Webview UI ([`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py))
 
 ### 3.1 The Pain Point & Architectural Gap
 Crow Memory's fundamental breakthrough is **"Creative Forgetting"** through the Hebbian EMA rule:
@@ -202,7 +202,7 @@ To avoid introducing stability regressions to the current VibeZoo environment, w
 ---
 
 ## 1. 업그레이드 기둥 1: AST 기반 스마트 생략 및 트랜잭션 패치
-> **대상 컴포넌트**: [`mcp-servers/bridge/tools/editor.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/editor.py) (`apply_patch` 도구)
+> **대상 컴포넌트**: [`mcp-servers/bridge/tools/editor.py`](../mcp-servers/bridge/tools/editor.py) (`apply_patch` 도구)
 
 ### 1.1 페인 포인트 및 아키텍처적 격차
 현재 VibeZoo의 `apply_patch` 도구는 표준 `SEARCH/REPLACE` 블록을 파싱하고 이를 정확 매칭 또는 퍼지 문자열 매칭(85% 컷오프 비율)을 통해 적용합니다. 그러나 이는 두 가지 심각한 병목을 유발합니다:
@@ -263,7 +263,7 @@ def resolve_ast_ellipsis(target_ast, search_block_fragments):
 ---
 
 ## 2. 업그레이드 기둥 2: 크로우 융합형 맥락 감지 및 자동 워크플로우
-> **대상 컴포넌트**: [`intent_detector.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/intent_detector.py) 및 [`ux_coordinator.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/ux_coordinator.py)
+> **대상 컴포넌트**: [`intent_detector.py`](../mcp-servers/bridge/intent_detector.py) 및 [`ux_coordinator.py`](../mcp-servers/bridge/tools/ux_coordinator.py)
 
 ### 2.1 페인 포인트 및 아키텍처적 격차
 현재 `intent_detector.py`는 단순한 정적 문자열 및 키워드 매칭("파일", "그림", "코드")에 전적으로 의존합니다. 만약 이온기반 지능이 자연스럽고 맥락이 풍부한 대화를 시작할 때 (예: *"그거 분석해줘"* 또는 *"방금 작성한 거 고쳐줘"*), 정적 감지기는 어김없이 `general_question`으로 빠지게 됩니다. 이로 인해 LLM은 의도를 파악하기 위해 불필요한 질문과 컨텍스트 소모를 반복하게 되고 사용자 경험이 저하됩니다.
@@ -323,7 +323,7 @@ $$Confidence_{adjusted} = Confidence_{keyword} + \omega_{mem} \cdot \text{Sim}(P
 ---
 
 ## 3. 업그레이드 기둥 3: 시냅스 메모리 맵 및 Vibe 대시보드
-> **대상 컴포넌트**: [`knowledge.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/knowledge.py) / [`preferences.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/preferences.py) 및 VS Code 익스텐션 웹뷰 UI ([`whiteboard.py`](file:///C:/Users/k1yt/OneDrive/문서/각종자료/공부자료들/파이썬_Python/VibeZoo_forZoocode/mcp-servers/bridge/tools/whiteboard.py))
+> **대상 컴포넌트**: [`knowledge.py`](../mcp-servers/bridge/tools/knowledge.py) / [`preferences.py`](../mcp-servers/bridge/tools/preferences.py) 및 VS Code 익스텐션 웹뷰 UI ([`whiteboard.py`](../mcp-servers/bridge/tools/whiteboard.py))
 
 ### 3.1 페인 포인트 및 아키텍처적 격차
 크로우 메모리의 핵심 혁신은 Hebbian EMA 업데이트 규칙에 기반한 **"창조적 망각(Creative Forgetting)"**입니다:

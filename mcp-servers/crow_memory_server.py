@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DEPRECATED — Use REAL Crow server at C:\Users\k1yt\OneDrive\Projects\Crow Memory\
+DEPRECATED — Use REAL Crow server at ..\Crow Memory\
 
 This file is kept as a redirect to avoid breaking existing references.
 The REAL Crow server (crow_mcp_server.py in the Crow Memory project) now serves
@@ -14,7 +14,7 @@ import sys
 if __name__ == "__main__":
     print(
         "WARNING: This FAKE Crow server is deprecated. "
-        "Use the REAL Crow server at C:\\Users\\k1yt\\OneDrive\\Projects\\Crow Memory\\ "
+        "Use the REAL Crow server at ..\\Crow Memory\\ "
         "(start_crow_sse.bat) which provides the same REST API on port 9020.",
         file=sys.stderr,
     )
