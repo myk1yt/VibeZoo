@@ -69,3 +69,8 @@ models/
 # Runtime logs
 *.log
 !extension/package-lock.json
+venv/
+
+# Environment variable literal directories (Windows %APPDATA% not expanded)
+%APPDATA%/
+APPDATA/

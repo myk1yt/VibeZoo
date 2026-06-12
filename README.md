@@ -164,14 +164,47 @@ Includes tools like `crow_recall`, `crow_ingest`, `crow_diagnostics`, `crow_mana
 
 ---
 
-## 4. Quick Start
+## 4. Windows Auto-Start & Stability
 
-### 4.1 Requirements
+VibeZoo Bridge는 Windows 부팅 시 자동 실행되며, Watchdog이 지속적으로 서버 상태를 모니터링합니다.
+
+### Auto-Start (Windows Startup)
+[`start_mcp_servers.bat`](C:/Users/k1yt/AppData/Roaming/Microsoft/Windows/Start%20Menu/Programs/Startup/start_mcp_servers.bat)이 Windows 부팅 시 다음을 자동 실행합니다:
+1. **Crow Memory Server** (port 9020) — `start_crow_sse.bat`에 위임 (락 정리 + 헬스체크 내장)
+2. **VibeZoo Bridge** (port 9027) — Python 절대경로로 실행, stderr/stdout 로깅
+3. **Health Check** — 각 서버가 준비될 때까지 최대 60초 대기 (backoff: 2→2→3→5초)
+4. **Watchdog** — Crow Memory + VibeZoo Bridge 각각 30초 간격 모니터링
+
+### Watchdog
+- **Crow Memory Watchdog**: [`watch_crow_sse.bat`](../Crow%20Memory/watch_crow_sse.bat)
+- **VibeZoo Bridge Watchdog**: [`watch_vibezoo_bridge.bat`](watch_vibezoo_bridge.bat)
+  - 30초마다 `netstat` + curl 헬스체크
+  - 서버가 죽었으면 자동 재시작 (최대 5회 연속 실패 시 중지)
+  - 로그: `%USERPROFILE%\.vibezoo\watchdog_bridge.log`
+
+### REST API (Crow Memory 연동)
+VibeZoo Bridge는 Crow Memory의 REST API를 통해 메모리를 저장하고 검색합니다:
+- `GET /health` — 서버 상태 확인
+- `POST /ingest` — 에러/컨텍스트 저장
+- `GET /recall` — 유사 에러/패턴 검색
+
+### 변경 이력
+- **v0.00.1** (2026-06-12):
+  - MCP 서버 안정화: REST API 연동, Startup batch 전면 재작성, Watchdog 도입
+  - Broad `except Exception` → 구체적 예외 처리
+  - FAKE Crow 서버 폐기 → REAL Crow로 단일화
+  - 하드코딩된 Crow URL 제거 → `config.CROW_URL` 사용
+
+---
+
+## 5. Quick Start
+
+### 5.1 Requirements
 - **Python 3.10+**
 - **Zoo Code** (or MCP-compatible AI Coding Agent)
 - Git
 
-### 4.2 Installation
+### 5.2 Installation
 **Windows (PowerShell):**
 ```powershell
 git clone https://github.com/vibezoo/crowmemory.git
@@ -186,7 +219,7 @@ cd crowmemory
 python install.py
 ```
 
-### 4.3 Manual VibeZoo MCP Bridge Configuration
+### 5.3 Manual VibeZoo MCP Bridge Configuration
 ```json
 // .roo/mcp.json
 {
@@ -200,7 +233,7 @@ python install.py
 
 ---
 
-## 5. Architecture Overview
+## 6. Architecture Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -226,7 +259,7 @@ python install.py
 
 ---
 
-## 6. License and Contact
+## 7. License and Contact
 
 MIT License — See [`LICENSE`](LICENSE).
 
@@ -245,5 +278,5 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 📧 **myk1yt@gmail.com**
 
 ---
-*VibeZoo v0.14.4 — June 2026*
+*VibeZoo v0.15.0 — June 2026*
 *Co-designed by Stefano, Kim & AI*

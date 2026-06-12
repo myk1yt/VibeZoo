@@ -8,6 +8,7 @@ from typing import Optional
 import urllib.parse
 
 from bridge.error_handler import _error_signature
+from bridge.config import CROW_URL
 
 logger = logging.getLogger(__name__)
 
@@ -71,27 +72,28 @@ def find_known_pattern(tool_name: str, exception_type: str) -> Optional[dict]:
 
 
 def search_crow_for_similar(error_signature: str) -> list:
-    """Crow Memory에서 유사 에러 패턴 검색
-    
+    """Crow Memory REST API /recall에서 유사 에러 패턴 검색
+
     Args:
         error_signature: "{tool_name}:{exception_type}" 형식의 시그니처
-    
+
     Returns:
-        과거 유사 에러 리스트 (최대 3개)
+        과거 유사 에러 리스트 (최대 3개), 실패 시 빈 리스트
     """
     try:
         query = error_signature.replace(":", " ")
-        url = (
-            f"http://localhost:9020/recall"
-            f"?query={urllib.parse.quote(query)}"
-            f"&limit=3"
-        )
+        url = f"{CROW_URL}/recall?query={urllib.parse.quote(query)}&limit=3"
         import urllib.request
         resp = urllib.request.urlopen(url, timeout=2)
         data = json.loads(resp.read())
         return data.get("results", [])
-    except Exception:
-        return []
+    except urllib.error.URLError as exc:
+        logger.debug("Crow Memory search failed: connection error - %s", exc)
+    except json.JSONDecodeError as exc:
+        logger.debug("Crow Memory search failed: invalid JSON - %s", exc)
+    except OSError as exc:
+        logger.debug("Crow Memory search failed: I/O error - %s", exc)
+    return []
 
 
 def generate_fix_suggestion(
