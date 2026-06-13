@@ -144,6 +144,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const definition: McpServerDefinition = {
             url: `http://${host}:${port}/sse`,
             transport: 'sse',
+            global: true,
           };
           // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
           mcpService.writeGlobalMcp('vibezoo', definition);
@@ -173,10 +174,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const definition: McpServerDefinition = {
         url: `http://${host}:${port}/sse`,
         transport: 'sse',
+        global: true,
       };
       // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
       mcpService.writeGlobalMcp('vibezoo', definition);
       console.log(`[VibeZoo] ✅ Global MCP 동기화 완료 (port=${port}, host=${host})`);
+
+      // 이전 버전 잔여물 정리: 프로젝트 .roo/mcp.json에서 vibezoo 제거
+      const folders = vscode.workspace.workspaceFolders;
+      if (folders?.[0]) {
+        mcpService.cleanProjectMcp(folders[0].uri.fsPath, 'vibezoo');
+      }
     } catch (mcpErr: any) {
       console.warn('[VibeZoo] MCP 설정 동기화 실패 (비치명적):', mcpErr.message);
     }
@@ -704,34 +712,6 @@ export function deactivate(): void {
   visualPanels?.dispose();
   subagentManager?.terminate();
   statusBar?.dispose();
-}
-
-// ── Auto Configure Zoo Code MCP ──────────────────────────
-
-function autoConfigureMCP(port: number): void {
-  try {
-    const service = new McpConfigService();
-    service.logGlobalStatus();
-
-    const host = ConfigService.getHost();
-    const definition: McpServerDefinition = {
-      url: `http://${host}:${port}/sse`,
-      transport: 'sse',
-    };
-
-    // 글로벌 MCP 설정만 작성
-    service.writeGlobalMcp('vibezoo', definition);
-
-    // 프로젝트 .roo/mcp.json에서 vibezoo 제거 (이전 버전 잔여물 정리)
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders?.[0]) {
-      service.cleanProjectMcp(folders[0].uri.fsPath, 'vibezoo');
-    }
-
-    console.log(`[VibeZoo] ✅ Global MCP 동기화 완료 (port=${port})`);
-  } catch (err: any) {
-    console.error('[VibeZoo] autoConfigureMCP 실패:', err.message);
-  }
 }
 
 // ── Helpers ─────────────────────────────────────────────────
