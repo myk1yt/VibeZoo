@@ -214,7 +214,6 @@ export class McpConfigService {
     const port = ConfigService.getBridgePort();
     return {
       url: `http://${host}:${port}/sse`,
-      transport: 'sse',
       global: true,
       autoStart: true,
             alwaysAllow: [

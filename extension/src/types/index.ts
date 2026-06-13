@@ -10,7 +10,7 @@ export interface McpServerDefinition {
   /** SSE 연결 URL (e.g. http://127.0.0.1:9027/sse) */
   url: string;
   /** 전송 프로토콜 (현재는 sse만 지원) */
-  transport: 'sse';
+  transport?: string;
   /** Zoo Code 향후 호환: 비활성화 플래그 */
   disabled?: boolean;
   /** 글로벌 MCP 서버 플래그 (모든 워크스페이스에서 표시) */
