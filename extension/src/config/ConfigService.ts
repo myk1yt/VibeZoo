@@ -66,4 +66,11 @@ export class ConfigService {
     public static getGuardLinuxUseChattr(): boolean {
         return vscode.workspace.getConfiguration('vibezoo').get('guard.linuxUseChattr', false);
     }
+
+    // ── Python Path ─────────────────────────────────────────
+
+    /** 사용자 지정 Python 인터프리터 경로 (vibezoo.advanced.pythonPath) */
+    public static getAdvancedPythonPath(): string {
+        return vscode.workspace.getConfiguration('vibezoo').get('advanced.pythonPath', '');
+    }
 }

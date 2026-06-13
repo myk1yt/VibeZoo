@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import { SubagentNode } from '../types';
 import { ConfigService } from '../config/ConfigService';
+import { PythonResolver } from '../python/PythonResolver';
 
 const BRIDGE_NAME = 'vibezoo-bridge';
 
@@ -21,21 +22,10 @@ export class SubagentManager {
   readonly onChange = this._onChange.event;
 
   constructor(context: vscode.ExtensionContext) {
-    const candidates = [
-      // 1순위: 확장 디렉토리 내부 mcp-servers/ (local.vibezoo-0.13.0/mcp-servers/)
-      path.join(context.extensionPath, 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-      // 2순위: .vscode/extensions/mcp-servers/ (범용 경로)
-      path.join(context.extensionPath, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-      // 3순위: .vscode/mcp-servers/
-      path.join(context.extensionPath, '..', '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-      // 4순위: CWD fallback
-      'vibezoo_mcp_bridge.py',
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) {
-        this.bridgeScript = c;
-        break;
-      }
+    // VSIX 번들링 후 확장 디렉토리 내부 mcp-servers/ (extension/mcp-servers/vibezoo_mcp_bridge.py)
+    const scriptPath = path.join(context.extensionPath, 'mcp-servers', 'vibezoo_mcp_bridge.py');
+    if (fs.existsSync(scriptPath)) {
+      this.bridgeScript = scriptPath;
     }
   }
 
@@ -91,8 +81,22 @@ export class SubagentManager {
       // 실패해도 진행 — 이미 설치되어 있을 수 있음
     }
 
+    // PythonResolver로 인터프리터 탐색
+    const resolver = PythonResolver.getInstance();
+    const workspaceRoot = path.dirname(this.bridgeScript);
+    // workspaceRoot로는 extensionPath를 사용 (venv 탐색 기준)
+    const extensionRoot = path.dirname(path.dirname(this.bridgeScript)); // mcp-servers의 부모 = extension/
+    const pyCandidate = resolver.resolve(extensionRoot);
+
+    console.log(`[VibeZoo] Python resolved: "${pyCandidate.command}" (source=${pyCandidate.source}, version=${pyCandidate.version ?? '?'})`);
+
     // 브릿지 spawn (이제 Crow URL을 스스로 가리키도록)
-    this.child = spawn('python', [this.bridgeScript, '--port', String(port)], {
+    const { command: pyCmd, args: pyArgs } = PythonResolver.buildSpawnArgs(pyCandidate, [
+      this.bridgeScript,
+      '--port',
+      String(port),
+    ]);
+    this.child = spawn(pyCmd, pyArgs, {
       detached: true,
       stdio: 'ignore',
       env: {
@@ -254,22 +258,26 @@ export class SubagentManager {
     }
   }
 
-  /** Python 의존성 자동 설치 */
+  /** Python 의존성 자동 설치 (PythonResolver로 탐색한 Python 사용) */
   private async installDependencies(): Promise<void> {
     const requirements = ['fastmcp', 'uvicorn', 'requests'];
     const missing: string[] = [];
 
+    const resolver = PythonResolver.getInstance();
+    // workspaceRoot가 없으면 resolve() 기본 동작 (venv 제외)
+    const py = resolver.resolve('');
+
     for (const pkg of requirements) {
       try {
-        execSync(`python -c "import ${pkg.replace('-', '_')}"`, { stdio: 'ignore' });
+        execSync(`"${py.command}" -c "import ${pkg.replace('-', '_')}"`, { stdio: 'ignore' });
       } catch {
         missing.push(pkg);
       }
     }
 
     if (missing.length > 0) {
-      console.log(`[VibeZoo] Installing missing Python packages: ${missing.join(', ')}`);
-      execSync(`pip install ${missing.join(' ')}`, { stdio: 'pipe', timeout: 60000 });
+      console.log(`[VibeZoo] Installing missing Python packages: ${missing.join(' ')} using ${py.command}`);
+      execSync(`"${py.command}" -m pip install ${missing.join(' ')}`, { stdio: 'pipe', timeout: 60000 });
       console.log('[VibeZoo] Python packages installed successfully');
     }
   }

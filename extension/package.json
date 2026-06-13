@@ -305,6 +305,21 @@
           "minimum": 10,
           "maximum": 500,
           "description": "%vibezoo.errorCollection.maxEntries.description%"
+        },
+        "vibezoo.bridge.port": {
+          "type": "number",
+          "default": 9027,
+          "description": "%vibezoo.bridge.port.description%"
+        },
+        "vibezoo.network.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "%vibezoo.network.host.description%"
+        },
+        "vibezoo.advanced.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "%vibezoo.advanced.pythonPath.description%"
         }
       }
     },

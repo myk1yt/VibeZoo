@@ -1,5 +1,29 @@
 // VibeZoo: 공통 타입 정의
 
+// ── MCP Server (Task 4) ────────────────────────────────────
+
+/**
+ * Zoo Code MCP 서버 정의.
+ * `.roo/mcp.json`의 개별 MCP 서버 엔트리 타입.
+ */
+export interface McpServerDefinition {
+  /** SSE 연결 URL (e.g. http://127.0.0.1:9027/sse) */
+  url: string;
+  /** 전송 프로토콜 (현재는 sse만 지원) */
+  transport: 'sse';
+  /** Zoo Code 향후 호환: 비활성화 플래그 */
+  disabled?: boolean;
+  /** 자동 승인 도구 목록 */
+  autoApprove?: string[];
+}
+
+/**
+ * Zoo Code MCP 설정 파일(mcp_settings.json / .roo/mcp.json)의 최상위 구조.
+ */
+export interface McpSettings {
+  mcpServers: Record<string, McpServerDefinition>;
+}
+
 /**
  * Crow Memory 감지 설정.
  * VibeZoo는 Crow 서버를 직접 실행하지 않고, Zoo Code가 관리하는 Crow 서버를 감지만 한다.
@@ -9,6 +33,19 @@ export interface CrowServerConfig {
   port: number;
   /** 헬스체크 주기 (ms) */
   healthCheckIntervalMs: number;
+}
+
+/**
+ * Python 인터프리터 탐색 결과 (Task 1 — PythonResolver).
+ * resolve()가 반환하는 candidate에는 command + source + version이 포함된다.
+ */
+export interface PythonCommandCandidate {
+  /** 실제 spawn/exec에 사용할 명령어 (e.g. "python", "python3", "py", 또는 전체 경로) */
+  command: string;
+  /** 탐색 출처 (우선순위 순) */
+  source: 'setting' | 'venv' | 'pyenv' | 'conda' | 'path' | 'fallback';
+  /** 검증된 Python 버전 (e.g. "3.11.5"), 검증 실패 시 undefined */
+  version?: string;
 }
 
 export interface YoctoSnapshot {

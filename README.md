@@ -36,8 +36,8 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
 2. **Run the bootstrapper:**
    - **Windows:** Double-click `init_vibezoo.bat` or run it in the terminal.
    - **macOS/Linux:** Run `bash init_vibezoo.sh`.
-3. **Auto-Bootstrap Agent:** 
-   Once the setup is done, open the workspace in your MCP client (like Zoo Code or VS Code). Run the AI Agent, and thanks to the `.zoo/Agent.md` protocol, it will intelligently guide you and configure your `mcp.json` automatically!
+3. **Auto-Connect:**
+   Once the VibeZoo extension is active, it automatically starts the Python MCP Bridge on port `9027`, resolves a working Python interpreter across `python`/`python3`/venv environments, and keeps `.roo/mcp.json` synchronized so Zoo Code connects via SSE automatically.
 4. **Global Mode Installation (via `vibezoo_setup` — Recommended):**
    VibeZoo provides a one-command setup that automatically installs all 6 custom modes (orchestrator-crow, project-research, architect, code, debug, ask) with VibeZoo tool priority enabled across ALL modes.
 
@@ -169,11 +169,19 @@ Includes tools like `crow_recall`, `crow_ingest`, `crow_diagnostics`, `crow_mana
 VibeZoo Bridge는 Windows 부팅 시 자동 실행되며, Watchdog이 지속적으로 서버 상태를 모니터링합니다.
 
 ### Auto-Start (Windows Startup)
-[`start_mcp_servers.bat`](start_mcp_servers.bat)이 Windows 부팅 시 다음을 자동 실행합니다:
-1. **Crow Memory Server** (port 9020) — `start_crow_sse.bat`에 위임 (락 정리 + 헬스체크 내장)
+[`start_vibezoo_servers.bat`](start_vibezoo_servers.bat)이 Windows 부팅 시 다음을 자동 실행합니다:
+1. **Crow Memory Server** (port 9020) — 락 정리 + 헬스체크 내장
 2. **VibeZoo Bridge** (port 9027) — Python 절대경로로 실행, stderr/stdout 로깅
 3. **Health Check** — 각 서버가 준비될 때까지 최대 60초 대기 (backoff: 2→2→3→5초)
 4. **Watchdog** — Crow Memory + VibeZoo Bridge 각각 30초 간격 모니터링
+
+### VS Code Extension Auto-Connect
+When the VibeZoo extension activates inside VS Code it performs the following auto-connect sequence:
+1. Resolves a working Python interpreter via [`PythonResolver`](extension/src/python/PythonResolver.ts).
+2. Spawns the VibeZoo MCP Bridge from the bundled `extension/mcp-servers/` directory.
+3. Spawns a Crow Memory fallback server (or proxies to an existing external Crow server).
+4. Writes/updates `.roo/mcp.json` with the current SSE endpoint regardless of global MCP settings.
+5. Runs [`SelfCheck`](extension/src/safety/SelfCheck.ts) diagnostics in the background and auto-recovers Bridge/MCP failures.
 
 ### Watchdog
 - **Crow Memory Watchdog**: [`watch_crow_sse.bat`](../Crow%20Memory/watch_crow_sse.bat)
@@ -189,6 +197,12 @@ VibeZoo Bridge는 Crow Memory의 REST API를 통해 메모리를 저장하고 �
 - `GET /recall` — 유사 에러/패턴 검색
 
 ### 변경 이력
+- **v0.15.0** (2026-06-13):
+  - Auto-connect fundamental fix: always write `.roo/mcp.json` even when global MCP config has a `vibezoo` entry
+  - New [`PythonResolver`](extension/src/python/PythonResolver.ts), [`McpConfigService`](extension/src/mcp/McpConfigService.ts), [`VscodePaths`](extension/src/platform/VscodePaths.ts)
+  - Bundled Python bridge and Crow fallback server inside the VSIX (`extension/mcp-servers/`)
+  - Replaced `crow_memory_server.py` stub with a real HTTP fallback/proxy server
+  - SelfCheck auto-recovery for Bridge and MCP configuration failures
 - **v0.00.1** (2026-06-12):
   - MCP 서버 안정화: REST API 연동, Startup batch 전면 재작성, Watchdog 도입
   - Broad `except Exception` → 구체적 예외 처리

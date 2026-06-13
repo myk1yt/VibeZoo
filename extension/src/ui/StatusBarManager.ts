@@ -115,12 +115,24 @@ export class StatusBarManager {
   /** setActive()로 설정된 base tooltip (Crow 접미사 제외) */
   private _baseTooltip: string = vscode.l10n.t('VibeZoo: Active');
 
+  /** ★ Task 6: 마지막 에러 메시지 (tooltip에 표시) */
+  private _lastError: string | undefined;
+
+  /** ★ Task 6: Bridge 연결 port */
+  private _bridgePort: number = 0;
+
   constructor() {
     this.item = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       100
     );
     this.item.command = 'vibezoo.verifyFoundation';
+  }
+
+  /** ★ Task 6: 마지막 에러 설정 (undefined = 에러 없음) */
+  setLastError(error?: string): void {
+    this._lastError = error;
+    this._refreshDisplay();
   }
 
   /** 에러 카운트 업데이트 (P4) */
@@ -130,7 +142,7 @@ export class StatusBarManager {
     this._refreshDisplay();
   }
 
-  /** 내부: _baseTooltip + Crow 접미사 + CIM/YOLO 상태로 tooltip 재구성 */
+  /** 내부: _baseTooltip + Crow 접미사 + CIM/YOLO/GUARD 상태 + lastError로 tooltip 재구성 */
   private _composeTooltip(): string {
     let tooltip = this._baseTooltip;
     if (this._crowConnected) {
@@ -147,10 +159,14 @@ export class StatusBarManager {
     const guardLabel = this._guardMode === 'active' ? '🛡️ Guard: Active' :
       this._guardMode === 'warning' ? '⚠️ Guard: Warning' : '';
     if (guardLabel) tooltip += ` | ${guardLabel}`;
+    // ★ Task 6: 마지막 에러가 있으면 tooltip에 표시
+    if (this._lastError) {
+      tooltip += `\n❌ Last Error: ${this._lastError}`;
+    }
     return tooltip;
   }
 
-  /** 내부: CIM/YOLO/GUARD 상태를 텍스트에 반영 + 에러 카운트 통합 */
+  /** ★ Task 6: Bridge 포트를 텍스트에 표시 (예: VibeZoo:9027) */
   private _composeText(): string {
     if (this._guardMode === 'active') return '$(zap) VibeZoo Guard';
     if (this._guardMode === 'warning') return '$(warning) VibeZoo';
@@ -160,6 +176,10 @@ export class StatusBarManager {
     }
     if (this._yoloActive) {
       text = '$(flame) VibeZoo YOLO';
+    }
+    // ★ Task 6: Bridge 연결 시 포트 표시
+    if (this._bridgePort > 0) {
+      text += `:${this._bridgePort}`;
     }
     return text;
   }
@@ -175,10 +195,11 @@ export class StatusBarManager {
     }
 
     this.item.text = text;
-    this.item.tooltip = this._composeTooltip() +
-      (this._errorCount > 0
-        ? ` | Errors: ${this._errorCount} (Critical: ${this._criticalErrorCount})`
-        : '');
+    let tooltip = this._composeTooltip();
+    if (this._errorCount > 0) {
+      tooltip += ` | Errors: ${this._errorCount} (Critical: ${this._criticalErrorCount})`;
+    }
+    this.item.tooltip = tooltip;
     this.item.show();
   }
 
@@ -188,9 +209,11 @@ export class StatusBarManager {
       this._crowConnected = crowConnected;
     }
     if (bridgeConnected) {
-      this._baseTooltip = vscode.l10n.t('VibeZoo Bridge: Connected (:{0})', bridgePort || 9027);
+      this._bridgePort = bridgePort || 9027;
+      this._baseTooltip = vscode.l10n.t('VibeZoo Bridge: Connected (:{0})', this._bridgePort);
       this.item.backgroundColor = undefined;
     } else {
+      this._bridgePort = 0;
       this._baseTooltip = vscode.l10n.t('VibeZoo: Active');
       this.item.backgroundColor = undefined;
     }

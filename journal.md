@@ -1,4 +1,43 @@
-Ôªø# VibeZoo Development Journal
+# VibeZoo Development Journal
+
+## 2026-06-13: Auto-Connect Fundamental Fix (v0.15.0)
+
+### Summary
+- **Root cause**: `autoConfigureMCP()` in `extension/src/extension.ts` skipped writing project-level `.roo/mcp.json` when the global Zoo Code MCP config (`mcp_settings.json`) already contained a `vibezoo` entry. On fresh workspaces this prevented Zoo Code from discovering the local VibeZoo Bridge SSE endpoint.
+- **Fix strategy**: separate project-level MCP synchronization from global config inspection; global settings are now read-only reference.
+
+### Tasks Completed
+
+| Task | File | Description |
+|------|------|-------------|
+| Task 4 | [`extension/src/mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts) | New service that always writes `.roo/mcp.json`, preserving other user-defined servers; global MCP config is only read for logging. |
+| Task 1 | [`extension/src/python/PythonResolver.ts`](extension/src/python/PythonResolver.ts) | 6-step Python interpreter discovery chain: user setting ‚Üí `.venv`/`venv` ‚Üí `pyenv` ‚Üí `python3` ‚Üí `python` ‚Üí `py -3` (Windows). |
+| Task 3 | `mcp-servers/` ‚Üí [`extension/mcp-servers/`](extension/mcp-servers/) | Moved Python bridge and Crow server into the extension directory so they are bundled inside the VSIX. |
+| Task 5 | [`extension/src/platform/VscodePaths.ts`](extension/src/platform/VscodePaths.ts) | Cross-platform VS Code config path resolver that distinguishes Stable vs Insiders and handles Windows, macOS, and Linux. |
+| Task 2 | [`extension/mcp-servers/crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py) | Replaced the `sys.exit(0)` stub with a real HTTP server that proxies to an external Crow or runs an in-memory fallback. |
+| Task 6 | [`extension/src/extension.ts`](extension/src/extension.ts), [`extension/src/safety/SelfCheck.ts`](extension/src/safety/SelfCheck.ts), [`extension/src/ui/StatusBarManager.ts`](extension/src/ui/StatusBarManager.ts) | Removed `trySpawnEarlyBridge()`; added SelfCheck auto-recovery callback that can restart the Bridge and rewrite `.roo/mcp.json`; enhanced status bar with port/error tooltips. |
+
+### Key Decisions
+- **Project-level source of truth**: `.roo/mcp.json` is always kept in sync; global `mcp_settings.json` is never modified by VibeZoo.
+- **Graceful degradation**: Crow Memory is optional. If the real Crow server is unavailable, the bundled fallback server provides `/health`, `/ingest`, and `/recall` so the Bridge keeps working.
+- **Deterministic Python resolution**: No hardcoded `python` assumption; discovery chain covers venv, pyenv, Microsoft Store, and platform differences.
+- **VSIX self-contained**: Python assets are now part of the packaged extension, removing the runtime dependency on the workspace root `mcp-servers/` directory.
+
+### Files Changed
+- **New**: [`extension/src/mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts)
+- **New**: [`extension/src/python/PythonResolver.ts`](extension/src/python/PythonResolver.ts)
+- **New**: [`extension/src/platform/VscodePaths.ts`](extension/src/platform/VscodePaths.ts)
+- **Moved**: `mcp-servers/**` ‚Üí [`extension/mcp-servers/**`](extension/mcp-servers/)
+- **Modified**: [`extension/src/extension.ts`](extension/src/extension.ts), [`extension/src/orchestra/SubagentManager.ts`](extension/src/orchestra/SubagentManager.ts), [`extension/src/crow/CrowServerManager.ts`](extension/src/crow/CrowServerManager.ts), [`extension/src/safety/SelfCheck.ts`](extension/src/safety/SelfCheck.ts), [`extension/src/ui/StatusBarManager.ts`](extension/src/ui/StatusBarManager.ts), [`extension/.vscodeignore`](extension/.vscodeignore)
+- **Replaced**: [`extension/mcp-servers/crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py)
+
+### Documentation Updated
+- [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md) ‚Äî architecture diagram, module map, resolved issues, date
+- [`fromscratch/CHANGELOG.md`](fromscratch/CHANGELOG.md) ‚Äî v0.15.0 entry
+- [`fromscratch/RELEASENOTES.md`](fromscratch/RELEASENOTES.md) ‚Äî v0.15.0 release notes
+- [`README.md`](README.md) ‚Äî auto-connect description and history
+
+---
 
 ## 2026-06-03: 3-Engine Parallel Web Search
 
@@ -117,10 +156,10 @@
 # #   2 0 2 6 - 0 6 - 0 3 :   Q u a d - C o r e   A s y n c   S e a r c h   E n g i n e   A r c h i t e c t u r e  
   
  # # #   S u m m a r y  
- -   * * F e a t u r e   ¨ ¡     W e b S e a r c h   —º,∏  Ä¨…¿  ‡¨ƒ≥T÷* * :  
-     -   ` w e b _ s e a r c h . p y ` :   0Æt»  3 - E n g i n e   )º›¬D«  ` c u r l _ c f f i ` ( ∞∆å÷  1¡•≤  •’¡¿)   º  ` s e l e c t o l a x ` + ` h t t p x ` ( ‡¨ç¡  ”Ò¬)   0ÆºX«  * * Q u a d - C o r e   A s y n c   S e a r c h   E n g i n e * *   D≈§–M—òÃ\∏  ¨π)”†—¡π.  
-     -   ` n o d r i v e r `   º  ` t w s c r a p e ` î≤  H≈»1¡/ ƒ¨»  Ö»ç¡1¡  8ª»\∏  D’0—¡π  Ë≤ƒ¨–≈¡  »p¨.  
-     -   ` a s y n c i o . g a t h e r ` |π  ¨¿©∆\’  —º,∏  òÃ¨π\∏  Q«ı≤  ç¡ƒ≥  º  ∞¨¸¨  …ıº  »p¨  \∏¡…  ¨T÷.  
- -   * * X«t»1¡  ≈≈p≥t«∏“* * :   ` c u r l _ c f f i ` ,   ` s e l e c t o l a x ` ,   ` h t t p x `   \∏ÏŒ  X÷Ω¨  $¡XŒ  D∆Ã∏.  
- -   * * 8ª¡T÷* * :   ` R E A D M E . m d ` X«  1 . 0   9¡X¡D«  »¿  D≈§–M—òÃ  ¥∞©∆<«\∏  \Õ‡¬T÷.  
+ -   * * F e a t u r e   ÔøΩ ÔøΩ     W e b S e a r c h   —º,ÔøΩ  ÔøΩÔøΩÔøΩÔøΩ  ÔøΩƒ≥TÔøΩ* * :  
+     -   ` w e b _ s e a r c h . p y ` :   0ÔøΩtÔøΩ  3 - E n g i n e   )ÔøΩÔøΩÔøΩDÔøΩ  ` c u r l _ c f f i ` ( ÔøΩ∆åÔøΩ  1ÔøΩÔøΩÔøΩ  ÔøΩÔøΩÔøΩÔøΩ)   ÔøΩ  ` s e l e c t o l a x ` + ` h t t p x ` ( ‡¨çÔøΩ  ÔøΩÔøΩÔøΩ)   0ÔøΩÔøΩXÔøΩ  * * Q u a d - C o r e   A s y n c   S e a r c h   E n g i n e * *   D≈§ÔøΩM—òÔøΩ\ÔøΩ  ÔøΩÔøΩ)”†ÔøΩÔøΩÔøΩ.  
+     -   ` n o d r i v e r `   ÔøΩ  ` t w s c r a p e ` ÔøΩÔøΩ  HÔøΩÔøΩ1ÔøΩ/ ƒ¨ÔøΩ  ÔøΩ»çÔøΩ1ÔøΩ  8ÔøΩÔøΩ\ÔøΩ  DÔøΩ0ÔøΩÔøΩÔøΩ  ÔøΩƒ¨ÔøΩÔøΩÔøΩ  ÔøΩpÔøΩ.  
+     -   ` a s y n c i o . g a t h e r ` |ÔøΩ  ÔøΩÔøΩÔøΩÔøΩ\ÔøΩ  —º,ÔøΩ  ÔøΩÃ¨ÔøΩ\ÔøΩ  QÔøΩÔøΩÔøΩ  ÔøΩÔøΩƒ≥  ÔøΩ  ÔøΩÔøΩÔøΩÔøΩ  ÔøΩÔøΩÔøΩ  ÔøΩpÔøΩ  \ÔøΩÔøΩÔøΩ  ÔøΩTÔøΩ.  
+ -   * * XÔøΩtÔøΩ1ÔøΩ  ÔøΩÔøΩpÔøΩt«∏ÔøΩ* * :   ` c u r l _ c f f i ` ,   ` s e l e c t o l a x ` ,   ` h t t p x `   \ÔøΩÔøΩÔøΩ  X÷ΩÔøΩ  $ÔøΩXÔøΩ  DÔøΩÃ∏.  
+ -   * * 8ÔøΩÔøΩTÔøΩ* * :   ` R E A D M E . m d ` XÔøΩ  1 . 0   9ÔøΩXÔøΩDÔøΩ  ÔøΩÔøΩ  D≈§ÔøΩM—òÔøΩ  ÔøΩÔøΩÔøΩÔøΩ<ÔøΩ\ÔøΩ  \ÔøΩÔøΩÔøΩTÔøΩ.  
  

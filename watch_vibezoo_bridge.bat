@@ -26,7 +26,7 @@ if !ERRORLEVEL! neq 0 (
     set /a FAIL_COUNT+=1
     echo [%date% %time%] [WATCHDOG] Bridge is DOWN on port !PORT! (fail !FAIL_COUNT!/!MAX_FAIL!). Restarting... >> "%LOG_FILE%"
     if !FAIL_COUNT! lss !MAX_FAIL! (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -FilePath '!PYTHON!' -ArgumentList '-X utf8 \"%~dp0mcp-servers\vibezoo_mcp_bridge.py\" --port !PORT!' -WorkingDirectory '%~dp0' -WindowStyle Hidden -PassThru; Write-Output $p.Id" >> "%LOG_FILE%" 2>&1
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -FilePath '!PYTHON!' -ArgumentList '-X utf8 \"%~dp0extension\mcp-servers\vibezoo_mcp_bridge.py\" --port !PORT!' -WorkingDirectory '%~dp0' -WindowStyle Hidden -PassThru; Write-Output $p.Id" >> "%LOG_FILE%" 2>&1
     ) else (
         echo [%date% %time%] [WATCHDOG] Max failures (!MAX_FAIL!) reached. Stopping watchdog. >> "%LOG_FILE%"
         exit /b 1

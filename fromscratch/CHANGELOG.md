@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.15.0] - 2026-06-13
+
+### Auto-Connect Fundamental Fix
+
+A root-cause fix for the auto-connect failure that occurred when a global MCP config already contained a `vibezoo` entry. The extension now always keeps the project-level `.roo/mcp.json` in sync, regardless of the global Zoo Code MCP settings.
+
+#### New Modules
+- **[`extension/src/mcp/McpConfigService.ts`](../extension/src/mcp/McpConfigService.ts)** — dedicated project/global MCP config synchronizer. Always writes `.roo/mcp.json`; global `mcp_settings.json` is read-only reference.
+- **[`extension/src/python/PythonResolver.ts`](../extension/src/python/PythonResolver.ts)** — deterministic 6-step Python interpreter discovery (`setting` → `venv` → `pyenv` → `python3` → `python` → `py -3`) with version validation.
+- **[`extension/src/platform/VscodePaths.ts`](../extension/src/platform/VscodePaths.ts)** — cross-platform VS Code config path resolution (Stable/Insiders, Windows/macOS/Linux).
+
+#### Changed
+- **[`extension/src/extension.ts`](../extension/src/extension.ts)** — `autoConfigureMCP()` now delegates to `McpConfigService.writeProjectMcp()` and never early-returns because of a global config. Removed `trySpawnEarlyBridge()` legacy stub.
+- **[`extension/src/orchestra/SubagentManager.ts`](../extension/src/orchestra/SubagentManager.ts)** — uses `PythonResolver` to find the interpreter and spawns the bridge from the bundled `extension/mcp-servers/` path.
+- **[`extension/src/crow/CrowServerManager.ts`](../extension/src/crow/CrowServerManager.ts)** — uses `PythonResolver` and spawns the fallback Crow server from `extension/mcp-servers/`.
+- **[`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts)** — added `setRestartBridgeFn()` callback; `autoRecover()` can restart the Bridge and rewrite `.roo/mcp.json` on failures.
+- **[`extension/src/ui/StatusBarManager.ts`](../extension/src/ui/StatusBarManager.ts)** — displays Bridge port and last error summary in tooltips.
+- **[`extension/mcp-servers/crow_memory_server.py`](../extension/mcp-servers/crow_memory_server.py)** — replaced the `sys.exit(0)` stub with a real HTTP server that proxies to an external Crow (if present) or serves an in-memory fallback.
+
+#### Packaging
+- Moved `mcp-servers/` into `extension/mcp-servers/` so the Python bridge and Crow fallback server are bundled inside the VSIX.
+- Updated [`extension/.vscodeignore`](../extension/.vscodeignore) so the moved `mcp-servers/` directory is included in the package.
+
+---
+
 ## [0.14.5] - 2026-06-07
 
 ### UX Upgrade — Pillar 1 & 2

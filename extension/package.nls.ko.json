@@ -58,5 +58,8 @@
   "vibezoo.guard.linuxUseChattr.description": "Guard.git: Linux에서 chattr +a 사용 (내부 파일 삭제도 방지 → git gc 실패 가능) — H2 대응",
   "vibezoo.openErrorDashboard.title": "VibeZoo: Open Error Dashboard (에러 대시보드)",
   "vibezoo.errorCollection.enabled.description": "MCP 도구 에러 자동 수집 활성화",
-  "vibezoo.errorCollection.maxEntries.description": "registry.json의 최대 에러 항목 수"
+  "vibezoo.errorCollection.maxEntries.description": "registry.json의 최대 에러 항목 수",
+  "vibezoo.bridge.port.description": "MCP Bridge SSE 서버 포트",
+  "vibezoo.network.host.description": "MCP Bridge 네트워크 호스트 주소 (기본: 127.0.0.1, localhost 전용)",
+  "vibezoo.advanced.pythonPath.description": "사용자 지정 Python 인터프리터 경로 (빈 값 = PATH/venv/pyenv/conda 자동 탐색)"
 }

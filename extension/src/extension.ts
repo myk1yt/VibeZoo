@@ -19,7 +19,8 @@ import { YoctoManager } from './safety/YoctoManager';
 import { ConfigService } from './config/ConfigService';
 // FileGuard removed
 import { GuardGitManager } from './safety/GuardGitManager';
-import { setGuardGitManager } from './safety/SelfCheck';
+import { setGuardGitManager, setRestartBridgeFn } from './safety/SelfCheck';
+import type { McpServerDefinition } from './types';
 import { AutoBuildFix } from './safety/AutoBuildFix';
 import { GitStashManager } from './safety/GitStashManager';
 import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetector } from './context/ContextIntelligence';
@@ -27,41 +28,8 @@ import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
 import { activateErrorCollection } from './flow/ErrorCollection';
-
-// ── 조기 브릿지 Spawn (모듈 로드 시점) ─────────────────────
-// activate()보다 먼저 실행되어 Python 브릿지를 미리 띄운다.
-// 이렇게 하면 Zoo Code MCP 클라이언트가 SSE 연결을 시도할 때
-// 브릿지가 준비되어 있을 시간을 확보한다.
-(function trySpawnEarlyBridge(): void {
-  try {
-    const candidates = [
-      // 설치된 확장: local.vibezoo-0.13.0/out/../mcp-servers/
-      path.join(__dirname, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-      // 워크스페이스 개발: extension/out/../../mcp-servers/
-      path.join(__dirname, '..', '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-    ];
-    let scriptPath: string | null = null;
-    for (const c of candidates) {
-      if (fs.existsSync(c)) { scriptPath = c; break; }
-    }
-    if (!scriptPath) {
-      console.log('[VibeZoo] 조기 브릿지: 스크립트를 찾을 수 없음 (activate()에서 재시도)');
-      return;
-    }
-    console.log(`[VibeZoo] 조기 브릿지 spawn: ${path.basename(scriptPath)}`);
-    const port = ConfigService.getBridgePort();
-    const child = spawn('python', [scriptPath, '--port', String(port)], {
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, CROW_SERVER_URL: ConfigService.getCrowUrl() },
-    });
-    child.unref();
-    console.log('[VibeZoo] ✅ 조기 브릿지 백그라운드 실행 완료');
-  } catch (e: any) {
-    console.warn('[VibeZoo] 조기 브릿지 spawn 실패:', e.message);
-    // activate()의 SubagentManager.spawnBridge()에서 재시도
-  }
-})();
+import { McpConfigService } from './mcp/McpConfigService';
+import { SelfChecker } from './safety/SelfCheck';
 
 // ── 중복 활성화 방지 ───────────────────────────────────────
 const _activeExtensions = new Set<string>();
@@ -156,11 +124,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── MCP Bridge 자동 시작 (백그라운드) ──────────────────
   subagentManager = new SubagentManager(context);
 
+  // ★ Task 6: SelfCheck가 Bridge 재시작할 수 있도록 콜백 등록
+  setRestartBridgeFn(async () => {
+    console.log('[VibeZoo] SelfCheck → Bridge 재시작 요청');
+    try {
+      await subagentManager.terminate();
+    } catch {
+      // terminate 실패는 무시
+    }
+    try {
+      const port = await subagentManager.spawnBridge();
+      if (port > 0) {
+        console.log(`[VibeZoo] ✅ SelfCheck → Bridge 재시작 성공 (port ${port})`);
+
+        // 재시작 성공 시 MCP 설정 갱신
+        try {
+          const mcpService = new McpConfigService();
+          const folders = vscode.workspace.workspaceFolders;
+          if (folders?.[0]) {
+            const host = ConfigService.getHost();
+            const definition: McpServerDefinition = {
+              url: `http://${host}:${port}/sse`,
+              transport: 'sse',
+            };
+            mcpService.writeProjectMcp(folders[0].uri.fsPath, 'vibezoo', definition);
+          }
+        } catch { /* 비치명적 */ }
+
+        statusBar.setActive(true, port);
+        statusBar.setLastError(undefined);
+        return true;
+      }
+    } catch (err: any) {
+      console.warn('[VibeZoo] SelfCheck → Bridge 재시작 실패:', err.message);
+    }
+    return false;
+  });
+
   // Bridge 시작 후 Crow 연결 재확인 (이미 조기 연결 시도했으나 Bridge 이후 다시 확인)
+  // Task 6: Bridge 성공/실패 모두 McpConfigService.writeProjectMcp() 호출
   subagentManager.spawnBridge().then(async (port) => {
-    console.log(`[VibeZoo] MCP Bridge started on port ${port}`);
+    console.log(`[VibeZoo] ✅ MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
-    autoConfigureMCP(port);
+    statusBar.setLastError(undefined);
+
+    // ★ Task 6: Bridge 성공 시 McpConfigService.writeProjectMcp() 호출
+    try {
+      const mcpService = new McpConfigService();
+      mcpService.logGlobalStatus();
+      const folders = vscode.workspace.workspaceFolders;
+      if (folders?.[0]) {
+        const host = ConfigService.getHost();
+        const definition: McpServerDefinition = {
+          url: `http://${host}:${port}/sse`,
+          transport: 'sse',
+        };
+        mcpService.writeProjectMcp(folders[0].uri.fsPath, 'vibezoo', definition);
+        console.log(`[VibeZoo] ✅ MCP 설정 동기화 완료 (port=${port}, host=${host})`);
+      }
+    } catch (mcpErr: any) {
+      console.warn('[VibeZoo] MCP 설정 동기화 실패 (비치명적):', mcpErr.message);
+    }
 
     // ★ Bridge 시작 후 개별 에이전트 노드 초기화
     subagentsProvider.initializeAgentNodes(port);
@@ -177,7 +201,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     console.warn('[VibeZoo] MCP Bridge failed:', err.message);
     statusBar.setActive(true); // Bridge 실패해도 VibeZoo는 active
     statusBar.setCrowStatus(crowServer?.lastHealthy ?? false);
+    statusBar.setLastError(err.message);
+
+    // ★ Task 6: Bridge 실패 시에도 McpConfigService는 이전 값으로 write 시도 (시간차 재연결 유도)
+    try {
+      const mcpService = new McpConfigService();
+      const folders = vscode.workspace.workspaceFolders;
+      if (folders?.[0]) {
+        mcpService.logGlobalStatus();
+        mcpService.writeProjectMcp(folders[0].uri.fsPath);
+        console.log('[VibeZoo] ⏳ Bridge 실패 상태에서 MCP 설정 유지 (재연결 대기)');
+      }
+    } catch (mcpErr: any) {
+      console.warn('[VibeZoo] MCP 설정 fallback write 실패:', mcpErr.message);
+    }
   });
+
+  // ── Task 6: 활성화 완료 후 SelfChecker.runAll() 백그라운드 실행 ──
+  // 모든 초기화가 완료된 시점에 자가진단을 비동기로 실행한다.
+  setTimeout(() => {
+    const selfChecker = new SelfChecker();
+    selfChecker.runAll().then((report) => {
+      const failedCount = report.checks.filter(c => c.status === 'failed').length;
+      const warnCount = report.checks.filter(c => c.status === 'warning').length;
+      if (failedCount > 0 || warnCount > 0) {
+        console.log(`[VibeZoo] SelfCheck 실행 완료: failed=${failedCount}, warnings=${warnCount}`);
+        // autoRecover 시도 (실패 항목만)
+        for (const check of report.checks) {
+          if (check.autoRecoverable) {
+            selfChecker.autoRecover(check).then((recovered) => {
+              if (recovered) {
+                console.log(`[VibeZoo] ✅ SelfCheck 자동 복구 성공: ${check.name}`);
+              }
+            }).catch(() => {});
+          }
+        }
+      } else {
+        console.log('[VibeZoo] ✅ SelfCheck: 모든 진단 통과');
+      }
+    }).catch((err: any) => {
+      console.warn('[VibeZoo] SelfCheck 실행 실패:', err.message);
+    });
+  }, 5000); // 5초 지연 — Bridge/Crow 준비 시간 확보
 
   // ── TreeView Providers ──────────────────────────────────
   const subagentsProvider = new ActiveSubagentsProvider();
@@ -516,12 +581,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const yoctoDir = path.join(os.homedir(), '.zoo-code', 'yocto');
       lines.push(fs.existsSync(yoctoDir) ? vscode.l10n.t('✅ yocto directory') : vscode.l10n.t('⚠️ no yocto directory'));
       // Bridge script check
-      const scriptCandidates = [
-        path.join(__dirname, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-        path.join(__dirname, '..', '..', 'mcp-servers', 'vibezoo_mcp_bridge.py'),
-      ];
-      let found = false;
-      for (const c of scriptCandidates) { if (fs.existsSync(c)) { found = true; break; } }
+      const bridgeScript = path.join(__dirname, '..', 'mcp-servers', 'vibezoo_mcp_bridge.py');
+      const found = fs.existsSync(bridgeScript);
       lines.push(found ? vscode.l10n.t('✅ vibezoo_mcp_bridge.py') : vscode.l10n.t('❌ vibezoo_mcp_bridge.py not found'));
       // Config
       lines.push('', vscode.l10n.t('## Settings'));
@@ -655,55 +716,33 @@ export function deactivate(): void {
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 
 function autoConfigureMCP(port: number): void {
-  // 전역 MCP 설정에 이미 vibezoo가 등록되어 있으면 프로젝트 레벨 설정 불필요
+  // McpConfigService를 통해 항상 .roo/mcp.json 작성
+  // global 설정은 참고 전용 — 존재 여부와 무관하게 프로젝트 설정 강제 기록
   try {
-    const globalMCPPath = path.join(os.homedir(), 'AppData', 'Roaming', 'Code', 'User', 'globalStorage',
-      'zoocodeorganization.zoo-code', 'settings', 'mcp_settings.json');
-    if (fs.existsSync(globalMCPPath)) {
-      const globalSettings = JSON.parse(fs.readFileSync(globalMCPPath, 'utf-8'));
-      if (globalSettings?.mcpServers?.vibezoo) {
-        console.log('[VibeZoo] 전역 MCP에 vibezoo 이미 등록됨 — 프로젝트 레벨 설정 건너뜀');
-        return;
-      }
+    const service = new McpConfigService();
+
+    // 1. Global 설정 읽기 (참고 전용, 로깅 목적)
+    service.logGlobalStatus();
+
+    // 2. 프로젝트 루트 확인
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.[0]) {
+      console.warn('[VibeZoo] autoConfigureMCP: 열린 워크스페이스 없음');
+      return;
     }
-  } catch { /* 전역 설정 확인 실패 — 기존 동작 유지 */ }
 
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.[0]) return;
+    // 3. 무조건 .roo/mcp.json 작성 (global 설정 존재 여부와 무관)
+    const host = ConfigService.getHost();
+    const definition: McpServerDefinition = {
+      url: `http://${host}:${port}/sse`,
+      transport: 'sse',
+    };
+    service.writeProjectMcp(folders[0].uri.fsPath, 'vibezoo', definition);
 
-  const root = folders[0].uri.fsPath;
-  const zooMCPDir = path.join(root, '.roo');
-  const zooMCPPath = path.join(zooMCPDir, 'mcp.json');
-
-  const mcpConfig = {
-    mcpServers: {
-      vibezoo: {
-        url: ConfigService.getBridgeUrl('/sse'),
-        transport: 'sse',
-      },
-    },
-  };
-
-  let existing: any = {};
-  if (fs.existsSync(zooMCPPath)) {
-    try {
-      existing = JSON.parse(fs.readFileSync(zooMCPPath, 'utf-8'));
-    } catch { /* ignore */ }
+    console.log(`[VibeZoo] ✅ MCP 설정 강제 동기화 완료 (port=${port}, host=${host})`);
+  } catch (err: any) {
+    console.error('[VibeZoo] autoConfigureMCP 실패:', err.message);
   }
-
-  const existingServers = existing.mcpServers || {};
-
-  // 항상 덮어쓰기 (Touch) 하여 Zoo Code의 파일 감시자(File Watcher)가 
-  // 파이썬 서버가 켜진 완벽한 타이밍에 즉시 재연결을 시도하도록 강제 유도함
-  fs.mkdirSync(zooMCPDir, { recursive: true });
-  const merged = {
-    mcpServers: {
-      ...existingServers,
-      ...mcpConfig.mcpServers,
-    },
-  };
-  fs.writeFileSync(zooMCPPath, JSON.stringify(merged, null, 2), 'utf-8');
-  console.log(`[VibeZoo] Zoo Code MCP 설정 강제 업데이트 완료 (연결 Hand-off): ${zooMCPPath}`);
 }
 
 // ── Helpers ─────────────────────────────────────────────────

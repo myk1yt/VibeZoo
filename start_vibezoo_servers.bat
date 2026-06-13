@@ -65,7 +65,7 @@ if !ERRORLEVEL! equ 0 (
 ) else (
     echo [%date% %time%] Starting VibeZoo MCP Bridge on port !BRIDGE_PORT!... >> "%LOG_FILE%"
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "$p = Start-Process -FilePath '%PYTHON%' -ArgumentList '-X utf8 mcp-servers\vibezoo_mcp_bridge.py --port !BRIDGE_PORT!' -WorkingDirectory '%VIBEZOO_DIR%' -WindowStyle Hidden -PassThru -RedirectStandardError '%LOG_DIR%\bridge_stderr.log' -RedirectStandardOutput '%LOG_DIR%\bridge_stdout.log'; Write-Output $p.Id" >> "%LOG_FILE%" 2>&1
+        "$p = Start-Process -FilePath '%PYTHON%' -ArgumentList '-X utf8 extension\mcp-servers\vibezoo_mcp_bridge.py --port !BRIDGE_PORT!' -WorkingDirectory '%VIBEZOO_DIR%' -WindowStyle Hidden -PassThru -RedirectStandardError '%LOG_DIR%\bridge_stderr.log' -RedirectStandardOutput '%LOG_DIR%\bridge_stdout.log'; Write-Output $p.Id" >> "%LOG_FILE%" 2>&1
     echo [%date% %time%] VibeZoo Bridge launch command issued. >> "%LOG_FILE%"
     set "BRIDGE_STARTED=yes"
 )

@@ -58,5 +58,8 @@
   "vibezoo.guard.linuxUseChattr.description": "Guard.git: Use chattr +a on Linux (also prevents file deletion inside .git → may break git gc) — H2 response",
   "vibezoo.openErrorDashboard.title": "VibeZoo: Open Error Dashboard",
   "vibezoo.errorCollection.enabled.description": "Enable automatic MCP tool error collection",
-  "vibezoo.errorCollection.maxEntries.description": "Maximum error entries in registry.json"
+  "vibezoo.errorCollection.maxEntries.description": "Maximum error entries in registry.json",
+  "vibezoo.bridge.port.description": "MCP Bridge SSE Server Port",
+  "vibezoo.network.host.description": "Network host address for MCP Bridge (default: 127.0.0.1 for localhost only)",
+  "vibezoo.advanced.pythonPath.description": "Custom Python interpreter path (empty = auto-detect from PATH/venv/pyenv/conda)"
 }

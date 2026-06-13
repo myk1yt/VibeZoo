@@ -118,5 +118,8 @@
   "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?": "⚠️ .git folder was deleted! Guard.git attempted protection but may have been bypassed. Restore from Yocto?",
   "vibezoo.openErrorDashboard.title": "🐞 Open Error Dashboard",
   "vibezoo.errorCollection.enabled.description": "Enable automatic MCP tool error collection",
-  "vibezoo.errorCollection.maxEntries.description": "Maximum error entries in registry.json"
+  "vibezoo.errorCollection.maxEntries.description": "Maximum error entries in registry.json",
+  "vibezoo.bridge.port.description": "MCP Bridge SSE Server Port",
+  "vibezoo.network.host.description": "Network host address for MCP Bridge (default: 127.0.0.1 for localhost only)",
+  "vibezoo.advanced.pythonPath.description": "Custom Python interpreter path (empty = auto-detect from PATH/venv/pyenv/conda)"
 }

@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { CrowServerConfig } from '../types';
 import { ConfigService } from '../config/ConfigService';
+import { PythonResolver } from '../python/PythonResolver';
 
 export class CrowServerManager {
   private config: CrowServerConfig;
@@ -71,30 +72,30 @@ export class CrowServerManager {
       return false;
     }
 
-    // Python 스크립트 경로 찾기 (SubagentManager 패턴과 동일)
-    const candidates = [
-      path.join(this.extensionPath, 'mcp-servers', 'crow_memory_server.py'),
-      path.join(this.extensionPath, '..', 'mcp-servers', 'crow_memory_server.py'),
-      path.join(this.extensionPath, '..', '..', 'mcp-servers', 'crow_memory_server.py'),
-    ];
+    // Python 스크립트 경로 (VSIX 번들링 후 확장 디렉토리 내부 mcp-servers/)
+    const scriptPath = path.join(this.extensionPath, 'mcp-servers', 'crow_memory_server.py');
 
-    let scriptPath: string | null = null;
-    for (const c of candidates) {
-      if (fs.existsSync(c)) {
-        scriptPath = c;
-        break;
-      }
-    }
-
-    if (!scriptPath) {
-      console.warn('[VibeZoo] crow_memory_server.py를 찾을 수 없음 — 후보 경로:', candidates);
+    if (!fs.existsSync(scriptPath)) {
+      console.warn('[VibeZoo] crow_memory_server.py를 찾을 수 없음:', scriptPath);
       return false;
     }
 
     console.log(`[VibeZoo] Crow 서버 spawn: ${path.basename(scriptPath)} on port ${this.config.port}`);
 
     try {
-      this.child = spawn('python', [scriptPath, '--port', String(this.config.port)], {
+      // PythonResolver로 인터프리터 탐색 (extensionPath를 workspaceRoot로 사용)
+      const workspaceRoot = this.extensionPath ? path.dirname(this.extensionPath) : '';
+      const pyCandidate = PythonResolver.getInstance().resolve(workspaceRoot);
+
+      console.log(`[VibeZoo] Python resolved for Crow: "${pyCandidate.command}" (source=${pyCandidate.source}, version=${pyCandidate.version ?? '?'})`);
+
+      const { command: pyCmd, args: pyArgs } = PythonResolver.buildSpawnArgs(pyCandidate, [
+        scriptPath,
+        '--port',
+        String(this.config.port),
+      ]);
+
+      this.child = spawn(pyCmd, pyArgs, {
         detached: true,
         stdio: 'ignore',
       });

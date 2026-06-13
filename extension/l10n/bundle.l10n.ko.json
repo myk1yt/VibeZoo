@@ -118,5 +118,8 @@
   "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?": "⚠️ .git 폴더가 삭제되었습니다! Guard.git이 방어를 시도했지만 우회되었을 수 있습니다. Yocto에서 복구하시겠습니까?",
   "vibezoo.openErrorDashboard.title": "🐞 에러 대시보드 열기",
   "vibezoo.errorCollection.enabled.description": "MCP 도구 에러 자동 수집 활성화",
-  "vibezoo.errorCollection.maxEntries.description": "registry.json의 최대 에러 항목 수"
+  "vibezoo.errorCollection.maxEntries.description": "registry.json의 최대 에러 항목 수",
+  "vibezoo.bridge.port.description": "MCP Bridge SSE 서버 포트",
+  "vibezoo.network.host.description": "MCP Bridge 네트워크 호스트 주소 (기본: 127.0.0.1, localhost 전용)",
+  "vibezoo.advanced.pythonPath.description": "사용자 지정 Python 인터프리터 경로 (빈 값 = PATH/venv/pyenv/conda 자동 탐색)"
 }

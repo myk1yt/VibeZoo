@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ConfigService } from '../config/ConfigService';
+import { McpConfigService } from '../mcp/McpConfigService';
 import { SelfCheckReport, SelfCheckItem } from '../types';
 import { GuardGitManager } from './GuardGitManager';
 import { GuardGitIntegrity } from '../types';
@@ -99,6 +100,23 @@ export function setGuardGitManager(mgr: GuardGitManager | null): void {
 /** GuardGitManager 인스턴스 조회 */
 export function getGuardGitManager(): GuardGitManager | null {
   return _guardGitManager;
+}
+
+// ── Bridge 재시작 콜백 (Task 6) ────────────────────────────
+
+let _restartBridgeFn: (() => Promise<boolean>) | null = null;
+
+/**
+ * Bridge 재시작 함수 등록 (extension.ts의 SubagentManager.spawnBridge() 연결).
+ * SelfChecker.autoRecover()가 Bridge Connectivity 실패 시 이 함수를 호출한다.
+ */
+export function setRestartBridgeFn(fn: (() => Promise<boolean>) | null): void {
+  _restartBridgeFn = fn;
+}
+
+/** Bridge 재시작 함수 조회 */
+export function getRestartBridgeFn(): (() => Promise<boolean>) | null {
+  return _restartBridgeFn;
 }
 
 // ── SelfChecker ───────────────────────────────────────────────
@@ -473,8 +491,13 @@ export class SelfChecker {
     try {
       switch (failure.name) {
         case 'Bridge Connectivity': {
-          // Bridge 재시작은 SubagentManager에서 처리
-          // 여기서는 재시도 신호만
+          // Task 6: 등록된 restartBridgeFn이 있으면 SubagentManager.spawnBridge() 호출
+          const restartFn = getRestartBridgeFn();
+          if (restartFn) {
+            console.log('[SelfCheck:Recovery] Bridge 재시작 시도 (SubagentManager)');
+            return await restartFn();
+          }
+          // Fallback: 단순 health check 재시도
           const resp = await fetch('http://localhost:9027/health', {
             signal: AbortSignal.timeout(5000),
           });
@@ -501,44 +524,27 @@ export class SelfChecker {
     }
   }
 
-  /** MCP 설정 자동 복구 */
+  /** MCP 설정 자동 복구 — McpConfigService 위임 */
   private async autoConfigureMCP(): Promise<void> {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders?.[0]) return;
-
-    const root = folders[0].uri.fsPath;
-    const zooMCPDir = path.join(root, '.roo');
-    const zooMCPPath = path.join(zooMCPDir, 'mcp.json');
-
-    fs.mkdirSync(zooMCPDir, { recursive: true });
-
-    let existingConfig: any = { mcpServers: {} };
     try {
-      if (fs.existsSync(zooMCPPath)) {
-        const raw = await fs.promises.readFile(zooMCPPath, 'utf-8');
-        if (raw.trim()) {
-          existingConfig = JSON.parse(raw);
-        }
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        console.warn('[SelfCheck:Recovery] 열린 워크스페이스 없음');
+        return;
       }
+
+      const service = new McpConfigService();
+      const root = folders[0].uri.fsPath;
+
+      // global 설정 로깅 (참고 전용)
+      service.logGlobalStatus();
+
+      // 무조건 .roo/mcp.json 작성
+      service.writeProjectMcp(root);
+
+      console.log('[SelfCheck:Recovery] ✅ MCP 설정 복구 완료 (McpConfigService)');
     } catch (err: any) {
-      console.warn(`[SelfCheck:Recovery] 기존 mcp.json 파싱 실패 (초기화 진행): ${err.message}`);
-      existingConfig = { mcpServers: {} };
-    }
-
-    if (!existingConfig.mcpServers || typeof existingConfig.mcpServers !== 'object') {
-      existingConfig.mcpServers = {};
-    }
-
-    existingConfig.mcpServers.vibezoo = {
-      url: ConfigService.getBridgeUrl('/sse'),
-      transport: 'sse',
-    };
-
-    try {
-      await fs.promises.writeFile(zooMCPPath, JSON.stringify(existingConfig, null, 2), 'utf-8');
-      console.log(`[SelfCheck:Recovery] MCP 설정 병합 및 재구성 완료: ${zooMCPPath}`);
-    } catch (err: any) {
-      console.error(`[SelfCheck:Recovery] MCP 설정 파일 쓰기 실패: ${err.message}`);
+      console.error(`[SelfCheck:Recovery] MCP 설정 복구 실패: ${err.message}`);
     }
   }
 
