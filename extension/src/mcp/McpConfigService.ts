@@ -200,6 +200,21 @@ export class McpConfigService {
       url: `http://${host}:${port}/sse`,
       transport: 'sse',
       global: true,
+      autoStart: true,
+      autoStartCommand: `cd /d "${process.env.USERPROFILE || '~'}\\OneDrive\\Projects\\VibeZoo" && start_vibezoo_bridge.bat`,
+      alwaysAllow: [
+        'search_codebase', 'find_references', 'summarize_architecture',
+        'review_code', 'explain_code', 'analyze_changes', 'review_pr', 'refactor_across_files',
+        'generate_tests', 'analyze_coverage', 'analyze_call_graph', 'map_dependencies',
+        'extract_patterns', 'reverse_engineer', 'analyze_uploaded_file', 'check_uploaded_files',
+        'draw_on_whiteboard', 'get_whiteboard_state',
+        'auto_fix_status', 'retry_build', 'check_intervention',
+        'review_project', 'find_bugs', 'suggest_refactor', 'generate_docs',
+        'learn_project', 'recall_project', 'learn_preference', 'get_preferences',
+        'apply_patch', 'read_project_file',
+        'ux_coordinator', 'auto_analyze_after_drop', 'auto_analyze_whiteboard',
+        'vibezoo_feedback', 'vibezoo_setup',
+      ],
     };
   }
 

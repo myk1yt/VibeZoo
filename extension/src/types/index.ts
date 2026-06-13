@@ -15,6 +15,12 @@ export interface McpServerDefinition {
   disabled?: boolean;
   /** 글로벌 MCP 서버 플래그 (모든 워크스페이스에서 표시) */
   global?: boolean;
+  /** 자동 시작 플래그 — VS Code 시작 시 MCP 서버 자동 실행 */
+  autoStart?: boolean;
+  /** 자동 시작 시 실행할 명령어 */
+  autoStartCommand?: string;
+  /** 항상 허용할 도구 목록 (사용자 확인 없이 실행) */
+  alwaysAllow?: string[];
   /** 자동 승인 도구 목록 */
   autoApprove?: string[];
 }
