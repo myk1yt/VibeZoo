@@ -173,12 +173,17 @@ export class McpConfigService {
       const config = JSON.parse(raw);
       if (config.mcpServers?.[serverKey]) {
         delete config.mcpServers[serverKey];
-        // 남은 서버가 없으면 mcpServers 키도 정리
+        // Zoo Code는 mcpServers 키가 비어있어도 반드시 존재해야 함
         if (Object.keys(config.mcpServers).length === 0) {
-          delete config.mcpServers;
+          config.mcpServers = {};  // delete 대신 빈 객체 유지
         }
         fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2), 'utf-8');
         console.log(`[McpConfigService] ✅ .roo/mcp.json에서 ${serverKey} 제거 완료`);
+      } else if (!config.mcpServers) {
+        // 파일이 {}로 시작하는 경우 mcpServers 키 초기화
+        config.mcpServers = {};
+        fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2), 'utf-8');
+        console.log(`[McpConfigService] ✅ .roo/mcp.json에 빈 mcpServers 초기화`);
       }
     } catch (err: any) {
       console.warn(`[McpConfigService] cleanProjectMcp 실패: ${err.message}`);

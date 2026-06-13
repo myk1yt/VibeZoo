@@ -1,9 +1,3 @@
 {
-  "mcpServers": {
-    "vibezoo": {
-      "url": "http://127.0.0.1:9027/sse",
-      "transport": "sse",
-      "global": true
-    }
-  }
+  "mcpServers": {}
 }
