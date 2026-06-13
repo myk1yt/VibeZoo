@@ -97,8 +97,23 @@ export class CrowServerManager {
 
       this.child = spawn(pyCmd, pyArgs, {
         detached: true,
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+
+      // stderr → OutputChannel
+      const crowChannel = vscode.window.createOutputChannel('VibeZoo Crow Server');
+      this.child.stderr?.on('data', (data: Buffer) => crowChannel.append(data.toString()));
+      this.child.stdout?.on('data', (data: Buffer) => crowChannel.append(data.toString()));
+
+      // 프로세스가 즉시 종료될 경우 감지
+      this.child.on('exit', (code, signal) => {
+        if (code !== null && code !== 0) {
+          const msg = `[VibeZoo] Crow 서버 프로세스가 종료 코드 ${code}로 종료됨 (signal: ${signal ?? 'none'})`;
+          console.error(msg);
+          crowChannel.appendLine(`[ERROR] ${msg}`);
+        }
+      });
+
       this.child.unref();
       console.log(`[VibeZoo] ✅ Crow 서버 백그라운드 실행 중 (port ${this.config.port})`);
       return true;

@@ -98,19 +98,28 @@ export class SubagentManager {
     ]);
     this.child = spawn(pyCmd, pyArgs, {
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
         CROW_SERVER_URL: ConfigService.getCrowUrl(),
       },
     });
 
-    this.child.unref();
-
     // stdout/stderr → OutputChannel
     const channel = vscode.window.createOutputChannel('VibeZoo MCP Bridge');
     this.child.stdout?.on('data', (data: Buffer) => channel.append(data.toString()));
     this.child.stderr?.on('data', (data: Buffer) => channel.append(data.toString()));
+
+    // 프로세스가 즉시 종료될 경우 감지하여 로그 출력
+    this.child.on('exit', (code, signal) => {
+      if (code !== null && code !== 0) {
+        const msg = `[VibeZoo] Bridge 프로세스가 종료 코드 ${code}로 종료됨 (signal: ${signal ?? 'none'})`;
+        console.error(msg);
+        channel.appendLine(`[ERROR] ${msg}`);
+      }
+    });
+
+    this.child.unref();
 
     this.node = {
       id: BRIDGE_NAME,
