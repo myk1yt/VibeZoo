@@ -201,8 +201,7 @@ export class McpConfigService {
       transport: 'sse',
       global: true,
       autoStart: true,
-      autoStartCommand: `cd /d "${process.env.USERPROFILE || '~'}\\OneDrive\\Projects\\VibeZoo" && start_vibezoo_bridge.bat`,
-      alwaysAllow: [
+            alwaysAllow: [
         'search_codebase', 'find_references', 'summarize_architecture',
         'review_code', 'explain_code', 'analyze_changes', 'review_pr', 'refactor_across_files',
         'generate_tests', 'analyze_coverage', 'analyze_call_graph', 'map_dependencies',
