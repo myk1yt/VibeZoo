@@ -192,7 +192,7 @@ VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 
 | [`init_vibezoo.bat`](init_vibezoo.bat:1) | Windows | venv 생성 → pip install → npm install → tsc |
 | [`init_vibezoo.sh`](init_vibezoo.sh:1) | Linux/macOS | 위와 동일한 Linux/macOS 부트스트래퍼 |
 | [`start_vibezoo_servers.bat`](start_vibezoo_servers.bat:1) | Windows | Crow Memory(9020) + VibeZoo Bridge(9027) 자동 실행 + Health Check |
-| [`start_vibezoo_bridge.bat`](start_vibezoo_bridge.bat:1) | Windows | VibeZoo Bridge 단독 실행 |
+| [`start_vibezoo_bridge.bat`](start_vibezoo_bridge.bat:1) | Windows | VibeZoo Bridge 단독 실행 (`%USERPROFILE%\mcp-servers\vibezoo\`에서 실행) |
 | [`watch_vibezoo_bridge.bat`](watch_vibezoo_bridge.bat:1) | Windows | 30초 간격 watchdog — bridge 헬스체크 및 자동 재시작 |
 
 ---
@@ -610,20 +610,21 @@ bash init_vibezoo.sh
 **수동 실행:**
 
 ```bash
-# VibeZoo MCP Bridge
-python mcp-servers/vibezoo_mcp_bridge.py --port 9027
+# VibeZoo MCP Bridge (from standard runtime directory)
+cd %USERPROFILE%\mcp-servers\vibezoo
+python vibezoo_mcp_bridge.py --port 9027
 ```
 
 **Windows 자동 실행 (Crow Memory + Bridge):**
 
 ```powershell
-.\start_vibezoo_servers.bat
+%USERPROFILE%\mcp-servers\vibezoo\start_vibezoo_servers.bat
 ```
 
 **Watchdog 실행 (Bridge 모니터링):**
 
 ```powershell
-.\watch_vibezoo_bridge.bat
+%USERPROFILE%\mcp-servers\vibezoo\watch_vibezoo_bridge.bat
 ```
 
 ### 11.4 Zoo Code 연동

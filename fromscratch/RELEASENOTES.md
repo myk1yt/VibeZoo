@@ -1,3 +1,32 @@
+# VibeZoo v0.15.1 Release Notes
+
+**Release Date**: 2026-06-13
+
+## 🏗 Standard Path Migration
+
+VibeZoo now uses the same standard directory scheme as Crow Memory.
+
+### What changed
+
+- **Runtime directory**: All bridge files now live under `%USERPROFILE%\mcp-servers\vibezoo\` (Windows) / `~/mcp-servers/vibezoo/` (macOS/Linux) — consistent with Crow Memory's `%USERPROFILE%\mcp-servers\crow-memory\`.
+- **`init_vibezoo.bat`**: Now creates the standard target directory, copies startup scripts and Python bridge files, sets up venv, and builds the extension.
+- **`start_vibezoo_bridge.bat`**: Runs from the standard directory; references `vibezoo_mcp_bridge.py` in the same directory (no more `extension\mcp-servers\` relative path).
+- **`McpConfigService.buildDefaultDefinition()`**: `autoStartCommand` changed to `cd /d "%USERPROFILE%\mcp-servers\vibezoo" && start_vibezoo_bridge.bat`.
+- **Global `mcp_settings.json`**: `autoStartCommand` updated to match the new standard path.
+- **`init_vibezoo.sh`**: Same pattern for Linux/macOS (`~/mcp-servers/vibezoo/`).
+
+### Why
+
+- Consistent MCP server layout: `%USERPROFILE%\mcp-servers\{name}\` for all servers.
+- Anyone can `git clone` + `init_vibezoo.bat` and get a working setup immediately.
+- No dependency on the clone location — the runtime directory is fixed and predictable.
+
+### Files changed
+
+- **Modified**: `init_vibezoo.bat`, `start_vibezoo_bridge.bat`, `init_vibezoo.sh`, `extension/src/mcp/McpConfigService.ts`, `mcp_settings.json` (global), `README.md`, `docs/PROJECT_CONTEXT.md`
+
+---
+
 # VibeZoo v0.15.0 Release Notes
 
 **Release Date**: 2026-06-13

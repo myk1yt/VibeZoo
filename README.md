@@ -28,6 +28,22 @@ VibeZoo now fully supports global internationalization (i18n). Built on top of t
 
 Getting started with VibeZoo is easier than ever. We provide a one-click bootstrapper to set up the Python environment, install dependencies, and build the frontend extension all at once.
 
+### Standard Directory Layout
+
+VibeZoo now follows the same standard path scheme as Crow Memory:
+
+| Platform | Runtime Directory |
+|----------|-----------------|
+| Windows  | `%USERPROFILE%\mcp-servers\vibezoo\` |
+| macOS/Linux | `~/mcp-servers/vibezoo/` |
+
+The auto-start command in MCP settings is:
+```
+cd /d "%USERPROFILE%\mcp-servers\vibezoo" && start_vibezoo_bridge.bat
+```
+
+All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mcp-servers\`.
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/vibezoo/VibeZoo_forZoocode.git
@@ -36,6 +52,8 @@ Getting started with VibeZoo is easier than ever. We provide a one-click bootstr
 2. **Run the bootstrapper:**
    - **Windows:** Double-click `init_vibezoo.bat` or run it in the terminal.
    - **macOS/Linux:** Run `bash init_vibezoo.sh`.
+   
+   This creates the standard runtime directory, copies bridge files, sets up a Python venv, and builds the extension.
 3. **Auto-Connect:**
    Once the VibeZoo extension is active, it automatically starts the Python MCP Bridge on port `9027`, resolves a working Python interpreter across `python`/`python3`/venv environments, and keeps `.roo/mcp.json` synchronized so Zoo Code connects via SSE automatically.
 4. **Global Mode Installation (via `vibezoo_setup` — Recommended):**
@@ -197,6 +215,10 @@ VibeZoo Bridge는 Crow Memory의 REST API를 통해 메모리를 저장하고 �
 - `GET /recall` — 유사 에러/패턴 검색
 
 ### 변경 이력
+- **v0.15.1** (2026-06-13):
+  - Standard path migration: runtime directory changed to `%USERPROFILE%\mcp-servers\vibezoo\` (Windows) / `~/mcp-servers/vibezoo/` (macOS/Linux)
+  - `init_vibezoo.bat` / `init_vibezoo.sh` now copy bridge files to the standard target directory
+  - `autoStartCommand` updated to `cd /d "%USERPROFILE%\mcp-servers\vibezoo" && start_vibezoo_bridge.bat`
 - **v0.15.0** (2026-06-13):
   - Auto-connect fundamental fix: always write `.roo/mcp.json` even when global MCP config has a `vibezoo` entry
   - New [`PythonResolver`](extension/src/python/PythonResolver.ts), [`McpConfigService`](extension/src/mcp/McpConfigService.ts), [`VscodePaths`](extension/src/platform/VscodePaths.ts)

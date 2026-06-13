@@ -224,7 +224,7 @@ export class McpConfigService {
       url: `http://${host}:${port}/sse`,
       global: true,
       autoStart: true,
-      autoStartCommand: 'cd /d "%USERPROFILE%\\OneDrive\\Projects\\VibeZoo" && start_vibezoo_bridge.bat',
+      autoStartCommand: 'cd /d "%USERPROFILE%\\mcp-servers\\vibezoo" && start_vibezoo_bridge.bat',
       alwaysAllow: [
         'search_codebase', 'find_references', 'summarize_architecture',
         'review_code', 'explain_code', 'analyze_changes', 'review_pr', 'refactor_across_files',
