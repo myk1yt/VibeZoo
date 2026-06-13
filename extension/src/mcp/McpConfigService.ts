@@ -37,9 +37,56 @@ export class McpConfigService {
   }
 
   /**
+   * 글로벌 Zoo Code `mcp_settings.json`에 지정된 서버 정의를 **항상** 작성.
+   * writeProjectMcp()와 동일한 병합 로직으로, 기존 사용자 정의 MCP 서버 보존.
+   *
+   * @param serverKey - 서버 식별자 (기본: 'vibezoo')
+   * @param definition - MCP 서버 정의
+   */
+  writeGlobalMcp(
+    serverKey: string = 'vibezoo',
+    definition?: McpServerDefinition,
+  ): void {
+    const globalPath = this.getGlobalMcpSettingsPath();
+    const dir = path.dirname(globalPath);
+    fs.mkdirSync(dir, { recursive: true });
+
+    if (!definition) {
+      definition = this.buildDefaultDefinition();
+    }
+
+    // 기존 글로벌 설정 읽기
+    let existing: any = {};
+    if (fs.existsSync(globalPath)) {
+      try {
+        const raw = fs.readFileSync(globalPath, 'utf-8');
+        if (raw.trim()) existing = JSON.parse(raw);
+      } catch { existing = {}; }
+    }
+
+    const existingServers: Record<string, any> = existing.mcpServers || {};
+
+    // vibezoo 키만 병합 (다른 사용자 정의 서버 보존)
+    const merged: McpSettings = {
+      mcpServers: { ...existingServers, [serverKey]: definition },
+    };
+
+    // 파일 쓰기
+    fs.writeFileSync(globalPath, JSON.stringify(merged, null, 2), 'utf-8');
+
+    // mtime 갱신 → Zoo Code file watcher 강제 트리거
+    try {
+      const now = Date.now() / 1000;
+      fs.utimesSync(globalPath, now, now);
+    } catch { /* 비치명적 */ }
+
+    console.log(`[McpConfigService] ✅ Global MCP ${serverKey} 업데이트 완료: ${globalPath}`);
+  }
+
+  /**
    * 프로젝트 `.roo/mcp.json`에 지정된 서버 정의를 **항상** 작성.
    * global 설정 존재 여부와 무관하게 강제 기록.
-   * 
+   *
    * @param root   - 프로젝트 루트 경로
    * @param serverKey - 서버 식별자 (기본: 'vibezoo')
    * @param definition - MCP 서버 정의
