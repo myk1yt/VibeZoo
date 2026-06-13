@@ -66,11 +66,15 @@ export class McpConfigService {
 
     const existingServers: Record<string, any> = existing.mcpServers || {};
 
-    // 기존 서버 정의가 있으면 병합 (새 필드로 덮어쓰되, 기존의 추가 필드는 보존)
+    // 기존 서버 정의가 있으면 병합
+    // 사용자 설정(autoStart, autoStartCommand, alwaysAllow 등)은 보존하고
+    // url/transport만 새 정의로 갱신
     if (existingServers[serverKey]) {
       definition = {
-        ...existingServers[serverKey],  // 기존 필드 보존 (autoStart, alwaysAllow 등)
-        ...definition,                   // 새 필드로 덮어쓰기 (url, transport 등)
+        ...definition,                   // 새 기본값 먼저
+        ...existingServers[serverKey],   // 기존 사용자 설정이 우선
+        url: definition.url,             // url은 항상 새 정의로
+        transport: definition.transport, // transport도 항상 새 정의로
       };
     }
 
@@ -131,11 +135,15 @@ export class McpConfigService {
 
     const existingServers: Record<string, any> = existing.mcpServers || {};
 
-    // 기존 서버 정의가 있으면 병합 (새 필드로 덮어쓰되, 기존의 추가 필드는 보존)
+    // 기존 서버 정의가 있으면 병합
+    // 사용자 설정(autoStart, autoStartCommand, alwaysAllow 등)은 보존하고
+    // url/transport만 새 정의로 갱신
     if (existingServers[serverKey]) {
       definition = {
-        ...existingServers[serverKey],  // 기존 필드 보존 (autoStart, alwaysAllow 등)
-        ...definition,                   // 새 필드로 덮어쓰기 (url, transport 등)
+        ...definition,                   // 새 기본값 먼저
+        ...existingServers[serverKey],   // 기존 사용자 설정이 우선
+        url: definition.url,             // url은 항상 새 정의로
+        transport: definition.transport, // transport도 항상 새 정의로
       };
     }
 
@@ -216,7 +224,8 @@ export class McpConfigService {
       url: `http://${host}:${port}/sse`,
       global: true,
       autoStart: true,
-            alwaysAllow: [
+      autoStartCommand: 'cd /d "%USERPROFILE%\\OneDrive\\Projects\\VibeZoo" && start_vibezoo_bridge.bat',
+      alwaysAllow: [
         'search_codebase', 'find_references', 'summarize_architecture',
         'review_code', 'explain_code', 'analyze_changes', 'review_pr', 'refactor_across_files',
         'generate_tests', 'analyze_coverage', 'analyze_call_graph', 'map_dependencies',
