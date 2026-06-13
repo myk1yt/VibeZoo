@@ -137,20 +137,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (port > 0) {
         console.log(`[VibeZoo] ✅ SelfCheck → Bridge 재시작 성공 (port ${port})`);
 
-        // 재시작 성공 시 MCP 설정 갱신 (project + global)
+        // 재시작 성공 시 글로벌 MCP 설정 갱신
         try {
           const mcpService = new McpConfigService();
-          const folders = vscode.workspace.workspaceFolders;
           const host = ConfigService.getHost();
           const definition: McpServerDefinition = {
             url: `http://${host}:${port}/sse`,
             transport: 'sse',
           };
-          // 1. 프로젝트 레벨 .roo/mcp.json
-          if (folders?.[0]) {
-            mcpService.writeProjectMcp(folders[0].uri.fsPath, 'vibezoo', definition);
-          }
-          // 2. 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
+          // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
           mcpService.writeGlobalMcp('vibezoo', definition);
         } catch { /* 비치명적 */ }
 
@@ -165,29 +160,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   // Bridge 시작 후 Crow 연결 재확인 (이미 조기 연결 시도했으나 Bridge 이후 다시 확인)
-  // Task 6: Bridge 성공/실패 모두 McpConfigService.writeProjectMcp() 호출
   subagentManager.spawnBridge().then(async (port) => {
     console.log(`[VibeZoo] ✅ MCP Bridge started on port ${port}`);
     statusBar.setActive(true, port);
     statusBar.setLastError(undefined);
 
-    // ★ Task 6: Bridge 성공 시 McpConfigService.writeProjectMcp() + writeGlobalMcp() 호출
+    // Bridge 성공 시 글로벌 MCP 설정만 기록
     try {
       const mcpService = new McpConfigService();
       mcpService.logGlobalStatus();
-      const folders = vscode.workspace.workspaceFolders;
       const host = ConfigService.getHost();
       const definition: McpServerDefinition = {
         url: `http://${host}:${port}/sse`,
         transport: 'sse',
       };
-      // 1. 프로젝트 레벨 .roo/mcp.json
-      if (folders?.[0]) {
-        mcpService.writeProjectMcp(folders[0].uri.fsPath, 'vibezoo', definition);
-      }
-      // 2. 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
+      // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
       mcpService.writeGlobalMcp('vibezoo', definition);
-      console.log(`[VibeZoo] ✅ MCP 설정 동기화 완료 (project + global, port=${port}, host=${host})`);
+      console.log(`[VibeZoo] ✅ Global MCP 동기화 완료 (port=${port}, host=${host})`);
     } catch (mcpErr: any) {
       console.warn('[VibeZoo] MCP 설정 동기화 실패 (비치명적):', mcpErr.message);
     }
@@ -209,18 +198,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     statusBar.setCrowStatus(crowServer?.lastHealthy ?? false);
     statusBar.setLastError(err.message);
 
-    // ★ Task 6: Bridge 실패 시에도 McpConfigService는 이전 값으로 write 시도 (시간차 재연결 유도)
+    // Bridge 실패 시에도 글로벌 MCP 설정 유지 (시간차 재연결 유도)
     try {
       const mcpService = new McpConfigService();
-      const folders = vscode.workspace.workspaceFolders;
       mcpService.logGlobalStatus();
-      // 1. 프로젝트 레벨 .roo/mcp.json
-      if (folders?.[0]) {
-        mcpService.writeProjectMcp(folders[0].uri.fsPath);
-      }
-      // 2. 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
+      // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
       mcpService.writeGlobalMcp();
-      console.log('[VibeZoo] ⏳ Bridge 실패 상태에서 MCP 설정 유지 (project + global, 재연결 대기)');
+      console.log('[VibeZoo] ⏳ Bridge 실패 상태에서 글로벌 MCP 설정 유지 (재연결 대기)');
     } catch (mcpErr: any) {
       console.warn('[VibeZoo] MCP 설정 fallback write 실패:', mcpErr.message);
     }
@@ -725,8 +709,6 @@ export function deactivate(): void {
 // ── Auto Configure Zoo Code MCP ──────────────────────────
 
 function autoConfigureMCP(port: number): void {
-  // McpConfigService를 통해 항상 .roo/mcp.json + global mcp_settings.json 작성
-  // global 설정도 함께 기록하여 VibeZoo 워크스페이스가 아니더라도 MCP Bridge 연결 유지
   try {
     const service = new McpConfigService();
     service.logGlobalStatus();
@@ -737,16 +719,10 @@ function autoConfigureMCP(port: number): void {
       transport: 'sse',
     };
 
-    // 1. 프로젝트 레벨 .roo/mcp.json (현재 워크스페이스)
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders?.[0]) {
-      service.writeProjectMcp(folders[0].uri.fsPath, 'vibezoo', definition);
-    }
-
-    // 2. 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
+    // 글로벌 MCP 설정만 작성 (모든 워크스페이스에서 사용)
     service.writeGlobalMcp('vibezoo', definition);
 
-    console.log(`[VibeZoo] ✅ MCP 설정 동기화 완료 (project + global, port=${port})`);
+    console.log(`[VibeZoo] ✅ Global MCP 동기화 완료 (port=${port})`);
   } catch (err: any) {
     console.error('[VibeZoo] autoConfigureMCP 실패:', err.message);
   }
@@ -787,9 +763,6 @@ function ensureTemplates(): void {
       }
     }
   }
-
-  // Zoo Code MCP 자동 설정
-  autoConfigureMCP(ConfigService.getBridgePort());
 
   // .vscode/settings.json
   const vscodeDir = path.join(root, '.vscode');
