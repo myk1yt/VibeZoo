@@ -158,6 +158,34 @@ export class McpConfigService {
   }
 
   /**
+   * 프로젝트 .roo/mcp.json에서 vibezoo 키를 제거.
+   * mcpServers가 빈 객체가 되면 파일 자체를 삭제.
+   *
+   * @param root      - 프로젝트 루트 경로
+   * @param serverKey - 제거할 서버 식별자 (기본: 'vibezoo')
+   */
+  cleanProjectMcp(root: string, serverKey: string = 'vibezoo'): void {
+    const mcpPath = path.join(root, '.roo', 'mcp.json');
+    if (!fs.existsSync(mcpPath)) return;
+
+    try {
+      const raw = fs.readFileSync(mcpPath, 'utf-8');
+      const config = JSON.parse(raw);
+      if (config.mcpServers?.[serverKey]) {
+        delete config.mcpServers[serverKey];
+        // 남은 서버가 없으면 mcpServers 키도 정리
+        if (Object.keys(config.mcpServers).length === 0) {
+          delete config.mcpServers;
+        }
+        fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2), 'utf-8');
+        console.log(`[McpConfigService] ✅ .roo/mcp.json에서 ${serverKey} 제거 완료`);
+      }
+    } catch (err: any) {
+      console.warn(`[McpConfigService] cleanProjectMcp 실패: ${err.message}`);
+    }
+  }
+
+  /**
    * ConfigService에서 host/port를 읽어 기본 MCP 서버 정의 생성.
    */
   private buildDefaultDefinition(): McpServerDefinition {

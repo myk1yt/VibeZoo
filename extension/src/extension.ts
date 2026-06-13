@@ -719,8 +719,14 @@ function autoConfigureMCP(port: number): void {
       transport: 'sse',
     };
 
-    // 글로벌 MCP 설정만 작성 (모든 워크스페이스에서 사용)
+    // 글로벌 MCP 설정만 작성
     service.writeGlobalMcp('vibezoo', definition);
+
+    // 프로젝트 .roo/mcp.json에서 vibezoo 제거 (이전 버전 잔여물 정리)
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders?.[0]) {
+      service.cleanProjectMcp(folders[0].uri.fsPath, 'vibezoo');
+    }
 
     console.log(`[VibeZoo] ✅ Global MCP 동기화 완료 (port=${port})`);
   } catch (err: any) {
