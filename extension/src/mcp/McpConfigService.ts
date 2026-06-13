@@ -66,6 +66,14 @@ export class McpConfigService {
 
     const existingServers: Record<string, any> = existing.mcpServers || {};
 
+    // 기존 서버 정의가 있으면 병합 (새 필드로 덮어쓰되, 기존의 추가 필드는 보존)
+    if (existingServers[serverKey]) {
+      definition = {
+        ...existingServers[serverKey],  // 기존 필드 보존 (autoStart, alwaysAllow 등)
+        ...definition,                   // 새 필드로 덮어쓰기 (url, transport 등)
+      };
+    }
+
     // vibezoo 키만 병합 (다른 사용자 정의 서버 보존)
     const merged: McpSettings = {
       mcpServers: { ...existingServers, [serverKey]: definition },
@@ -122,6 +130,14 @@ export class McpConfigService {
     }
 
     const existingServers: Record<string, any> = existing.mcpServers || {};
+
+    // 기존 서버 정의가 있으면 병합 (새 필드로 덮어쓰되, 기존의 추가 필드는 보존)
+    if (existingServers[serverKey]) {
+      definition = {
+        ...existingServers[serverKey],  // 기존 필드 보존 (autoStart, alwaysAllow 등)
+        ...definition,                   // 새 필드로 덮어쓰기 (url, transport 등)
+      };
+    }
 
     // vibezoo 키만 병합 (다른 사용자 정의 서버 보존)
     const merged: McpSettings = {
