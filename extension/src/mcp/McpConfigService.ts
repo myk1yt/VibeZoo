@@ -194,6 +194,7 @@ export class McpConfigService {
     return {
       url: `http://${host}:${port}/sse`,
       transport: 'sse',
+      global: true,
     };
   }
 

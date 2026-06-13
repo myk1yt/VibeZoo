@@ -13,6 +13,8 @@ export interface McpServerDefinition {
   transport: 'sse';
   /** Zoo Code 향후 호환: 비활성화 플래그 */
   disabled?: boolean;
+  /** 글로벌 MCP 서버 플래그 (모든 워크스페이스에서 표시) */
+  global?: boolean;
   /** 자동 승인 도구 목록 */
   autoApprove?: string[];
 }
