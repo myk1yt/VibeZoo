@@ -41,7 +41,7 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Reviewer", "status": "ready", "tools": ["review_code"]},
             {"name": "DeepAnalyzer", "status": "ready", "tools": ["analyze_call_graph", "map_dependencies", "extract_patterns", "reverse_engineer"]},
             {"name": "Tester", "status": "ready", "tools": ["generate_tests", "analyze_coverage"]},
-            {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen", "check_uploaded_files"]},
+            {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen"]},
             {"name": "FixLoop", "status": "ready", "tools": ["auto_fix_status", "retry_build", "check_intervention"]},
             {"name": "Integrated", "status": "ready", "tools": ["review_project", "find_bugs", "suggest_refactor", "generate_docs"]},
             {"name": "Analysis", "status": "ready", "tools": ["explain_code", "analyze_changes", "review_pr", "refactor_across_files"]},
@@ -50,7 +50,7 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
             {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
             {"name": "Editor", "status": "ready", "tools": ["apply_patch", "read_project_file"]},
-            {"name": "FileAnalyzer", "status": "ready", "tools": ["analyze_uploaded_file", "check_uploaded_files"]},
+            {"name": "FileAnalyzer", "status": "ready", "tools": ["analyze_uploaded_file"]},
         ]
     })
 

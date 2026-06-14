@@ -452,8 +452,8 @@ VibeZoo MCP Bridge는 37개 이상의 MCP 도구를 16개 파일로 모듈화하
 | Reviewer | [`tools/reviewer.py`](mcp-servers/bridge/tools/reviewer.py) | `review_code` | 코드 품질 검사 (ESLint, go vet 연동) |
 | Tester | [`tools/tester.py`](mcp-servers/bridge/tools/tester.py) | `generate_tests`, `analyze_coverage` | 테스트 생성 및 커버리지 분석 |
 | Deep Analyzer | [`tools/deep_analyzer.py`](mcp-servers/bridge/tools/deep_analyzer.py) | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | 깊은 AST 분석 |
-| File Analyzer | [`tools/file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | `analyze_uploaded_file`, `check_uploaded_files` | 업로드 파일 분석 (SSA/OCR/Vision) |
-| Whiteboard | [`tools/whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | `draw_on_whiteboard`, `get_whiteboard_state`, `capture_screen`, `check_uploaded_files` | AI-Human 시각 협업 |
+| File Analyzer | [`tools/file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | `analyze_uploaded_file` | 업로드 파일 분석 (목록 확인 및 SSA/OCR/Vision 지원) |
+| Whiteboard | [`tools/whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | `draw_on_whiteboard`, `get_whiteboard_state`, `capture_screen` | AI-Human 시각 협업 |
 | Fix Loop | [`tools/fix_loop.py`](mcp-servers/bridge/tools/fix_loop.py) | `auto_fix_status`, `retry_build`, `check_intervention` | 자율 빌드 픽스 루프 |
 | Integrated | [`tools/integrated.py`](mcp-servers/bridge/tools/integrated.py) | `review_project`, `find_bugs`, `suggest_refactor`, `generate_docs` | 통합 시나리오 도구 |
 | Analysis | [`tools/analysis.py`](mcp-servers/bridge/tools/analysis.py) | `explain_code`, `analyze_changes`, `review_pr`, `refactor_across_files` | 코드 설명 및 diff 분석 |

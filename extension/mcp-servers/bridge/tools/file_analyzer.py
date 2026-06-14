@@ -1,8 +1,9 @@
 """Universal File Analyzer - analyze any uploaded file by type"""
-import os, json, base64
+import os, json, base64, time
 from pathlib import Path
 from datetime import datetime
 from bridge.utils import _markdown_header, _markdown_footer
+from bridge.config import DZ_SESSION_FILE
 
 def _get_file_info(path: str) -> dict:
     """Get file metadata"""
@@ -338,12 +339,69 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
         lines.append(f"⚠️ PDF image analysis failed: {e}")
 
 
+def _check_uploaded_files_impl() -> str:
+    """드랍존에 업로드된 최근 파일 목록을 확인합니다."""
+    registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
+
+    if not os.path.exists(registry_path):
+        return "📂 아직 업로드된 파일이 없습니다."
+
+    # 세션 시작 시간 읽기
+    session_start = 0.0
+    try:
+        if os.path.exists(DZ_SESSION_FILE):
+            with open(DZ_SESSION_FILE, 'r') as f:
+                session = json.load(f)
+            session_start = session.get("started_at", 0.0)
+    except Exception:
+        pass
+
+    # 세션 파일이 없으면 최근 5분 이내 파일만 표시 (fallback)
+    if session_start == 0.0:
+        session_start = time.time() - 300
+
+    try:
+        with open(registry_path, 'r') as f:
+            entries = json.load(f)
+
+        # 세션 시작 이후 항목만 필터링 (latest.json은 ms, session은 s)
+        entries = [
+            e for e in entries
+            if (e.get("timestamp", 0) / 1000.0) >= session_start
+        ]
+
+        if not entries:
+            return "📂 현재 세션에 업로드된 파일이 없습니다. 드롭존에 파일을 업로드해주세요."
+
+        lines = ["## 📎 최근 업로드된 파일", ""]
+        for i, entry in enumerate(entries):
+            path = entry.get("path", "?")
+            name = entry.get("fileName", "?")
+            size = entry.get("size", 0)
+            mime = entry.get("mimeType", "?")
+
+            size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
+            lines.append(f"### {i+1}. {name}")
+            lines.append(f"- **경로**: `{path}`")
+            lines.append(f"- **크기**: {size_str}")
+            lines.append(f"- **타입**: {mime}")
+            lines.append("")
+
+        if entries:
+            lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"⚠️ 업로드 레지스트리 읽기 실패: {e}"
+
+
 def register(mcp):
     """파일 분석 도구 등록"""
     
     @mcp.tool
-    def analyze_uploaded_file(file_path: str) -> str:
-        """드롭존에 업로드된 파일을 분석합니다.
+    def analyze_uploaded_file(file_path: str = "") -> str:
+        """드롭존에 업로드된 파일을 분석하거나, 인자가 없으면 업로드된 파일 목록을 확인합니다.
+
+        file_path를 제공하지 않으면 (기본값) 최근 업로드된 파일 목록을 반환합니다.
 
         파일 타입 자동 감지 → 분석 파이프라인 실행:
         - 이미지: SSA 공간 분석 → OCR 텍스트 추출 → MiniCPM-V 비전 분석
@@ -353,8 +411,11 @@ def register(mcp):
         분석 완료 후 사용자에게 "무엇을 해드릴까요?" 후속 질문을 제안합니다.
 
         Args:
-            file_path: 업로드된 파일의 전체 경로
+            file_path: 업로드된 파일의 전체 경로 (생략 시 최근 업로드된 파일 목록 확인)
         Returns:
-            마크다운 형식의 파일 분석 보고서
+            마크다운 형식의 파일 분석 보고서 또는 업로드된 파일 목록
         """
+        if not file_path:
+            return _check_uploaded_files_impl()
         return analyze_file(file_path)
+

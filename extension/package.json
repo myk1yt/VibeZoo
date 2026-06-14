@@ -2,7 +2,7 @@
   "name": "vibezoo",
   "displayName": "%vibezoo.displayName%",
   "description": "%vibezoo.description%",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "publisher": "local",
   "license": "MIT",
   "repository": {

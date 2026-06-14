@@ -838,7 +838,7 @@ def _open_dropzone_in_webview() -> str:
     return (_markdown_header("File Drop Zone", "📎")
             + "Drop zone opened. Upload a file and I'll check it.\n\n"
             + "File saved to: `~/.vibezoo-uploads/{date}/`\n"
-            + "After upload, call `check_uploaded_files()` to see the latest uploads.\n"
+            + "After upload, call `analyze_uploaded_file()` with no arguments to see the latest uploads.\n"
             + _markdown_footer())
 
 
@@ -864,64 +864,6 @@ def _open_file_picker() -> str:
 def register(mcp):
     """Whiteboard 도구 등록"""
 
-    @mcp.tool
-    def check_uploaded_files() -> str:
-        """드랍존에 업로드된 최근 파일 목록을 확인합니다.
-
-        Returns:
-            업로드된 파일 경로와 메타데이터 목록
-        """
-        registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
-
-        if not os.path.exists(registry_path):
-            return "📂 아직 업로드된 파일이 없습니다."
-
-        # 세션 시작 시간 읽기
-        session_start = 0.0
-        try:
-            if os.path.exists(DZ_SESSION_FILE):
-                with open(DZ_SESSION_FILE, 'r') as f:
-                    session = json.load(f)
-                session_start = session.get("started_at", 0.0)
-        except Exception:
-            pass
-
-        # 세션 파일이 없으면 최근 5분 이내 파일만 표시 (fallback)
-        if session_start == 0.0:
-            session_start = time.time() - 300
-
-        try:
-            with open(registry_path, 'r') as f:
-                entries = json.load(f)
-
-            # 세션 시작 이후 항목만 필터링 (latest.json은 ms, session은 s)
-            entries = [
-                e for e in entries
-                if (e.get("timestamp", 0) / 1000.0) >= session_start
-            ]
-
-            if not entries:
-                return "📂 현재 세션에 업로드된 파일이 없습니다. 드롭존에 파일을 업로드해주세요."
-
-            lines = ["## 📎 최근 업로드된 파일", ""]
-            for i, entry in enumerate(entries):
-                path = entry.get("path", "?")
-                name = entry.get("fileName", "?")
-                size = entry.get("size", 0)
-                mime = entry.get("mimeType", "?")
-
-                size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
-                lines.append(f"### {i+1}. {name}")
-                lines.append(f"- **경로**: `{path}`")
-                lines.append(f"- **크기**: {size_str}")
-                lines.append(f"- **타입**: {mime}")
-                lines.append("")
-
-            if entries:
-                lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
-            return "\n".join(lines)
-        except Exception as e:
-            return f"⚠️ 업로드 레지스트리 읽기 실패: {e}"
     
     @mcp.tool
     def capture_screen(source: str = "screen") -> str:
