@@ -17,11 +17,13 @@ export class SubagentManager {
   private child: ChildProcess | null = null;
   private node: SubagentNode | null = null;
   private bridgeScript: string | null = null;
+  private context: vscode.ExtensionContext;
 
   private _onChange = new vscode.EventEmitter<SubagentNode>();
   readonly onChange = this._onChange.event;
 
   constructor(context: vscode.ExtensionContext) {
+    this.context = context;
     // VSIX 번들링 후 확장 디렉토리 내부 mcp-servers/ (extension/mcp-servers/vibezoo_mcp_bridge.py)
     const scriptPath = path.join(context.extensionPath, 'mcp-servers', 'vibezoo_mcp_bridge.py');
     if (fs.existsSync(scriptPath)) {
@@ -45,20 +47,29 @@ export class SubagentManager {
       return port;
     }
 
-    // ★ 기존에 healthy한 브릿지가 이미 실행 중이면 재사용 (Reload 시 MCP 연결 끊김 방지)
-    const alreadyHealthy = await this.checkHealth(port);
-    if (alreadyHealthy) {
-      console.log(`[VibeZoo] 기존 Bridge 재사용 (port ${port}) — kill 없이 즉시 반환`);
-      this.node = {
-        id: BRIDGE_NAME,
-        name: 'VibeZoo Bridge',
-        status: 'running',
-        currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer + Crow',
-        port: port,
-        startTime: Date.now(),
-      };
-      this._onChange.fire(this.node);
-      return port;
+    // 글로벌 브릿지 스크립트 복사 (항상 최신 버전을 유지)
+    this.syncGlobalBridgeFiles();
+
+    // ★ 기존에 healthy한 브릿지가 이미 실행 중이면 버전을 확인
+    const runningVersion = await this.checkHealthAndVersion(port);
+    const currentVersion = vscode.extensions.getExtension('local.vibezoo')?.packageJSON.version || 'unknown';
+
+    if (runningVersion) {
+      if (runningVersion === currentVersion || currentVersion === 'unknown') {
+        console.log(`[VibeZoo] 기존 Bridge 재사용 (port ${port}, v${runningVersion}) — kill 없이 즉시 반환`);
+        this.node = {
+          id: BRIDGE_NAME,
+          name: 'VibeZoo Bridge',
+          status: 'running',
+          currentTask: 'Scout + Reviewer + Tester + DeepAnalyzer + Crow',
+          port: port,
+          startTime: Date.now(),
+        };
+        this._onChange.fire(this.node);
+        return port;
+      } else {
+        console.log(`[VibeZoo] Bridge 버전 불일치 감지 (실행중: v${runningVersion}, 확장: v${currentVersion}) — 재시작 진행`);
+      }
     }
 
     // ★ 구버전 브릿지 강제 종료: detached + unref로 인해 Reload 후에도 프로세스가 살아있을 수 있음
@@ -158,8 +169,8 @@ export class SubagentManager {
   /** 포트를 사용 중인 구버전 브릿지 프로세스 종료 */
   private async killBridgeOnPort(port: number): Promise<void> {
     try {
-      const alive = await this.checkHealth(port);
-      if (!alive) return;
+      const runningVersion = await this.checkHealthAndVersion(port);
+      if (!runningVersion && !this.child) return;
 
       console.log(`[VibeZoo] 구버전 Bridge 감지됨 (port ${port}) — 강제 종료 시도`);
       try {
@@ -201,15 +212,15 @@ export class SubagentManager {
   private async waitForPortFree(port: number, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const alive = await this.checkHealth(port);
-      if (!alive) return;
+      const runningVersion = await this.checkHealthAndVersion(port);
+      if (!runningVersion) return;
       await new Promise((r) => setTimeout(r, 300));
     }
     console.warn(`[VibeZoo] Port ${port} 해제 대기 시간 초과 — 새 브릿지 spawn 시도`);
   }
 
-  /** 싱글톤 감지: 이미 실행 중인 브릿지 헬스체크 */
-  private async checkHealth(port: number): Promise<boolean> {
+  /** 싱글톤 감지: 이미 실행 중인 브릿지 헬스체크 및 버전 반환 */
+  private async checkHealthAndVersion(port: number): Promise<string | null> {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2000);
@@ -217,9 +228,44 @@ export class SubagentManager {
         signal: controller.signal,
       });
       clearTimeout(timer);
-      return response.ok;
+      if (response.ok) {
+        try {
+          const data = await response.json() as { version?: string };
+          return data.version || 'legacy';
+        } catch {
+          return 'legacy';
+        }
+      }
+      return null;
     } catch {
-      return false;
+      return null;
+    }
+  }
+
+  /** 글로벌 디렉토리에 브릿지 파일 강제 동기화 (Zoo Code autoStartCommand 용) */
+  private syncGlobalBridgeFiles(): void {
+    try {
+      const userProfile = process.env.USERPROFILE || process.env.HOME;
+      if (!userProfile) return;
+      
+      const destDir = path.join(userProfile, 'mcp-servers', 'vibezoo');
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+      }
+
+      const srcDir = path.join(this.context.extensionPath, 'mcp-servers');
+      const filesToSync = ['vibezoo_mcp_bridge.py', 'start_vibezoo_bridge.bat'];
+
+      for (const file of filesToSync) {
+        const srcPath = path.join(srcDir, file);
+        const destPath = path.join(destDir, file);
+        if (fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+      console.log(`[VibeZoo] 글로벌 브릿지 파일 동기화 완료 (${destDir})`);
+    } catch (err: any) {
+      console.warn(`[VibeZoo] 글로벌 브릿지 파일 동기화 실패: ${err.message}`);
     }
   }
 

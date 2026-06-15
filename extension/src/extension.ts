@@ -712,7 +712,9 @@ export function deactivate(): void {
   );
   sessionResume?.dispose();
   visualPanels?.dispose();
-  subagentManager?.terminate();
+  // VibeZoo Bridge는 워크스페이스 간 공유되는 글로벌 서버이므로 
+  // 특정 워크스페이스 닫힘 이벤트 시 강제 종료하지 않고 백그라운드에 유지합니다.
+  // subagentManager?.terminate();
   statusBar?.dispose();
 }
 
