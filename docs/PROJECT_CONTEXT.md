@@ -83,7 +83,7 @@ VibeZoo는 Zoo Code의 소스 코드를 한 줄도 수정하지 않고, MCP/SSE�
 
 ## 3. 시스템 아키텍처
 
-VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 확장 자체가 Python MCP Bridge(9027)와 Crow Memory fallback(9020)을 자동으로 시작하며, Zoo Code는 `.roo/mcp.json`을 통해 자동으로 Bridge에 SSE 연결합니다.
+VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 확장 자체가 Python MCP Bridge(9027)와 Crow Memory fallback(9020)을 자동으로 시작하며, Zoo Code는 `mcp_settings.json`을 통해 자동으로 Bridge에 Streamable HTTP 연결합니다.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────┐
@@ -106,7 +106,7 @@ VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 
 │              │                │  • SelfCheck + Auto-Recovery        │  │
 │  └───────────┼────────────────┴────────────────────────────────────┘  │
 └──────────────┼───────────────────────────────────────────────────────┘
-               │  MCP/SSE — `.roo/mcp.json` (always synced)
+               │  MCP/Streamable — global `mcp_settings.json` (always synced)
                ▼
 ┌───────────────────────────────────────────────────────────────────────┐
 │                         VibeZoo Extension Host                         │
@@ -143,10 +143,10 @@ VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 
 1. **[`extension/src/extension.ts`](extension/src/extension.ts:55)** [`activate()`](extension/src/extension.ts:55) 시작
 2. **[`CrowServerManager.reconnect()`](extension/src/crow/CrowServerManager.ts:130)** — 9020번 포트로 health check 후 실패 시 [`PythonResolver`](extension/src/python/PythonResolver.ts:27)로 [`crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py:208) spawn
 3. **[`SubagentManager.spawnBridge()`](extension/src/orchestra/SubagentManager.ts)** — PythonResolver로 Python interpreter를 탐색해 [`extension/mcp-servers/vibezoo_mcp_bridge.py`](extension/mcp-servers/vibezoo_mcp_bridge.py) 실행
-4. **[`McpConfigService.writeProjectMcp()`](extension/src/mcp/McpConfigService.ts:47)** — Bridge 성공/실패와 무관하게 `.roo/mcp.json`에 `mcpServers.vibezoo` 강제 기록
+4. **[`McpConfigService.writeGlobalMcp()`](extension/src/mcp/McpConfigService.ts:47)** — Bridge 성공/실패와 무관하게 글로벌 `mcp_settings.json`에 `mcpServers.vibezoo` 강제 기록 및 `.roo/mcp.json`에서 프로젝트 설정 제거
 5. **[`SelfChecker.runAll()`](extension/src/safety/SelfCheck.ts:132)** — 5초 후 백그라운드로 진단 실행, 실패 시 [`autoRecover()`](extension/src/safety/SelfCheck.ts:486)로 Bridge/MCP 자동 복구
 
-> **핵심 원칙**: global MCP 설정은 **읽기 전용 참고**일 뿐이며, 프로젝트 레벨 `.roo/mcp.json`이 항상 최신 상태를 유지합니다.
+> **핵심 원칙**: 프로젝트 레벨 `.roo/mcp.json` 대신 항상 글로벌 `mcp_settings.json`이 최신 상태를 유지하며 프로젝트별 중복 등록을 방지합니다.
 
 ### 3.1 레이어 구성
 
@@ -262,7 +262,7 @@ VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 
 | 모듈 | 파일 | 책임 |
 |------|------|------|
 | **Config** | [`config/ConfigService.ts`](extension/src/config/ConfigService.ts:3) | 중앙 설정 조회 (Host, Port, Guard, 각종 토글) |
-| **MCP Config** | [`mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts:1) | 프로젝트 `.roo/mcp.json` 강제 동기화, global MCP 설정 읽기 전용 참고 |
+| **MCP Config** | [`mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts:1) | 글로벌 `mcp_settings.json` 강제 동기화 및 `.roo/mcp.json` 프로젝트 설정 정리 |
 | **Python** | [`python/PythonResolver.ts`](extension/src/python/PythonResolver.ts:1) | 6단계 Python interpreter discovery chain (`setting` → `venv` → `pyenv` → `python3` → `python` → `py -3`) |
 | **Platform** | [`platform/VscodePaths.ts`](extension/src/platform/VscodePaths.ts:1) | 크로스 플랫폼 VS Code 사용자/글로벌 설정 경로 계산 |
 | **Context** | [`context/ContextIntelligence.ts`](extension/src/context/ContextIntelligence.ts:1) | ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetector |
@@ -412,7 +412,7 @@ mcp-servers/bridge/ (legacy mirror)
 | 방식 | 포트 | 프로토콜/용도 |
 |------|------|--------------|
 | MCP/Streamable | 9027 | `http://{host}:{port}/mcp` — 모든 MCP 도구 호출 |
-| `.roo/mcp.json` | — | Zoo Code 자동 설정 ([`McpConfigService.writeProjectMcp()`](extension/src/mcp/McpConfigService.ts:47)) |
+| 글로벌 `mcp_settings.json` | — | Zoo Code 자동 설정 ([`McpConfigService.writeGlobalMcp()`](extension/src/mcp/McpConfigService.ts:47)) |
 | Global MCP (`mcp_settings.json`) | — | 읽기 전용 참고; 절대 수정하지 않음 |
 
 ### 7.3 VibeZoo Bridge ↔ Crow Memory
@@ -638,7 +638,7 @@ vibezoo_setup(target="minimal", configure_custom_modes=True)
 수동 구성 시:
 
 ```json
-// .roo/mcp.json
+// global mcp_settings.json
 {
   "mcpServers": {
     "vibezoo": {

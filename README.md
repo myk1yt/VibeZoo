@@ -55,7 +55,7 @@ All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mc
    
    This creates the standard runtime directory, copies bridge files, sets up a Python venv, and builds the extension.
 3. **Auto-Connect:**
-   Once the VibeZoo extension is active, it automatically starts the Python MCP Bridge on port `9027`, resolves a working Python interpreter across `python`/`python3`/venv environments, and keeps `.roo/mcp.json` synchronized so Zoo Code connects via SSE automatically.
+   Once the VibeZoo extension is active, it automatically starts the Python MCP Bridge on port `9027`, resolves a working Python interpreter across `python`/`python3`/venv environments, and keeps the global `mcp_settings.json` synchronized so Zoo Code connects via Streamable HTTP automatically.
 4. **Global Mode Installation (via `vibezoo_setup` — Recommended):**
    VibeZoo provides a one-command setup that automatically installs all 6 custom modes (orchestrator-crow, project-research, architect, code, debug, ask) with VibeZoo tool priority enabled across ALL modes.
 
@@ -71,7 +71,7 @@ All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mc
 
    This will:
    - Install/verify Python dependencies (fastmcp, uvicorn, starlette)
-   - Configure `.roo/mcp.json` with VibeZoo SSE endpoint
+   - Configure global `mcp_settings.json` with VibeZoo Streamable HTTP endpoint
    - Configure `.zoo/config.json`
    - **Install 6 custom modes** to Zoo Code's global `custom_modes.yaml` with VibeZoo tool priority enabled
 
@@ -198,7 +198,7 @@ When the VibeZoo extension activates inside VS Code it performs the following au
 1. Resolves a working Python interpreter via [`PythonResolver`](extension/src/python/PythonResolver.ts).
 2. Spawns the VibeZoo MCP Bridge from the bundled `extension/mcp-servers/` directory.
 3. Spawns a Crow Memory fallback server (or proxies to an existing external Crow server).
-4. Writes/updates `.roo/mcp.json` with the current SSE endpoint regardless of global MCP settings.
+4. Writes/updates global `mcp_settings.json` with the current Streamable HTTP endpoint and removes legacy `.roo/mcp.json` config.
 5. Runs [`SelfCheck`](extension/src/safety/SelfCheck.ts) diagnostics in the background and auto-recovers Bridge/MCP failures.
 
 ### Watchdog
@@ -257,7 +257,7 @@ python install.py
 
 ### 5.3 Manual VibeZoo MCP Bridge Configuration
 ```json
-// .roo/mcp.json
+// global mcp_settings.json
 {
   "mcpServers": {
     "vibezoo-bridge": {
