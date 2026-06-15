@@ -142,9 +142,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const mcpService = new McpConfigService();
           const host = ConfigService.getHost();
           const definition: McpServerDefinition = {
-            url: `http://${host}:${port}/mcp`,
-            transport: 'streamable-http',
-            type: 'streamable-http',
+            url: `http://${host}:${port}/sse`,
             global: true,
           };
           // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
@@ -173,9 +171,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       mcpService.logGlobalStatus();
       const host = ConfigService.getHost();
       const definition: McpServerDefinition = {
-        url: `http://${host}:${port}/mcp`,
-        transport: 'streamable-http',
-        type: 'streamable-http',
+        url: `http://${host}:${port}/sse`,
         global: true,
       };
       // 글로벌 레벨 mcp_settings.json (모든 워크스페이스)
