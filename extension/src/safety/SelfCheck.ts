@@ -239,43 +239,35 @@ export class SelfChecker {
     }
   }
 
-  /** .roo/mcp.json 무결성 확인 */
+  /** 글로벌 mcp_settings.json 무결성 확인 */
   async checkMcpConfig(): Promise<SelfCheckItem> {
     const base: SelfCheckItem = {
       name: 'MCP Configuration',
       status: 'passed',
-      message: '.roo/mcp.json 정상',
+      message: 'Global MCP 설정 정상',
     };
 
     try {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) {
-        base.status = 'warning';
-        base.message = '열린 워크스페이스 없음 — MCP 설정 확인 불가';
-        return base;
-      }
+      const service = new McpConfigService();
+      const config = service.readGlobalMcp();
 
-      const mcpPath = path.join(folders[0].uri.fsPath, '.roo', 'mcp.json');
-      if (!fs.existsSync(mcpPath)) {
+      if (!config) {
         base.status = 'warning';
-        base.message = '.roo/mcp.json 파일이 존재하지 않음';
+        base.message = '글로벌 MCP 설정 파일을 읽을 수 없음';
         base.autoRecoverable = true;
         return base;
       }
 
-      const raw = fs.readFileSync(mcpPath, 'utf-8');
-      const config = JSON.parse(raw);
-
       if (!config.mcpServers) {
         base.status = 'failed';
-        base.message = '.roo/mcp.json에 mcpServers 키가 없음';
+        base.message = '글로벌 설정에 mcpServers 키가 없음';
         base.autoRecoverable = true;
         return base;
       }
 
       if (!config.mcpServers.vibezoo) {
         base.status = 'failed';
-        base.message = '.roo/mcp.json에 vibezoo 서버 정의가 없음';
+        base.message = '글로벌 설정에 vibezoo 서버 정의가 없음';
         base.autoRecoverable = true;
         return base;
       }
@@ -528,19 +520,19 @@ export class SelfChecker {
   private async autoConfigureMCP(): Promise<void> {
     try {
       const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) {
-        console.warn('[SelfCheck:Recovery] 열린 워크스페이스 없음');
-        return;
-      }
-
       const service = new McpConfigService();
-      const root = folders[0].uri.fsPath;
 
       // global 설정 로깅 (참고 전용)
       service.logGlobalStatus();
 
-      // 무조건 .roo/mcp.json 작성
-      service.writeProjectMcp(root);
+      // 무조건 글로벌 설정 작성
+      service.writeGlobalMcp();
+
+      if (folders?.[0]) {
+        const root = folders[0].uri.fsPath;
+        // 프로젝트 레벨 설정 제거
+        service.cleanProjectMcp(root, 'vibezoo');
+      }
 
       console.log('[SelfCheck:Recovery] ✅ MCP 설정 복구 완료 (McpConfigService)');
     } catch (err: any) {
