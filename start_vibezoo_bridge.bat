@@ -16,7 +16,7 @@ if !ERRORLEVEL! equ 0 (
 
 echo [%date% %time%] Starting VibeZoo MCP Bridge on port %PORT%... >> "%LOG_FILE%"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -FilePath 'python' -ArgumentList '-X utf8 vibezoo_mcp_bridge.py --port %PORT%' -WorkingDirectory '%~dp0' -WindowStyle Hidden -PassThru; Write-Output $p.Id" >> "%LOG_FILE%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -FilePath 'python' -ArgumentList '-X utf8 vibezoo_mcp_bridge.py --port %PORT%' -WorkingDirectory '%~dp0' -WindowStyle Hidden -PassThru; Write-Output $p.Id; $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.ElapsedMilliseconds -lt 10000) { if (netstat -ano 2>$null | Select-String ':%PORT% ' | Select-String 'LISTENING') { break }; Start-Sleep -Milliseconds 200 }" >> "%LOG_FILE%" 2>&1
 
 echo [%date% %time%] VibeZoo Bridge started (PID: see above). >> "%LOG_FILE%"
 endlocal
