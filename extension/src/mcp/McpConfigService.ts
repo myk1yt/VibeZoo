@@ -221,7 +221,9 @@ export class McpConfigService {
     const host = ConfigService.getHost();
     const port = ConfigService.getBridgePort();
     return {
-      url: `http://${host}:${port}/sse`,
+      type: 'streamable-http',
+      transport: 'streamable-http',
+      url: `http://${host}:${port}/mcp`,
       global: true,
       autoStart: true,
       autoStartCommand: 'cd /d "%USERPROFILE%\\mcp-servers\\vibezoo" && start_vibezoo_bridge.bat',

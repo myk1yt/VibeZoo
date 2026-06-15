@@ -411,7 +411,7 @@ mcp-servers/bridge/ (legacy mirror)
 
 | 방식 | 포트 | 프로토콜/용도 |
 |------|------|--------------|
-| MCP/SSE | 9027 | `http://{host}:{port}/sse` — 모든 MCP 도구 호출 |
+| MCP/Streamable | 9027 | `http://{host}:{port}/mcp` — 모든 MCP 도구 호출 |
 | `.roo/mcp.json` | — | Zoo Code 자동 설정 ([`McpConfigService.writeProjectMcp()`](extension/src/mcp/McpConfigService.ts:47)) |
 | Global MCP (`mcp_settings.json`) | — | 읽기 전용 참고; 절대 수정하지 않음 |
 
@@ -642,7 +642,7 @@ vibezoo_setup(target="minimal", configure_custom_modes=True)
 {
   "mcpServers": {
     "vibezoo": {
-      "url": "http://localhost:9027/sse"
+      "url": "http://localhost:9027/mcp"
     }
   }
 }

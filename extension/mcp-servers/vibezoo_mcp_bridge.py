@@ -82,4 +82,4 @@ if __name__ == "__main__":
     print(f"   Crow Memory: {CROW_URL} (timeout: {CROW_TIMEOUT}s)")
     print(f"   Dropzone: Webview only (browser dropzone removed)")
 
-    mcp.run(transport="sse", host="127.0.0.1", port=args.port)
+    mcp.run(transport="streamable-http", host="127.0.0.1", port=args.port)
