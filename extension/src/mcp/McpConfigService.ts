@@ -70,9 +70,12 @@ export class McpConfigService {
     // 기존 설정(url, autoStartCommand 등)을 모두 우선 보존
     // — url/autoStartCommand를 강제 덮어쓰지 않음 (사용자 설정 보호)
     if (existingServers[serverKey]) {
+      const existingDef = { ...existingServers[serverKey] };
+      delete existingDef.autoStart;
+      delete existingDef.autoStartCommand;
       definition = {
         ...definition,                   // 새 기본값 먼저 (alwaysAllow 등 추가분)
-        ...existingServers[serverKey],   // 기존 사용자 설정이 모두 우선
+        ...existingDef,                  // 기존 사용자 설정이 모두 우선
       };
     }
 
@@ -137,9 +140,12 @@ export class McpConfigService {
     // 사용자 설정(autoStart, autoStartCommand, alwaysAllow 등)은 보존하고
     // url/transport만 새 정의로 갱신
     if (existingServers[serverKey]) {
+      const existingDef = { ...existingServers[serverKey] };
+      delete existingDef.autoStart;
+      delete existingDef.autoStartCommand;
       definition = {
         ...definition,                   // 새 기본값 먼저
-        ...existingServers[serverKey],   // 기존 사용자 설정이 우선
+        ...existingDef,                  // 기존 사용자 설정이 우선
         url: definition.url,             // url은 항상 새 정의로
         transport: definition.transport, // transport도 항상 새 정의로
       };
@@ -218,13 +224,9 @@ export class McpConfigService {
   private buildDefaultDefinition(): McpServerDefinition {
     const host = ConfigService.getHost();
     const port = ConfigService.getBridgePort();
-    const pythonExe = 'C:\\Users\\k1yt\\AppData\\Local\\Programs\\Python\\Python312\\python.exe';
-    const bridgeDir = 'C:\\Users\\k1yt\\mcp-servers\\vibezoo';
     return {
       url: `http://${host}:${port}/sse`,
       global: true,
-      autoStart: true,
-      autoStartCommand: `cmd /d /c cd /d ${bridgeDir} && ${pythonExe} -X utf8 vibezoo_mcp_bridge.py --port ${port}`,
       alwaysAllow: [
         'search_codebase', 'find_references', 'summarize_architecture',
         'review_code', 'explain_code', 'analyze_changes', 'review_pr', 'refactor_across_files',

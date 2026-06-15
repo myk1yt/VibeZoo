@@ -109,6 +109,7 @@ export class SubagentManager {
     ]);
     this.child = spawn(pyCmd, pyArgs, {
       detached: true,
+      cwd: path.dirname(this.bridgeScript),
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,

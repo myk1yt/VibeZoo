@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.1] - 2026-06-16
+
+### Global Workspace Auto-Connect & Lifetime Control Fix
+A root-cause fix for connection failures when opening non-VibeZoo workspaces. The extension now strictly manages the bridge server lifecycle, preventing duplicate port binding conflicts with Zoo Code.
+
+#### Changed
+- **[`extension/src/mcp/McpConfigService.ts`](../extension/src/mcp/McpConfigService.ts)** — Removed `autoStart` and `autoStartCommand` from defaults and merges to let the extension exclusively control the bridge process.
+- **[`extension/src/orchestra/SubagentManager.ts`](../extension/src/orchestra/SubagentManager.ts)** — Configured the spawned process to execute with `cwd` set to the extension's `mcp-servers` directory.
+
+---
+
 ## [0.15.0] - 2026-06-13
 
 ### Auto-Connect Fundamental Fix

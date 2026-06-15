@@ -1,5 +1,27 @@
 # VibeZoo Development Journal
 
+## 2026-06-16: Global Auto-Connect Conflict Fix (v0.15.1 Enhancement)
+
+### Summary
+- **Root cause**: Redundant `autoStartCommand` in the global MCP settings caused Zoo Code to spawn a duplicate bridge process on port 9027 when non-VibeZoo workspaces were opened, leading to address binding conflicts (`winerror 10048`) and client-side "fetch failed" errors.
+- **Fix strategy**: Remove `autoStart` and `autoStartCommand` from both defaults and existing configurations, delegating the bridge lifetime management exclusively to the VibeZoo Extension, and configure `cwd` explicitly on spawn.
+
+### Tasks Completed
+
+| Task | File | Description |
+|------|------|-------------|
+| Config Clean | [`extension/src/mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts) | Removed `autoStart` and `autoStartCommand` from default definition; modified `writeGlobalMcp` and `writeProjectMcp` to delete existing autoStart fields on config merge. |
+| Spawn cwd | [`extension/src/orchestra/SubagentManager.ts`](extension/src/orchestra/SubagentManager.ts) | Set explicit `cwd` parameter to the extension's `mcp-servers` directory for the spawned bridge server process to maintain path consistency. |
+
+### Key Decisions
+- **Extension-driven Lifecycle**: Because the VibeZoo Extension is globally active (`onStartupFinished`), it is responsible for spawning and health-checking the bridge. De-coupling the process launch from Zoo Code avoids duplicate port bind attempts.
+- **Config Auto-repair**: Stale `autoStartCommand` keys are programmatically purged from the user's settings during startup.
+
+### Files Changed
+- **Modified**: [`extension/src/mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts), [`extension/src/orchestra/SubagentManager.ts`](extension/src/orchestra/SubagentManager.ts)
+
+---
+
 ## 2026-06-13: Auto-Connect Fundamental Fix (v0.15.0)
 
 ### Summary

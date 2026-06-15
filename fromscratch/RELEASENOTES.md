@@ -1,6 +1,27 @@
 # VibeZoo v0.15.1 Release Notes
 
-**Release Date**: 2026-06-13
+**Release Date**: 2026-06-16
+
+## 🔌 Global Workspace Auto-Connect & Lifetime Control Fix
+
+This update fixes the issue where VibeZoo failed to connect when a non-VibeZoo workspace was opened first.
+
+### What changed
+
+- **Removed `autoStart` & `autoStartCommand`**: Deleted the `autoStart` and `autoStartCommand` keys from the default vibezoo server definition. The extension now strictly manages the bridge server lifecycle.
+- **Auto-clean Stale Configs**: When VibeZoo Extension starts, it merges config and automatically deletes `autoStart` and `autoStartCommand` keys from global `mcp_settings.json` and local `.roo/mcp.json` to prevent Zoo Code from spawning redundant processes.
+- **Fixed Working Directory (`cwd`)**: Configured the spawned process to execute with `cwd` set to the extension's `mcp-servers` directory, ensuring consistent module imports and relative path behavior.
+
+### Why
+
+- Having `autoStartCommand` in global configuration caused Zoo Code to spawn a duplicate bridge process on port 9027, leading to address binding conflicts (`winerror 10048`) and connection failures.
+- By designating the Extension as the sole controller of the bridge lifecycle and configuring `cwd`, port conflicts are prevented and connection stability is guaranteed across all workspaces.
+
+### Files changed
+
+- **Modified**: `extension/src/mcp/McpConfigService.ts`, `extension/src/orchestra/SubagentManager.ts`
+
+---
 
 ## 🏗 Standard Path Migration
 
