@@ -2,12 +2,12 @@
 
 ## [0.15.1] - 2026-06-16
 
-### Global Workspace Auto-Connect & Lifetime Control Fix
-A root-cause fix for connection failures when opening non-VibeZoo workspaces. The extension now strictly manages the bridge server lifecycle, preventing duplicate port binding conflicts with Zoo Code.
+### Global Workspace Auto-Connect & Lifetime Control Fix (with Hotfix)
+Fixes connection drop issues when VS Code is restarted or new workspaces are opened. The extension configures Zoo Code to auto-start the bridge using `autoStart` and `autoStartCommand` settings. To prevent duplicate process conflict issues (e.g. WinError 10048), the extension performs robust physical port-level inspection (`netstat` and `lsof`) to detect and terminate any lingering zombie/duplicate processes on port 9027.
 
 #### Changed
-- **[`extension/src/mcp/McpConfigService.ts`](../extension/src/mcp/McpConfigService.ts)** — Removed `autoStart` and `autoStartCommand` from defaults and merges to let the extension exclusively control the bridge process.
-- **[`extension/src/orchestra/SubagentManager.ts`](../extension/src/orchestra/SubagentManager.ts)** — Configured the spawned process to execute with `cwd` set to the extension's `mcp-servers` directory.
+- **[`extension/src/mcp/McpConfigService.ts`](../extension/src/mcp/McpConfigService.ts)** — Re-enabled and preserved `autoStart` and `autoStartCommand` configuration templates for Zoo Code auto-start capability.
+- **[`extension/src/orchestra/SubagentManager.ts`](../extension/src/orchestra/SubagentManager.ts)** — Configured the spawned process to execute with `cwd` set to the extension's `mcp-servers` directory. Added physical port inspection (`isPortOccupied`) to clean up port 9027 regardless of health check timeouts.
 
 ---
 

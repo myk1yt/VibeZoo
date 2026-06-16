@@ -167,11 +167,26 @@ export class SubagentManager {
     return port;
   }
 
+  /** 포트가 현재 활성화되어 리스닝 중인지 확인 */
+  private isPortOccupied(port: number): boolean {
+    try {
+      const isWin = process.platform === 'win32';
+      const cmd = isWin
+        ? `netstat -ano | findstr :${port} | findstr LISTENING`
+        : `lsof -ti:${port}`;
+      const pidOutput = execSync(cmd, { encoding: 'utf-8', timeout: 2000 });
+      return pidOutput.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
   /** 포트를 사용 중인 구버전 브릿지 프로세스 종료 */
   private async killBridgeOnPort(port: number): Promise<void> {
     try {
       const runningVersion = await this.checkHealthAndVersion(port);
-      if (!runningVersion && !this.child) return;
+      const portOccupied = this.isPortOccupied(port);
+      if (!runningVersion && !this.child && !portOccupied) return;
 
       console.log(`[VibeZoo] 구버전 Bridge 감지됨 (port ${port}) — 강제 종료 시도`);
       try {
@@ -213,8 +228,7 @@ export class SubagentManager {
   private async waitForPortFree(port: number, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const runningVersion = await this.checkHealthAndVersion(port);
-      if (!runningVersion) return;
+      if (!this.isPortOccupied(port)) return;
       await new Promise((r) => setTimeout(r, 300));
     }
     console.warn(`[VibeZoo] Port ${port} 해제 대기 시간 초과 — 새 브릿지 spawn 시도`);

@@ -83,7 +83,7 @@ VibeZoo는 Zoo Code의 소스 코드를 한 줄도 수정하지 않고, MCP/SSE�
 
 ## 3. 시스템 아키텍처
 
-VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.0부터는 확장 자체가 Python MCP Bridge(9027)와 Crow Memory fallback(9020)을 자동으로 시작하며, Zoo Code는 `mcp_settings.json`을 통해 자동으로 Bridge에 Streamable HTTP 연결합니다.
+VibeZoo는 **3-Layer Hybrid Architecture**로 구성됩니다. v0.15.1부터는 Zoo Code가 `mcp_settings.json`에 정의된 `autoStart`와 `autoStartCommand`를 통해 Python MCP Bridge(9027)를 자동으로 시작하고, VibeZoo 확장은 물리적 포트 모니터링(`netstat`/`lsof`)을 통해 포트 9027의 중복/좀비 프로세스를 강제 정리하여 충돌 없이 안전한 자동 연결을 보장합니다.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────┐

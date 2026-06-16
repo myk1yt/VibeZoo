@@ -215,10 +215,11 @@ VibeZoo Bridge는 Crow Memory의 REST API를 통해 메모리를 저장하고 �
 - `GET /recall` — 유사 에러/패턴 검색
 
 ### 변경 이력
-- **v0.15.1** (2026-06-13):
+- **v0.15.1** (2026-06-16):
   - Standard path migration: runtime directory changed to `%USERPROFILE%\mcp-servers\vibezoo\` (Windows) / `~/mcp-servers/vibezoo/` (macOS/Linux)
   - `init_vibezoo.bat` / `init_vibezoo.sh` now copy bridge files to the standard target directory
   - `autoStartCommand` updated to `cd /d "%USERPROFILE%\mcp-servers\vibezoo" && start_vibezoo_bridge.bat`
+  - Fixed auto-start process conflict: preserved `autoStart` and `autoStartCommand` configuration for Zoo Code auto-start capability. Added physical port occupancy check (`netstat`/`lsof`) and aggressive zombie cleanup to prevent `winerror 10048` socket bind errors.
 - **v0.15.0** (2026-06-13):
   - Auto-connect fundamental fix: always write `.roo/mcp.json` even when global MCP config has a `vibezoo` entry
   - New [`PythonResolver`](extension/src/python/PythonResolver.ts), [`McpConfigService`](extension/src/mcp/McpConfigService.ts), [`VscodePaths`](extension/src/platform/VscodePaths.ts)

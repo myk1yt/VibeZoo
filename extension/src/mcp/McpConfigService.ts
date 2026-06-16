@@ -71,8 +71,6 @@ export class McpConfigService {
     // — url/autoStartCommand를 강제 덮어쓰지 않음 (사용자 설정 보호)
     if (existingServers[serverKey]) {
       const existingDef = { ...existingServers[serverKey] };
-      delete existingDef.autoStart;
-      delete existingDef.autoStartCommand;
       definition = {
         ...definition,                   // 새 기본값 먼저 (alwaysAllow 등 추가분)
         ...existingDef,                  // 기존 사용자 설정이 모두 우선
@@ -141,8 +139,6 @@ export class McpConfigService {
     // url/transport만 새 정의로 갱신
     if (existingServers[serverKey]) {
       const existingDef = { ...existingServers[serverKey] };
-      delete existingDef.autoStart;
-      delete existingDef.autoStartCommand;
       definition = {
         ...definition,                   // 새 기본값 먼저
         ...existingDef,                  // 기존 사용자 설정이 우선
@@ -227,6 +223,8 @@ export class McpConfigService {
     return {
       url: `http://${host}:${port}/sse`,
       global: true,
+      autoStart: true,
+      autoStartCommand: this.buildAutoStartCommand(),
       alwaysAllow: [
         'search_codebase', 'find_references', 'summarize_architecture',
         'review_code', 'explain_code', 'analyze_changes', 'review_pr', 'refactor_across_files',
@@ -242,6 +240,18 @@ export class McpConfigService {
         'capture_screen', 'fetch_page', 'web_search', 'aggregate_spatial_pixels',
       ],
     };
+  }
+
+  /**
+   * OS별 autoStartCommand 생성.
+   * Crow Memory의 autoStartCommand와 동일한 패턴.
+   */
+  private buildAutoStartCommand(): string {
+    const isWin = process.platform === 'win32';
+    if (isWin) {
+      return 'cd /d "%USERPROFILE%\\mcp-servers\\vibezoo" && start_vibezoo_bridge.bat';
+    }
+    return 'cd ~/mcp-servers/vibezoo && bash start_vibezoo_bridge.sh';
   }
 
   /**

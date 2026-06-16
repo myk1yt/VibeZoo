@@ -2,20 +2,21 @@
 
 **Release Date**: 2026-06-16
 
-## 🔌 Global Workspace Auto-Connect & Lifetime Control Fix
+## 🔌 Global Workspace Auto-Connect & Lifetime Control Fix (with Hotfix)
 
-This update fixes the issue where VibeZoo failed to connect when a non-VibeZoo workspace was opened first.
+This update fixes the issue where VibeZoo connection was dropped when VS Code was restarted or new workspaces were opened.
 
 ### What changed
 
-- **Removed `autoStart` & `autoStartCommand`**: Deleted the `autoStart` and `autoStartCommand` keys from the default vibezoo server definition. The extension now strictly manages the bridge server lifecycle.
-- **Auto-clean Stale Configs**: When VibeZoo Extension starts, it merges config and automatically deletes `autoStart` and `autoStartCommand` keys from global `mcp_settings.json` and local `.roo/mcp.json` to prevent Zoo Code from spawning redundant processes.
+- **Re-enabled `autoStart` & `autoStartCommand`**: Restored the `autoStart` and `autoStartCommand` keys in the default server definitions and preserved existing user configuration. This allows Zoo Code to automatically manage the server auto-start lifecycle across all workspaces.
+- **Physical Port Inspection (`isPortOccupied`)**: Added a port-level occupancy detector (`netstat` on Windows and `lsof` on Unix) to check if port 9027 is active.
+- **Zombie Process Termination**: Fixed `killBridgeOnPort` to terminate any zombie process occupying port 9027, even if it does not respond to HTTP health checks.
 - **Fixed Working Directory (`cwd`)**: Configured the spawned process to execute with `cwd` set to the extension's `mcp-servers` directory, ensuring consistent module imports and relative path behavior.
 
 ### Why
 
-- Having `autoStartCommand` in global configuration caused Zoo Code to spawn a duplicate bridge process on port 9027, leading to address binding conflicts (`winerror 10048`) and connection failures.
-- By designating the Extension as the sole controller of the bridge lifecycle and configuring `cwd`, port conflicts are prevented and connection stability is guaranteed across all workspaces.
+- Deleting `autoStart` and `autoStartCommand` completely from Zoo Code's settings caused connection drops upon restarts. Keeping them allows Zoo Code to auto-start the server.
+- To prevent address binding conflicts (`winerror 10048`), the extension now actively scans and terminates lingering/zombie processes occupying port 9027, resolving the root cause of duplicate runs safely.
 
 ### Files changed
 
