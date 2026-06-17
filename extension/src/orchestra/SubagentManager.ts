@@ -235,26 +235,31 @@ export class SubagentManager {
   }
 
   /** 싱글톤 감지: 이미 실행 중인 브릿지 헬스체크 및 버전 반환 */
-  private async checkHealthAndVersion(port: number): Promise<string | null> {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2000);
-      const response = await fetch(ConfigService.getAgentUrl(port, '/health'), {
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (response.ok) {
-        try {
-          const data = await response.json() as { version?: string };
-          return data.version || 'legacy';
-        } catch {
-          return 'legacy';
+  private async checkHealthAndVersion(port: number, retries: number = 2): Promise<string | null> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000); // 5초 대기
+        const response = await fetch(ConfigService.getAgentUrl(port, '/health'), {
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (response.ok) {
+          try {
+            const data = await response.json() as { version?: string };
+            return data.version || 'legacy';
+          } catch {
+            return 'legacy';
+          }
+        }
+      } catch (err: any) {
+        if (attempt < retries) {
+          console.warn(`[VibeZoo] 헬스체크 실패 (attempt ${attempt}/${retries}): ${err.message}. 1초 후 재시도...`);
+          await new Promise(r => setTimeout(r, 1000));
         }
       }
-      return null;
-    } catch {
-      return null;
     }
+    return null;
   }
 
   /** 글로벌 디렉토리에 브릿지 파일 강제 동기화 (Zoo Code autoStartCommand 용) */
