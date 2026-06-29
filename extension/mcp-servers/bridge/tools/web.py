@@ -154,12 +154,12 @@ def register(mcp):
 
     @mcp.tool
     def web_search(query: str, max_results: int = 5, engine: str = "auto") -> str:
-        """웹 검색을 수행합니다. DuckDuckGo Lite → Mojeek → Wikipedia → 병렬 폴백.
+        """웹 검색을 수행합니다. Exa API 기반 (하위 호환 engine 파라미터 유지).
 
         Args:
             query: 검색어
             max_results: 최대 결과 수 (기본: 5)
-            engine: 검색 엔진 ("auto" (기본), "duckduckgo", "mojeek", "wikipedia", "google", "bing")
+            engine: 하위 호환성을 위해 유지되나, 실제로는 exa 엔진 사용
 
         Returns:
             검색 결과 목록 (제목, URL, 요약)

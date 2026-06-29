@@ -86,7 +86,7 @@ All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mc
 The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **37+ MCP tools** through a modular architecture (`bridge/tools/`).
 
 ### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
-The `web_search` tool leverages a **Quad-Core Async Search Engine** architecture (powered by `curl_cffi` for advanced bypassing and `selectolax` + `httpx` for high-speed parsing) to autonomously fetch real-time data and documentation. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
+The `web_search` tool leverages the **Exa API** (neural search engine) to autonomously fetch real-time data and documentation with high-quality highlighted snippets. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
 
 ### 1.1 UX (3 Tools) — Intent Detection + Auto Tool Chains
 When you say "I'll show you a file", the Dropzone opens. Uploaded files are automatically analyzed through the SSA→OCR→MiniCPM pipeline.
