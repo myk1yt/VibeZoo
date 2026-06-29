@@ -83,7 +83,7 @@ All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mc
 
 ## 1. VibeZoo MCP Bridge — Tool Overview (38 Tools)
 
-The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **37+ MCP tools** through a modular architecture (`bridge/tools/`).
+The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **38 MCP tools** through a modular architecture (`bridge/tools/`).
 
 ### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
 The `web_search` tool leverages the **Exa API** (neural search engine) to autonomously fetch real-time data and documentation with high-quality highlighted snippets. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
@@ -91,9 +91,13 @@ The `web_search` tool leverages the **Exa API** (neural search engine) to autono
 ### 1.1 UX (3 Tools) — Intent Detection + Auto Tool Chains
 When you say "I'll show you a file", the Dropzone opens. Uploaded files are automatically analyzed through the SSA→OCR→MiniCPM pipeline.
 
+Tools: [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py), [`analyze_uploaded_file`](mcp-servers/bridge/tools/file_analyzer.py), [`auto_analyze_after_drop`](mcp-servers/bridge/tools/ux_coordinator.py)
+
 The [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py) tool is now **Crow Memory-aware** — when keyword-based intent detection has low confidence, it queries Crow Memory for recent context (dropzone uploads, conversation history) to disambiguate. Detected intents include `file_share`, `drawing_request`, `code_analysis`, `project_setup`, and the new **`fix_loop`** — automatic bug fix / error recovery.
 
 ### 1.2 Scout (3 Tools) — Code Search and Exploration
+Tools: [`search_codebase`](mcp-servers/bridge/tools/scout.py), [`find_references`](mcp-servers/bridge/tools/scout.py), [`summarize_architecture`](mcp-servers/bridge/tools/scout.py)
+
 Quickly grasp the project structure and find symbols or functions accurately using tree-sitter AST.
 **`target_path` parameter added**: Enables global search in a specific directory (e.g., `search_codebase(query=..., target_path="C:/Projects/MyApp")`).
 
@@ -104,9 +108,13 @@ Automatically check code quality before submitting a PR. Integrates with ESLint 
 Detects function signatures to automatically generate test templates and measure coverage.
 
 ### 1.5 Deep Analyzer (4 Tools) — Deep AST Analysis
+Tools: [`analyze_call_graph`](mcp-servers/bridge/tools/deep_analyzer.py), [`map_dependencies`](mcp-servers/bridge/tools/deep_analyzer.py), [`extract_patterns`](mcp-servers/bridge/tools/deep_analyzer.py), [`reverse_engineer`](mcp-servers/bridge/tools/deep_analyzer.py)
+
 Analyzes call graphs, dependencies, and recurring patterns using tree-sitter AST, and automatically generates documentation.
 
 ### 1.6 Whiteboard (4 Tools) — AI-Human Visual Collaboration
+Tools: [`draw_on_whiteboard`](mcp-servers/bridge/tools/whiteboard.py), [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py), [`capture_screen`](mcp-servers/bridge/tools/whiteboard.py), [`auto_analyze_whiteboard`](mcp-servers/bridge/tools/whiteboard.py)
+
 The AI draws on a Fabric.js canvas, reads user modifications, and can capture the screen.
 
 ### 1.7 Fix Loop (3 Tools) — Autonomous Build & Fix Loop
@@ -184,14 +192,14 @@ Includes tools like `crow_recall`, `crow_ingest`, `crow_diagnostics`, `crow_mana
 
 ## 4. Windows Auto-Start & Stability
 
-VibeZoo Bridge는 Windows 부팅 시 자동 실행되며, Watchdog이 지속적으로 서버 상태를 모니터링합니다.
+VibeZoo Bridge auto-starts on Windows boot, with the Watchdog continuously monitoring server health.
 
 ### Auto-Start (Windows Startup)
-[`start_vibezoo_servers.bat`](start_vibezoo_servers.bat)이 Windows 부팅 시 다음을 자동 실행합니다:
-1. **Crow Memory Server** (port 9020) — 락 정리 + 헬스체크 내장
-2. **VibeZoo Bridge** (port 9027) — Python 절대경로로 실행, stderr/stdout 로깅
-3. **Health Check** — 각 서버가 준비될 때까지 최대 60초 대기 (backoff: 2→2→3→5초)
-4. **Watchdog** — Crow Memory + VibeZoo Bridge 각각 30초 간격 모니터링
+[`start_vibezoo_servers.bat`](start_vibezoo_servers.bat) auto-starts the following on Windows boot:
+1. **Crow Memory Server** (port 9020) — Built-in lock cleanup and health check
+2. **VibeZoo Bridge** (port 9027) — Runs via absolute Python path with stderr/stdout logging
+3. **Health Check** — Waits up to 60 seconds for each server to become ready (backoff: 2→2→3→5s)
+4. **Watchdog** — Monitors Crow Memory and VibeZoo Bridge at 30-second intervals
 
 ### VS Code Extension Auto-Connect
 When the VibeZoo extension activates inside VS Code it performs the following auto-connect sequence:
@@ -204,17 +212,17 @@ When the VibeZoo extension activates inside VS Code it performs the following au
 ### Watchdog
 - **Crow Memory Watchdog**: [`watch_crow_sse.bat`](../Crow%20Memory/watch_crow_sse.bat)
 - **VibeZoo Bridge Watchdog**: [`watch_vibezoo_bridge.bat`](watch_vibezoo_bridge.bat)
-  - 30초마다 `netstat` + curl 헬스체크
-  - 서버가 죽었으면 자동 재시작 (최대 5회 연속 실패 시 중지)
-  - 로그: `%USERPROFILE%\.vibezoo\watchdog_bridge.log`
+  - Runs `netstat` + curl health check every 30 seconds
+  - Auto-restarts the server if it dies (stops after 5 consecutive failures)
+  - Logs to: `%USERPROFILE%\.vibezoo\watchdog_bridge.log`
 
-### REST API (Crow Memory 연동)
-VibeZoo Bridge는 Crow Memory의 REST API를 통해 메모리를 저장하고 검색합니다:
-- `GET /health` — 서버 상태 확인
-- `POST /ingest` — 에러/컨텍스트 저장
-- `GET /recall` — 유사 에러/패턴 검색
+### REST API (Crow Memory Integration)
+VibeZoo Bridge stores and retrieves memories via Crow Memory's REST API:
+- `GET /health` — Check server status
+- `POST /ingest` — Store errors and context
+- `GET /recall` — Search for similar errors and patterns
 
-### 변경 이력
+### Changelog
 - **v0.15.1** (2026-06-16):
   - Standard path migration: runtime directory changed to `%USERPROFILE%\mcp-servers\vibezoo\` (Windows) / `~/mcp-servers/vibezoo/` (macOS/Linux)
   - `init_vibezoo.bat` / `init_vibezoo.sh` now copy bridge files to the standard target directory
@@ -227,10 +235,10 @@ VibeZoo Bridge는 Crow Memory의 REST API를 통해 메모리를 저장하고 �
   - Replaced `crow_memory_server.py` stub with a real HTTP fallback/proxy server
   - SelfCheck auto-recovery for Bridge and MCP configuration failures
 - **v0.00.1** (2026-06-12):
-  - MCP 서버 안정화: REST API 연동, Startup batch 전면 재작성, Watchdog 도입
-  - Broad `except Exception` → 구체적 예외 처리
-  - FAKE Crow 서버 폐기 → REAL Crow로 단일화
-  - 하드코딩된 Crow URL 제거 → `config.CROW_URL` 사용
+  - MCP server stabilization: REST API integration, full startup batch rewrite, Watchdog introduction
+  - Broad `except Exception` → specific exception handling
+  - Retired FAKE Crow server → unified on real Crow
+  - Removed hardcoded Crow URLs → uses `config.CROW_URL`
 
 ---
 
@@ -316,5 +324,5 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 📧 **myk1yt@gmail.com**
 
 ---
-*VibeZoo v0.15.0 — June 2026*
+*VibeZoo v0.15.1 — June 2026*
 *Co-designed by Stefano, Kim & AI*
