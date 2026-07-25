@@ -1,0 +1,54 @@
+# .rooignore — Context pollution prevention for AI agents
+# Prevents build artifacts, lockfiles, minified files, and logs from entering context window
+
+# Node.js
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+
+# Build artifacts
+dist/
+build/
+coverage/
+extension/out/
+extension/dist/
+
+# VS Code extension packaging
+*.vsix
+extension/package/
+extension/--out/
+extension/-Force/
+
+# Minified files
+*.min.js
+*.min.css
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VibeZoo runtime data
+.zoo-code/
+.zoo/yocto/
+
+# Temp/debug files
+*.bak
+*.bak3
+*.v2bak
+*_result.txt
+
+# IDE swap files
+*.swp
+*.swo
+*~

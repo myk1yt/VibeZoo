@@ -1,7 +1,7 @@
 # VibeZoo Performance/Utilization Maximization Strategy Roadmap
 
 > **Written**: 2026-05-27
-> **Baseline Version**: v0.13.0 (Phase 0~6 complete, SelfCheck + NotificationThrottle + Virtual Subagent + Intent-to-Code Bridge)
+> **Baseline Version**: v0.15.1 (Auto-Connect Fix + Standard Path Migration + 40 MCP tools + i18n 20-language support + fuzzy/semantic search)
 > **Core Question**: "The toolbox is ready, but why isn't anyone using it?"
 
 ---
@@ -13,11 +13,13 @@
 | Metric | Current | Target |
 |:---|:---:|:---:|
 | VibeZoo MCP tool daily call count | **0 calls** | 50+ |
-| Tool intelligence level | regex/grep/file I/O | AST/tree-sitter/ESLint |
-| Autonomous work capability | None (everything manual) | One-click → auto cycle |
-| Extension activation time | Not measured | < 500ms |
-| UI panel count | 2 + StatusBar 3 types | 1 sidebar + 1 StatusBar |
-| Alert frequency | Excessive | Minimized (integrated into StatusBar) |
+| Tool intelligence level | AST/tree-sitter/ESLint + fuzzy/semantic search | AST/tree-sitter/ESLint + embedding semantic |
+| Autonomous work capability | One-click → auto cycle (FixLoopManager + CIM) | Full self-healing |
+| Extension activation time | < 500ms (Lazy Init) | < 300ms |
+| MCP tool count | 40 | 45+ |
+| VS Code command count | 29 | 30+ |
+| i18n languages | 20 | 20+ |
+| Alert frequency | Minimized (integrated into StatusBar) | Minimized |
 
 ### 0.2 Five Root Causes
 
@@ -697,14 +699,16 @@ gantt
 
 ## 11. Key Performance Indicators (KPI)
 
-| Metric | Current | M0 (1 week) | M1 (1 month) | M3 (3 months) | M6 (6 months) |
+| Metric | Current (v0.15.1) | M0 (1 week) | M1 (1 month) | M3 (3 months) | M6 (6 months) |
 |:---|:---:|:---:|:---:|:---:|:---:|
+| **MCP tool count** | 40 | — | — | — | 45+ |
 | **MCP tool daily call count** | 0 | 5+ | 15+ | 30+ | 50+ |
-| **Auto resolution rate** (build errors) | 0% | 0% | 40%+ | 60%+ | 80%+ |
-| **Extension activation time** | Not measured | < 500ms | < 400ms | < 300ms | < 250ms |
-| **Crow past resolution reuse rate** | 0% | 0% | 10%+ | 30%+ | 50%+ |
-| **Alert fatigue** (daily alert count) | Excessive | 5↓ | 3↓ | 2↓ | 1↓ |
-| **User satisfaction** (vibe score) | 4.2 | 5.5 | 7.0 | 8.0 | 9.0 |
+| **Auto resolution rate** (build errors) | 40%+ (HITL) | 0% | 40%+ | 60%+ | 80%+ |
+| **Extension activation time** | < 500ms (Lazy Init) | < 500ms | < 400ms | < 300ms | < 250ms |
+| **Crow past resolution reuse rate** | 10%+ | 0% | 10%+ | 30%+ | 50%+ |
+| **Alert fatigue** (daily alert count) | Minimized | 5↓ | 3↓ | 2↓ | 1↓ |
+| **User satisfaction** (vibe score) | 7.0 | 5.5 | 7.0 | 8.0 | 9.0 |
+| **i18n languages** | 20 | — | — | — | 20+ |
 
 ---
 

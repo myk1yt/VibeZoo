@@ -95,10 +95,20 @@ function pollRegistry(statusBar: StatusBarManager): void {
     if (criticalSigCount > 0 && criticalSigCount > _lastCriticalCount) {
       NotificationThrottle.showError(
         `🐞 VibeZoo: ${criticalSigCount}개 Critical 에러 감지! Error Dashboard를 확인하세요.`,
-        'Open Dashboard'
+        'Open Dashboard',
+        'Reset Errors'
       ).then(choice => {
         if (choice === 'Open Dashboard') {
           vscode.commands.executeCommand('vibezoo.openErrorDashboard');
+        } else if (choice === 'Reset Errors') {
+          try {
+            fs.writeFileSync(REGISTRY_PATH, '[]', 'utf-8');
+            _lastCriticalCount = 0;
+            statusBar.setErrorCount(0, 0);
+            vscode.window.showInformationMessage('✅ VibeZoo: 에러 레지스트리가 리셋되었습니다.');
+          } catch (e) {
+            vscode.window.showErrorMessage(`❌ VibeZoo: 에러 레지스트리 리셋 실패: ${e}`);
+          }
         }
       });
     }

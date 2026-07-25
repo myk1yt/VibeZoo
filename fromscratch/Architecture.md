@@ -1,7 +1,7 @@
-# VibeZoo Architecture — v0.14.4
+# VibeZoo Architecture — v0.15.1
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 Multilingual Analysis)
-> **Baseline Version**: v0.14.4
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-28 (v0.13.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 Multilingual Analysis) → 2026-06-13 (v0.15.0 Auto-Connect Fix) → 2026-06-16 (v0.15.1 Standard Path Migration)
+> **Baseline Version**: v0.15.1
 > **Project**: VibeZoo — Standalone Companion Extension for Zoo Code
 > **Core Constraint**: Do not modify Zoo Code source code. All features are implemented via VibeZoo Extension + MCP Bridge + configuration changes.
 
@@ -17,14 +17,14 @@
 | 2 | **MCP Server** | 4 Go binaries (Scout:9022, Reviewer:9023, Tester:9024, Deep:9026) | Single Python bridge [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) (port 9020) |
 | 3 | **AutoBuildFix** | [`extension/src/safety/AutoBuildFix.ts`](../extension/src/safety/AutoBuildFix.ts) — empty loop (rebuild only) | [`extension/src/orchestra/FixLoopManager.ts`](../extension/src/orchestra/FixLoopManager.ts) — autonomous fix state machine + CIM + HITL |
 | 4 | **Session Resume** | Webview panel | Integrated into TreeView ([`extension/src/ui/TreeViewProviders.ts`](../extension/src/ui/TreeViewProviders.ts) `SessionResumeProvider`) |
-| 5 | **MCP Tool Count** | 15 | 34 (tree-sitter AST-based semantic analysis) |
+| 5 | **MCP Tool Count** | 15 | 40 (tree-sitter AST-based semantic analysis + fuzzy/semantic search + editor/feedback tools) |
 | 6 | **Autonomous Fix Loop** | Design only | Implemented — `FixLoopManager` + `auto_fix_status` + `retry_build` + `check_intervention` |
 | 7 | **Self-healing CIM** | Design only | Implemented — `FixLoopManager.startWatching()` (file save → tsc → auto fix) |
 | 8 | **HITL Intervention** | Design only | Implemented — `pause/resume/abort` + Whiteboard·Chat intervention channels |
 | 9 | **StatusBar** | 2 items (Crow connection, VibeZoo status) | 1 unified — [`extension/src/ui/StatusBarManager.ts`](../extension/src/ui/StatusBarManager.ts) (Crow·YOLO·CIM·Bridge status integrated) |
 | 10 | **Whiteboard Sync** | `setInterval` 1s polling | `fs.watchFile` event-based ([`extension/src/visual/VisualVibePanels.ts`](../extension/src/visual/VisualVibePanels.ts)) |
 | 11 | **TreeView** | 1 (YOLO History) | 3 (Active Subagents, YOLO History, Session Resume) |
-| 12 | **VS Code Commands** | 2 | 26 (Integrated scenarios, Fix Loop control, CIM, learn/recall, etc.) |
+| 12 | **VS Code Commands** | 2 | 29 (Integrated scenarios, Fix Loop control, CIM, learn/recall, i18n, etc.) |
 | 13 | **SelfCheck** (v0.13.0) | Not present | [`extension/src/safety/SelfCheck.ts`](../extension/src/safety/SelfCheck.ts) — AlarmMonitor (60s window throttle) + 7 diagnostic items |
 | 14 | **NotificationThrottle** (v0.13.0) | Not present | [`extension/src/ui/StatusBarManager.ts`](../extension/src/ui/StatusBarManager.ts) — 10 per minute limit + 3s dedup |
 | 15 | **I_instability Guardrail** (v0.13.0) | boolean oscillation | [`extension/src/orchestra/FixLoopManager.ts`](../extension/src/orchestra/FixLoopManager.ts) — continuous value I=α·nedits+β·autocorr+γ·buildFails |
@@ -47,7 +47,8 @@ VibeZoo is a VS Code Companion Extension that assists Zoo Code **without modifyi
 - **Safety Net**: yocto real-time backup, `.yoloignore` File Guard, automated Git Stash
 - **Autonomous Fix**: Build failure → LLM analysis → code fix → rebuild (max 3 attempts, oscillation detection)
 - **Continuous Monitoring**: CIM (Continuous Improvement Mode) — automatic tsc check on file save
-- **MCP Tools**: 34 tools (tree-sitter AST-based code search·review·analysis·reverse engineering·PR review·refactoring·preference learning + UX Workflow)
+- **MCP Tools**: 40 tools (tree-sitter AST-based code search·review·analysis·reverse engineering·PR review·refactoring·preference learning + UX Workflow + fuzzy/semantic search + editor/feedback)
+- **i18n**: 20-language support via `@vscode/l10n-dev` (extension) + custom i18n system (bridge)
 - **Visual Collaboration**: Whiteboard, UI Preview, Diagram Engine
 - **Memory Integration**: Crow Memory (Zoo Code built-in) + Crow tools for learning error patterns, project knowledge, coding preferences
 
@@ -76,6 +77,7 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 │  │  • LLM Reasoning Engine│    │  • StatusBarManager (unified)│  │
 │  │  • Crow Memory built-in│    │  • TreeView 3 types          │  │
 │  │    (localhost:9020)    │    │    - Active Subagents        │  │
+│  │  • i18n (20 langs)     │    │  • i18n (20 langs)           │  │
 │  │  • MCP Client          │    │    - YOLO History            │  │
 │  │                        │    │    - Session Resume          │  │
 │  │  ◄── MCP/SSE ──────────┼────┤  • FixLoopManager (auto)     │  │
@@ -99,9 +101,9 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 ┌──────────────────────────┐    ┌──────────────────────────────────┐
 │ Zoo Code Crow Memory     │    │ VibeZoo MCP Bridge               │
 │ (Zoo Code built-in)      │    │ vibezoo_mcp_bridge.py            │
-│ localhost:9020           │    │ localhost:9020/sse               │
+│ localhost:9020           │    │ localhost:9027/sse               │
 │                          │    │                                  │
-│ • crow_recall            │    │ • 34 MCP tools                  │
+│ • crow_recall            │    │ • 40 MCP tools                  │
 │ • crow_ingest            │    │ • tree-sitter AST parsing        │
 │ • crow_compact           │    │ • Crow Memory integration        │
 │ • crow_evolve_propose    │    │   (crow_recall/ingest wrappers)  │
@@ -110,7 +112,7 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 │ • crow_manage_prompt     │    │ • ~/.vibezoo-whiteboard.json    │
 │ • crow_get_user_bias     │    │ • ~/.vibezoo-preferences.json   │
 │ • crow_check_drift       │    │                                  │
-│ • crow_project_info       │    │ FastMCP + SSE transport          │
+│ • crow_project_info       │    │ FastMCP + SSE transport (port 9027)│
 └──────────────────────────┘    └──────────────────────────────────┘
 ```
 
@@ -130,11 +132,11 @@ Vibe = f(Usefulness, Predictability, Control_perceived)
 ```
 VibeZoo_forZoocode/
 ├── extension/                        # VibeZoo VS Code Extension (TypeScript)
-│   ├── package.json                  # v0.14.3, 27 commands, 3 TreeViews, 24 settings
+│   ├── package.json                  # v0.15.1, 29 commands, 3 TreeViews, 27 settings
 │   ├── tsconfig.json
 │   ├── .vscodeignore
 │   └── src/
-│       ├── extension.ts              # Entry point — activate(): 26 commands, Bridge spawn, module init
+│       ├── extension.ts              # Entry point — activate(): 29 commands, Bridge spawn, module init
 │       ├── context/
 │       │   └── ContextIntelligence.ts # ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetector
 │       ├── crow/
@@ -142,12 +144,19 @@ VibeZoo_forZoocode/
 │       ├── flow/
 │       │   ├── BuildFeedback.ts      # Build end detection → FixLoopManager integration
 │       │   ├── BuildTaskProvider.ts  # Silent Build Task registration
+│       │   ├── ErrorCollection.ts    # Error collection for dashboard display
 │       │   ├── ProjectDetector.ts    # Project type detection → mode suggestion
 │       │   └── ProjectTreeScanner.ts # Project tree scan + caching
 │       ├── orchestra/
 │       │   ├── FixLoopManager.ts     # Autonomous fix loop (8-state machine) + CIM (file watch)
 │       │   ├── MentionRouter.ts      # @mention routing
 │       │   └── SubagentManager.ts    # Python MCP Bridge spawn·management
+│       ├── mcp/
+│       │   └── McpConfigService.ts   # MCP config sync (project .roo/mcp.json + global mcp_settings.json)
+│       ├── platform/
+│       │   └── VscodePaths.ts        # Cross-platform VS Code config path resolution (Stable/Insiders)
+│       ├── python/
+│       │   └── PythonResolver.ts     # Deterministic Python interpreter discovery (6-step)
 │       ├── safety/
 │       │   ├── FileGuard.ts          # .yoloignore-based protected file watch·restore
 │       │   ├── GitStashManager.ts    # YOLO entry/exit Git Stash automation
@@ -160,16 +169,20 @@ VibeZoo_forZoocode/
 │       │   ├── StatusBarManager.ts   # Unified StatusBar (Bridge·Crow·YOLO·CIM·mode suggestion)
 │       │   └── TreeViewProviders.ts  # 3 Providers (ActiveSubagents, YOLO History, Session Resume)
 │       └── visual/
+│           ├── ErrorDashboard.ts     # Error dashboard visual panel
 │           └── VisualVibePanels.ts   # Whiteboard (fs.watchFile) + UI Preview + Diagram panels
 │
 ├── mcp-servers/
-│   ├── vibezoo_mcp_bridge.py         # MCP Bridge, 34+ MCP tools, FastMCP + SSE, port 9027
+│   ├── vibezoo_mcp_bridge.py         # MCP Bridge, 40 MCP tools, FastMCP + SSE, port 9027
 │   ├── vibezoo_mcp_bridge.py         # Legacy bridge
 │   └── bridge/
 │       ├── __init__.py
 │       ├── config.py
 │       ├── intent_detector.py        # UX Intent Detection (keyword-based NLP)
 │       ├── ast_engine.py
+│       ├── ast_singleton.py          # Shared AST engine singleton (consolidated)
+│       ├── embedding_client.py       # Embedding-based semantic search (Ollama/OpenAI + BM25 fallback)
+│       ├── fuzzy_matcher.py          # Trigram Dice coefficient fuzzy matching
 │       ├── search_engine.py
 │       ├── llm_pipeline.py
 │       ├── ocr_engine.py
@@ -197,6 +210,8 @@ VibeZoo_forZoocode/
 │           ├── github_diver.py
 │           ├── ssa.py
 │           ├── setup.py
+│           ├── editor.py             # Editor tools (apply_patch, read_project_file)
+│           ├── feedback.py           # Feedback tool (vibezoo_feedback)
 │           └── ux_coordinator.py     # UX Coordinator (3 tools)
 │
 ├── fromscratch/                      # Design documents
@@ -237,10 +252,10 @@ The `activate()` function initializes in the following order:
 9. TreeView Providers: ActiveSubagents, YOLO History, Session Resume
 10. Orchestra: MentionRouter
 11. Visual Vibe: VisualVibePanels.activate()
-12. Register 26 VS Code commands
+12. Register 29 VS Code commands
 ```
 
-**27 Registered Commands**:
+**29 Registered Commands**:
 
 | Category | Command |
 |:---|:---|
@@ -292,11 +307,11 @@ When `startWatching()` is called at [`extension/src/orchestra/FixLoopManager.ts`
 
 ### 4.3 [`vibezoo_mcp_bridge.py`](../mcp-servers/vibezoo_mcp_bridge.py) — MCP Bridge
 
-**34 MCP Tools** (FastMCP + tree-sitter AST):
+**40 MCP Tools** (FastMCP + tree-sitter AST):
 
 | Category | Tool | AST Usage |
 |:---|:---|:---|
-| **Scout** | `search_codebase`, `find_references`, `summarize_architecture` | tree-sitter function·class·interface search |
+| **Scout** | `search_codebase` (auto/exact/fuzzy/ast/semantic), `find_references`, `summarize_architecture` | tree-sitter function·class·interface search + trigram fuzzy + embedding semantic |
 | **Reviewer** | `review_code`, `check_quality` | ESLint integration |
 | **Tester** | `generate_tests`, `analyze_coverage` | — |
 | **Deep Analyzer** | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | AST call graph·import·field extraction |
@@ -432,18 +447,18 @@ User:                                                   │
    → child_process.spawn("python", ["vibezoo_mcp_bridge.py", "--port", "9027"])
 3. Bridge health check → OK
 4. autoConfigureMCP()
-   → Add {"vibezoo": {"url": "http://localhost:9020/sse"}} to .roo/mcp.json
+   → Add {"vibezoo": {"url": "http://localhost:9027/sse"}} to .roo/mcp.json
 5. Zoo Code restart loads MCP config → VibeZoo Bridge connects
 6. LLM → MCP tool call → Bridge → Python tool execution → return result
 ```
 
 ---
 
-## 6. Full MCP Tool List (34)
+## 6. Full MCP Tool List (40)
 
 | # | Tool Name | Category | AST | Description |
 |:---:|:---|:---|:---:|:---|
-| 1 | `search_codebase` | Scout | ✅ | tree-sitter AST based structure search + regex fallback |
+| 1 | `search_codebase` | Scout | ✅ | tree-sitter AST based structure search + regex/fuzzy/semantic fallback |
 | 2 | `find_references` | Scout | — | Symbol reference search |
 | 3 | `summarize_architecture` | Scout | — | Project structure·tech stack·file statistics |
 | 4 | `review_code` | Reviewer | — | Line length·TODO·console.log detection |
@@ -476,7 +491,13 @@ User:                                                   │
 | 31 | `get_preferences` | Preferences (M3-E) | — | Retrieve saved preferences |
 | 32 | `ux_coordinator` | UX (New) | — | User intent analysis + tool chain proposal |
 | 33 | `auto_analyze_after_drop` | UX (New) | — | Auto analysis pipeline after dropzone upload (SSA→OCR→MiniCPM) |
-| 34 | `auto_analyze_whiteboard` | UX (New) | — | Auto whiteboard analysis |
+| 34 | `auto_analyze_whiteboard` | UX (New) | — | Auto whiteboard analysis (deprecated alias for `get_whiteboard_state(analyze=True)`) |
+| 35 | `apply_patch` | Editor | ✅ | SEARCH/REPLACE diff application with AST-guided wildcard resolution |
+| 36 | `read_project_file` | Editor | — | Read project file contents |
+| 37 | `vibezoo_feedback` | Feedback | — | Agent feedback to user (missing tool, repetitive task, optimization idea, bug report) |
+| 38 | `vibezoo_setup` | Setup | — | One-call install/configure (minimal/recommended/full) |
+| 39 | `aggregate_spatial_pixels` | SSA | — | Statistical Spatial Aggregator v3 (image → spatial stats matrix + OCR) |
+| 40 | `fetch_page` | Web | — | Fetch web page → markdown conversion (pure Python stdlib) |
 
 ---
 
@@ -486,6 +507,8 @@ User:                                                   │
 |:---|:---|:---|
 | **Extension** | TypeScript 5.x | VS Code Extension API |
 | **MCP Bridge** | Python 3.x + FastMCP + intent_detector | SSE transport, port 9027 |
+| **i18n (Extension)** | `@vscode/l10n-dev` | 20-language localization (package.nls.*.json) |
+| **i18n (Bridge)** | Custom i18n system | 20-language localization (bridge/i18n/translations/*.json) |
 | **AST Parsing** | tree-sitter + tree-sitter-typescript | TS/JS structure analysis (regex fallback when not installed) |
 | **Communication** | MCP/SSE (JSON-RPC 2.0) | Zoo Code ↔ Bridge |
 | **Whiteboard** | Fabric.js | HTML5 Canvas drawing |
@@ -524,9 +547,14 @@ User:                                                   │
 
 ## 10. Conclusion
 
-VibeZoo v0.14.3 achieved the following **without modifying a single line of Zoo Code source code**:
+VibeZoo v0.15.1 achieved the following **without modifying a single line of Zoo Code source code**:
 
-- **34 MCP Tools**: tree-sitter AST based semantic code analysis + UX Workflow
+- **40 MCP Tools**: tree-sitter AST based semantic code analysis + UX Workflow + fuzzy/semantic search + editor/feedback tools
+- **Fuzzy & Semantic Search**: Trigram Dice coefficient fuzzy matching + embedding-based cosine similarity ranking (Ollama/OpenAI + BM25 fallback)
+- **i18n**: 20-language support via `@vscode/l10n-dev` (extension) + custom i18n system (bridge)
+- **ErrorCollection & ErrorDashboard**: Error collection and visual dashboard for build/runtime errors
+- **Auto-Connect**: McpConfigService + PythonResolver + VscodePaths for deterministic cross-platform MCP config sync
+- **Standard Path Migration**: Runtime directory at `%USERPROFILE%\mcp-servers\vibezoo\` (consistent with Crow Memory)
 - **UX Workflow**: Intent detection + automatic tool chain orchestration (intent_detector + ux_coordinator)
 - **Autonomous Fix Loop**: Build failure → LLM analysis → fix → rebuild (oscillation detection + HITL)
 - **Continuous Improvement Mode (CIM)**: File save → auto tsc check → Auto-Fix

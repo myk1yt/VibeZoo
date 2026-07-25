@@ -1,3 +1,48 @@
+# VibeZoo v0.16.0 Release Notes
+
+**Release Date**: 2026-07-25
+
+## 🔧 Tool Ecosystem Overhaul
+
+Comprehensive enhancement of the VibeZoo MCP tool ecosystem for better AI agent usability.
+
+### New Modules
+- **`fuzzy_matcher.py`** — Trigram Dice coefficient fuzzy matching for `search_codebase(mode="fuzzy")`
+- **`embedding_client.py`** — Embedding-based semantic search with Ollama/OpenAI auto-detection and BM25 fallback
+- **`ast_singleton.py`** — Shared AST engine singleton (consolidated from 5 duplicated copies)
+
+### Search Enhancement
+- `search_codebase(mode="fuzzy")` now performs real trigram approximate matching (was identical to `auto`)
+- `search_codebase(mode="semantic")` now uses embedding-based cosine similarity ranking when a server is available, falls back to BM25 with a visible warning
+- `find_references` fixed: word-boundary regex (`\b`) eliminates false positives (e.g., searching `io` no longer matches `action`)
+- Search result caching with 20s TTL via existing FileCache L1
+
+### Web Search
+- `web_search` now falls back to DuckDuckGo when `EXA_API_KEY` is absent
+- Errors are surfaced with structured error codes instead of silent `except: return []`
+- Retry logic: 2 retries with exponential backoff (0.5s, 1.5s)
+
+### Dead Code Cleanup
+- Removed 12 dead entries from `_tool_registry` (20 → 8)
+- Removed dead `_lazy_tool()` function, `partial_result()` stub, unused `subprocess` import
+- Fixed stale function references in `github_diver.py`
+- Implemented `include_external` filtering in `analyze_call_graph`
+
+### Tool Consolidation
+- Consolidated 5 duplicated `_get_ast_engine()` singletons into shared `ast_singleton.py`
+- Merged `auto_analyze_whiteboard` into `get_whiteboard_state(analyze=True)` with deprecated alias
+
+### Quality
+- `max_tokens` parameter now actually truncates output in `summarize_architecture`, `review_project`, `find_bugs`, `suggest_refactor`, `generate_docs`
+- `context_lines` now passed to `ResultRanker` in semantic mode
+- 104 CI tests pass on both `mcp-servers/` and `extension/mcp-servers/` copies
+
+### Files changed
+- **New**: `mcp-servers/bridge/fuzzy_matcher.py`, `mcp-servers/bridge/embedding_client.py`, `mcp-servers/bridge/ast_singleton.py`
+- **Modified**: `mcp-servers/bridge/tools/scout.py`, `mcp-servers/bridge/tools/reviewer.py`, `mcp-servers/bridge/tools/integrated.py`, `mcp-servers/bridge/tools/web.py`, `mcp-servers/bridge/tools/github_diver.py`, `mcp-servers/bridge/tools/deep_analyzer.py`, `mcp-servers/bridge/tools/whiteboard.py`, `mcp-servers/bridge/search_engine.py`, `mcp-servers/bridge/result_ranker.py`, `mcp-servers/bridge/file_cache.py`, `mcp-servers/vibezoo_mcp_bridge.py`
+
+---
+
 # VibeZoo v0.15.1 Release Notes
 
 **Release Date**: 2026-06-16

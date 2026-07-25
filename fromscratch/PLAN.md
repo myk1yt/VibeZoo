@@ -1,7 +1,7 @@
-# VibeZoo Implementation Plan — v0.14.4
+# VibeZoo Implementation Plan — v0.15.1
 
-> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 Multilingual Analysis)
-> **Baseline Version**: v0.14.4
+> **Written**: 2026-05-27 (v0.10.0 draft) → 2026-05-27 (v0.12.0 full revision) → 2026-06-02 (v0.14.1 v2 Upgrade) → 2026-06-05 (v0.14.3 Guard.git) → 2026-06-06 (v0.14.4 Multilingual Analysis) → 2026-06-13 (v0.15.0 Auto-Connect Fix) → 2026-06-16 (v0.15.1 Standard Path Migration)
+> **Baseline Version**: v0.15.1
 > **Base Documents**: [Architecture.md](./Architecture.md), [ROADMAP.md](./ROADMAP.md), [JOURNAL.md](./JOURNAL.md)
 
 ---
@@ -10,7 +10,10 @@
 
 | Version | Date | Key Changes | Notes |
 |:---|:---|:---|:---|
-| **v0.14.3** | 2026-06-05 (Current) | Guard.git: OS ACL (.git deletion prevention), multi-root/Worktree support, Shell injection defense, Yocto snapshot, SelfCheck integration | Current |
+| **v0.15.1** | 2026-06-16 (Current) | Standard path migration to `%USERPROFILE%\mcp-servers\vibezoo\`, auto-start via `autoStart`/`autoStartCommand`, physical port inspection (`isPortOccupied`) for zombie process cleanup | Current |
+| **v0.15.0** | 2026-06-13 | Auto-connect fundamental fix: McpConfigService (always write `.roo/mcp.json`), PythonResolver (6-step interpreter discovery), VscodePaths (cross-platform), VSIX bundling (`mcp-servers/` → `extension/mcp-servers/`), real Crow fallback server | |
+| **v0.14.4** | 2026-06-06 | Multi-language analysis engine enhancement: C++/Rust AST, Go enhancement, Shell/Dockerfile/YAML support, native linter integration (cargo clippy, go vet, cppcheck) | |
+| **v0.14.3** | 2026-06-05 | Guard.git: OS ACL (.git deletion prevention), multi-root/Worktree support, Shell injection defense, Yocto snapshot, SelfCheck integration | |
 | **v0.14.2** | 2026-06-03 | Guard.git l10n bundles, TreeView toggle, settings added | |
 | **v0.14.1** | 2026-06-02 | VibeZoo v2 upgrade: Dropzone generalization + PDF pipeline + OCR preprocessing + documentation update | |
 | **v0.14.0** | 2026-06-02 | UX Workflow: intent_detector + ux_coordinator (3 tools) + documentation update |
@@ -21,7 +24,7 @@
 | **v0.10.0** | 2026-05-27 Final | Go files cleanup (1,074 lines removed). SSE path `/sse` fix. VSIX build complete. | Cleanup |
 | **v0.11.1** | 2026-05-27 | 30+ bug fixes. Feature skeleton implementation complete. | Stabilization |
 | **v0.12.0** | 2026-05-27 | Quick Wins 5 + M1 (Autonomous Fix Loop, Scout AST, Reviewer ESLint, Crow error patterns) + M3 (explain_code, analyze_changes, review_pr, refactor_across_files, learn/recall_project, learn/get_preferences, CIM). TreeView 3 types, StatusBar unified, `fs.watchFile` migration, Lazy Init. **31 MCP tools**. | |
-| **v0.13.0** | 2026-05-28 (Current) | Phase 0~(SelfCheck, NotificationThrottle, FileGuard fix) + Phase 1~6. Whiteboard stabilization + 4 major improvements (I_instability, atomicCopy, hydrateContext, Crow backoff) + Virtual Subagent (SubagentPool+5 MCP tools) + Intent-to-Code Bridge (Whiteboard→TypeScript) + Full NotificationThrottle application + Documentation/GitHub/VSIX. **36 MCP tools**. | Current |
+| **v0.13.0** | 2026-05-28 | Phase 0~(SelfCheck, NotificationThrottle, FileGuard fix) + Phase 1~6. Whiteboard stabilization + 4 major improvements (I_instability, atomicCopy, hydrateContext, Crow backoff) + Virtual Subagent (SubagentPool+5 MCP tools) + Intent-to-Code Bridge (Whiteboard→TypeScript) + Full NotificationThrottle application + Documentation/GitHub/VSIX. **36 MCP tools**. | |
 
 ---
 
@@ -45,7 +48,7 @@
 ```
 VibeZoo_forZoocode/
 ├── extension/                        # VS Code Extension (TypeScript, 16 source files)
-│   ├── package.json                  # v0.14.3, 27 commands, 24 settings, 3 TreeViews
+│   ├── package.json                  # v0.15.1, 29 commands, 27 settings, 3 TreeViews
 │   ├── tsconfig.json
 │   └── src/
 │       ├── extension.ts              # Entry point (663 lines, activate/deactivate)
@@ -77,7 +80,7 @@ VibeZoo_forZoocode/
 │           └── VisualVibePanels.ts   # Whiteboard + UI Preview + Diagram
 │
 ├── mcp-servers/
-│   ├── vibezoo_mcp_bridge.py         # 34+ MCP tools (modular)
+│   ├── vibezoo_mcp_bridge.py         # 40 MCP tools (modular)
 │   ├── vibezoo_mcp_bridge.py         # Legacy bridge
 │   └── bridge/
 │       ├── intent_detector.py        # UX Intent Detection
@@ -311,7 +314,7 @@ gantt
 |:---|:---:|:---|:---|
 | **M0: Quick Wins** | ✅ Completed | 5 Quick Wins. Scenario commands·Performance·UX improvements | Activation < 500ms, StatusBar unified |
 | **M1: Autonomous Alpha** | ✅ Completed | Fix Loop + Scout AST + Reviewer ESLint + Crow error learning | HITL-based autonomous fix loop |
-| **M3: Intelligence** | ✅ Completed | explain_code, analyze_changes, review_pr, refactor_across_files, learn/recall_project, learn/get_preferences, CIM | 31 MCP tools, tree-sitter AST analysis |
+| **M3: Intelligence** | ✅ Completed | explain_code, analyze_changes, review_pr, refactor_across_files, learn/recall_project, learn/get_preferences, CIM | 40 MCP tools, tree-sitter AST analysis |
 | **M6: Self-evolving** | 🔜 Planned | Self-healing + project knowledge accumulation + full stabilization | 60%+ issues auto-resolved without manual intervention |
 
 ### 4.4 Parallel Tracks
@@ -353,13 +356,13 @@ gantt
 
 | Metric | M0 (Completed) | M1 (Completed) | M3 (Completed) | M6 (Target) |
 |:---|:---:|:---:|:---:|:---:|
-| **MCP Tool Count** | 16 | 23 | 34 | 35+ |
+| **MCP Tool Count** | 16 | 23 | 40 | 45+ |
 | **Auto Resolution Rate** (build errors) | 0% | 40%+ (HITL) | 60%+ (CIM) | 80%+ |
 | **Extension Activation Time** | < 500ms | < 500ms | < 500ms | < 300ms |
 | **Crow Past Resolution Reuse Rate** | 0% | 10%+ | 30%+ | 50%+ |
 | **StatusBar Item Count** | 1 (unified) | 1 | 1 | 1 |
 | **TreeView Count** | 3 | 3 | 3 | 3 |
-| **VS Code Command Count** | 10 | 18 | 27 | 30+ |
+| **VS Code Command Count** | 10 | 18 | 29 | 30+ |
 
 ---
 
