@@ -2,7 +2,7 @@
 
 [![Guard.git - .git Protection](https://img.shields.io/badge/Guard.git-.git%20Protected-blueviolet)](https://github.com/vibezoo/VibeZoo_forZoocode)
 
-> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-38-tools) (38 Tools)**
+> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-40-tools) (40 Tools)**
 
 VibeZoo is a Companion Extension for Zoo Code. Without modifying a single line of Zoo Code's source code, it enables the LLM to search, analyze, review, and document code more intelligently. It remembers your habits and preferences, and enables real-time visual collaboration (Whiteboard, Dropzone, Vision AI).
 
@@ -81,9 +81,16 @@ All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mc
 
 ---
 
-## 1. VibeZoo MCP Bridge — Tool Overview (38 Tools)
+## 1. VibeZoo MCP Bridge — Tool Overview (40 Tools)
 
-The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **38 MCP tools** through a modular architecture (`bridge/tools/`).
+The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **40 MCP tools** through a modular architecture (`bridge/tools/`).
+
+Key infrastructure modules:
+- [`ast_singleton.py`](mcp-servers/bridge/ast_singleton.py) — Shared AST engine singleton (consolidated from 5 duplicated copies)
+- [`fuzzy_matcher.py`](mcp-servers/bridge/fuzzy_matcher.py) — Trigram Dice coefficient fuzzy matching engine
+- [`embedding_client.py`](mcp-servers/bridge/embedding_client.py) — Embedding-based semantic search client (Ollama/OpenAI auto-detection)
+- [`result_ranker.py`](mcp-servers/bridge/result_ranker.py) — BM25 + embedding cosine similarity result ranking
+- [`file_cache.py`](mcp-servers/bridge/file_cache.py) — L1 memory cache with 20s TTL for search results
 
 ### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
 The `web_search` tool leverages the **Exa API** (neural search engine) to autonomously fetch real-time data and documentation with high-quality highlighted snippets. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
@@ -101,6 +108,17 @@ Tools: [`search_codebase`](mcp-servers/bridge/tools/scout.py), [`find_references
 Quickly grasp the project structure and find symbols or functions accurately using tree-sitter AST.
 **`target_path` parameter added**: Enables global search in a specific directory (e.g., `search_codebase(query=..., target_path="C:/Projects/MyApp")`).
 
+**Search modes** (v0.16.0 overhaul):
+- `auto` (default) — AST-aware search with automatic fallback
+- `exact` — Literal substring matching
+- `fuzzy` — Real trigram Dice coefficient approximate matching via [`fuzzy_matcher.py`](mcp-servers/bridge/fuzzy_matcher.py) (previously identical to `auto`; now performs genuine fuzzy matching)
+- `ast` — tree-sitter AST symbol extraction
+- `semantic` — Embedding-based cosine similarity ranking via [`embedding_client.py`](mcp-servers/bridge/embedding_client.py) with Ollama/OpenAI auto-detection; falls back to BM25 with a visible warning when no embedding server is available
+
+**`find_references` fix**: Now uses word-boundary regex (`\b`) instead of substring matching, eliminating false positives (e.g., searching for `io` no longer matches `action`).
+
+**Search result caching**: Results are cached with a 20s TTL via the existing FileCache L1 layer.
+
 ### 1.3 Reviewer (2 Tools) — Code Quality Check
 Automatically check code quality before submitting a PR. Integrates with ESLint and go vet.
 
@@ -112,10 +130,12 @@ Tools: [`analyze_call_graph`](mcp-servers/bridge/tools/deep_analyzer.py), [`map_
 
 Analyzes call graphs, dependencies, and recurring patterns using tree-sitter AST, and automatically generates documentation.
 
-### 1.6 Whiteboard (4 Tools) — AI-Human Visual Collaboration
-Tools: [`draw_on_whiteboard`](mcp-servers/bridge/tools/whiteboard.py), [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py), [`capture_screen`](mcp-servers/bridge/tools/whiteboard.py), [`auto_analyze_whiteboard`](mcp-servers/bridge/tools/whiteboard.py)
+### 1.6 Whiteboard (3 Tools) — AI-Human Visual Collaboration
+Tools: [`draw_on_whiteboard`](mcp-servers/bridge/tools/whiteboard.py), [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py), [`capture_screen`](mcp-servers/bridge/tools/whiteboard.py)
 
 The AI draws on a Fabric.js canvas, reads user modifications, and can capture the screen.
+
+> **v0.16.0**: `auto_analyze_whiteboard` has been merged into [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py) via the `analyze=True` parameter. The old `auto_analyze_whiteboard` name remains as a deprecated alias for backward compatibility.
 
 ### 1.7 Fix Loop (3 Tools) — Autonomous Build & Fix Loop
 If a build fails, the LLM automatically analyzes the error, looks up past fix patterns in Crow Memory, and suggests fixes. Supports Human-in-the-Loop.
@@ -136,6 +156,11 @@ Stores your coding style and preferences in Crow Memory to be recalled when need
 
 ### 1.12 Web (2 Tools) — Web Search and Page Analysis
 Used to reference external documentation or search for the latest technical information.
+
+**v0.16.0 improvements**:
+- `web_search` now falls back to **DuckDuckGo** when `EXA_API_KEY` is absent, ensuring search always works out of the box
+- Errors are surfaced with structured error codes instead of silent `except: return []`
+- Retry logic: 2 retries with exponential backoff (0.5s, 1.5s)
 
 ### 1.13 SSA (1 Tool) — Spatial Statistical Analysis
 Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, including OCR.
@@ -223,6 +248,19 @@ VibeZoo Bridge stores and retrieves memories via Crow Memory's REST API:
 - `GET /recall` — Search for similar errors and patterns
 
 ### Changelog
+- **v0.16.0** (2026-07-25):
+  - **Tool Ecosystem Overhaul**: Comprehensive enhancement of the VibeZoo MCP tool ecosystem
+  - New modules: `fuzzy_matcher.py` (trigram fuzzy matching), `embedding_client.py` (embedding-based semantic search), `ast_singleton.py` (shared AST singleton)
+  - `search_codebase(mode="fuzzy")` now performs real trigram approximate matching (was identical to `auto`)
+  - `search_codebase(mode="semantic")` now uses embedding-based cosine similarity ranking with BM25 fallback
+  - `find_references` fixed: word-boundary regex eliminates false positives
+  - Search result caching with 20s TTL
+  - `web_search` DuckDuckGo fallback when EXA_API_KEY absent
+  - Dead code cleanup: 12 dead entries removed from `_tool_registry` (20→8)
+  - Tool consolidation: 5 duplicated AST singletons → shared `ast_singleton.py`
+  - `auto_analyze_whiteboard` merged into `get_whiteboard_state(analyze=True)`
+  - `max_tokens` truncation now works in 5 tools
+  - 104 CI tests pass
 - **v0.15.1** (2026-06-16):
   - Standard path migration: runtime directory changed to `%USERPROFILE%\mcp-servers\vibezoo\` (Windows) / `~/mcp-servers/vibezoo/` (macOS/Linux)
   - `init_vibezoo.bat` / `init_vibezoo.sh` now copy bridge files to the standard target directory
@@ -324,5 +362,5 @@ Crow Memory is free to use under the MIT license. However, organizations have di
 📧 **myk1yt@gmail.com**
 
 ---
-*VibeZoo v0.15.1 — June 2026*
+*VibeZoo v0.16.0 — July 2026*
 *Co-designed by Stefano, Kim & AI*
