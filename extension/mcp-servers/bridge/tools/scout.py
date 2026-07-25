@@ -28,25 +28,21 @@ from bridge.utils import (
     _npx_cmd, _fuzzy_match, _auto_detect_query_type,
     _extract_regex_imports, _extract_python_imports, _extract_go_imports,
     get_project_root,
+    truncate_to_tokens,
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.search_engine import SearchEngine
 from bridge.result_ranker import ResultRanker
+from bridge.embedding_client import EmbeddingClient, rank_by_embedding
+from bridge.fuzzy_matcher import fuzzy_filter
 from bridge.ast_engine import AstEngine
+from bridge.ast_singleton import get_ast_engine as _get_ast_engine
 from bridge.file_cache import FileCache
 from bridge.tools._base import BaseTool
 
 # ── 싱글톤 인스턴스 ──────────────────────────────────
 
-_ast_engine = None
 _file_cache = None
-
-
-def _get_ast_engine() -> AstEngine:
-    global _ast_engine
-    if _ast_engine is None:
-        _ast_engine = AstEngine()
-    return _ast_engine
 
 
 def _get_file_cache() -> FileCache:
@@ -92,12 +88,40 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
 
     # SearchEngine 사용 (ripgrep 우선)
     engine = _get_search_engine(root)
-    search_results = engine.search(query, file_patterns, max_results, mode, context_lines)
+    # ── mode="fuzzy": broaden query then apply trigram fuzzy filter ──
+    if mode == "fuzzy":
+        # Strip regex metacharacters for a broader text search
+        broadened_query = re.sub(r'[^\w\s]', ' ', query).strip()
+        # Use longest alphanumeric token if broadened query is too short
+        tokens = [t for t in broadened_query.split() if len(t) >= 2]
+        if tokens:
+            broadened_query = max(tokens, key=len)
+        else:
+            broadened_query = query
+        search_results = engine.search(broadened_query, file_patterns, max_results * 2, "auto", context_lines)
+        search_results = fuzzy_filter(query, search_results, threshold=0.35, max_results=max_results)
+    else:
+        search_results = engine.search(query, file_patterns, max_results, mode, context_lines)
 
-    # ── mode="semantic": ResultRanker 기반 reranking ──
+    # ── mode="semantic": embedding-based reranking (BM25 fallback) ──
+    semantic_note = ""
     if mode == "semantic" and search_results:
-        ranker = ResultRanker()
-        search_results = ranker.rank(query, search_results)[:max_results]
+        embed_client = EmbeddingClient()
+        if embed_client.is_available():
+            query_vec = embed_client.embed([query])
+            if query_vec and query_vec[0]:
+                search_results = rank_by_embedding(
+                    query_vec[0], search_results, embed_client.embed
+                )[:max_results]
+                semantic_note = "> 🧠 semantic: embedding-based ranking (rank_source=\"embedding\")\n\n"
+            else:
+                ranker = ResultRanker()
+                search_results = ranker.rank(query, search_results, context_lines)[:max_results]
+                semantic_note = "> ⚠️ semantic: embedding server returned empty, used BM25 keyword ranking\n\n"
+        else:
+            ranker = ResultRanker()
+            search_results = ranker.rank(query, search_results, context_lines)[:max_results]
+            semantic_note = "> ⚠️ semantic: embedding server unavailable, used BM25 keyword ranking\n\n"
 
     # AST 검색 (보완)
     ast_engine = _get_ast_engine()
@@ -221,6 +245,7 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
     # 출력 구성
     output = _markdown_header(f'Search: "{query}"')
     output += rg_note
+    output += semantic_note
 
     # AST 결과 우선
     if ast_results:
@@ -262,6 +287,12 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
     err = _validate_string(symbol, "symbol")
     if err:
         return _markdown_header("Find References Error", "❌") + f"**{err}**\n" + _markdown_footer()
+
+    # SRF: Precompile a word-boundary regex so that searching for a short symbol
+    # like "io" does NOT match substrings inside "action", "configuration", etc.
+    # \b is Unicode-aware in Python 3 re, and re.escape() handles metacharacters.
+    # Dotted access like "obj.symbol" is matched because \b asserts after ".".
+    symbol_pattern = re.compile(r'\b' + re.escape(symbol) + r'\b')
 
     root = Path(get_project_root(target_path)) if target_path else Path(os.getcwd())
     definitions = []
@@ -306,23 +337,26 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
                     definitions.append({"file": rel, "line": enm["line"], "desc": f"`enum {enm['name']}`", "type": "definition"})
 
         # 사용 위치 찾기 + 타입 분류
+        # SRF: Use word-boundary regex instead of substring containment to avoid
+        # false positives (e.g. "io" matching "action").
         for i, line in enumerate(file_lines, 1):
-            if symbol not in line:
+            if not symbol_pattern.search(line):
                 continue
             is_def = any(d["file"] == rel and d["line"] == i for d in definitions)
             if is_def:
                 continue
             stripped = line.strip()
             ref_type = "read"
+            # SRF: All classifiers use the boundary regex for consistency.
             if f"import {symbol}" in stripped or f"from '{symbol}" in stripped or f'from "{symbol}"' in stripped:
                 ref_type = "import_ref"
-            elif f"new {symbol}" in stripped or f"extends {symbol}" in stripped or f"implements {symbol}" in stripped:
+            elif symbol_pattern.search(stripped) and ("new " + symbol in stripped or "extends " + symbol in stripped or "implements " + symbol in stripped):
                 ref_type = "type_ref"
-            elif f" {symbol}(" in stripped or f"{symbol}(" in stripped:
+            elif symbol_pattern.search(stripped) and (symbol + "(" in stripped):
                 ref_type = "call"
-            elif f" = {symbol}" in stripped or f"={symbol}" in stripped:
+            elif symbol_pattern.search(stripped) and ("= " + symbol in stripped or "=" + symbol in stripped):
                 ref_type = "read"
-            elif f"let {symbol}" in stripped or f"const {symbol}" in stripped or f"var {symbol}" in stripped:
+            elif symbol_pattern.search(stripped) and ("let " + symbol in stripped or "const " + symbol in stripped or "var " + symbol in stripped):
                 ref_type = "write"
             usages.append({"file": rel, "line": i, "text": stripped[:120], "type": ref_type})
             ref_types[ref_type].append(f"`{rel}:{i}`")
@@ -689,7 +723,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
         register="arch"
     )
     output += _markdown_footer()
-    return output
+    return truncate_to_tokens(output, max_tokens)
 
 
 # ── register ──────────────────────────────────────────
@@ -711,6 +745,7 @@ def register(mcp):
             file_patterns: 검색 대상 파일 패턴 (예: *.ts,*.tsx). 쉼표로 구분.
             max_results: 최대 결과 수 (기본: 10)
             mode: 검색 모드 ("auto", "exact", "fuzzy", "ast", "semantic"). 기본: "auto"
+                  "fuzzy" = trigram approximate match (Dice coefficient on character 3-grams, threshold 0.35)
             context_lines: 컨텍스트 라인 수 (기본: 3)
             target_path: 검색 대상 디렉토리 경로 (기본: 현재 워크스페이스)
         """

@@ -284,31 +284,23 @@ def register(mcp):
 
     @mcp.tool
     def auto_analyze_whiteboard() -> str:
-        """화이트보드 내용을 자동 분석합니다.
+        """[DEPRECATED] 화이트보드 내용을 자동 분석합니다.
 
-        get_whiteboard_state() + WhiteboardDataConverter 변환 +
-        SSA(이미지인 경우) + MiniCPM(이미지인 경우) 통합 실행
+        ⚠️ 이 도구는 더 이상 권장되지 않습니다.
+        대신 `get_whiteboard_state(analyze=True)`를 사용하세요.
+
+        이 도구는 내부적으로 `_get_whiteboard_state_impl(analyze=True)`를 호출하며,
+        반환 결과 끝에 deprecation 안내를 추가합니다.
 
         Returns:
-            화이트보드 분석 보고서 + Mermaid 다이어그램
+            화이트보드 분석 보고서 + 분석 제안 + deprecation 안내
         """
-        response = ["## 🎨 화이트보드 분석"]
-
-        # 화이트보드 상태 읽기
         try:
-            from bridge.tools.whiteboard import get_whiteboard_state
-            wb_state = get_whiteboard_state()
-            response.append("### 📊 화이트보드 상태")
-            response.append(wb_state)
+            from bridge.tools.whiteboard import _get_whiteboard_state_impl
+            wb_state = _get_whiteboard_state_impl(analyze=True)
+            return (
+                wb_state
+                + "\n\n> ⚠️ deprecated: use `get_whiteboard_state(analyze=True)` instead\n"
+            )
         except Exception as e:
-            response.append(f"⚠️ 화이트보드 상태 읽기 실패: {e}")
-
-        response.append("")
-        response.append("### 💡 분석 제안")
-        response.append("화이트보드 내용을 기반으로 다음을 수행할 수 있습니다:")
-        response.append("1. **다이어그램 변환** — 화이트보드 내용을 Mermaid 다이어그램으로 변환")
-        response.append("2. **설명 생성** — 화이트보드 내용에 대한 설명 제공")
-        response.append("3. **코드 생성** — 화이트보드 설계를 기반으로 코드 생성")
-        response.append("4. **개선 제안** — 설계에 대한 피드백 제공")
-
-        return "\n".join(response)
+            return f"⚠️ 화이트보드 상태 읽기 실패: {e}"

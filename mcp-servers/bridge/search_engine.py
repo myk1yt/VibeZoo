@@ -5,7 +5,9 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 # Pylance: ensure the extension root is in package search path
@@ -13,7 +15,7 @@ _EXT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _EXT_ROOT not in sys.path:
     sys.path.insert(0, _EXT_ROOT)
 
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Tuple, Any
 
 from bridge.config import DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS
 
@@ -24,12 +26,70 @@ class SearchEngine:
     1. ripgrep (rg) — Rust 기반, 가장 빠름
     2. git grep — Git 저장소에서만 동작
     3. _fallback_to_walk() — 기존 os.walk + line 매칭 (regex 폴백)
+
+    ST-07: Query-result memo layer — caches search results for 20 seconds
+    with mtime-bucket invalidation to avoid re-scanning on repeated queries.
     """
+
+    # ST-07: Search result memo — module-level LRU cache shared across instances
+    _SEARCH_MEMO_TTL: int = 20  # seconds
+    _SEARCH_MEMO_MAX: int = 64  # max entries
+    _search_memo: OrderedDict = OrderedDict()
+    _search_memo_lock = threading.Lock()
 
     def __init__(self, root: Path):
         self._root = root
         self._rg_available: Optional[bool] = None
         self._git_available: Optional[bool] = None
+
+    # ── ST-07: Search Result Memo ──────────────────────
+
+    @classmethod
+    def _memo_key(cls, root: Path, query: str, file_patterns: Optional[str],
+                  mode: str, context_lines: int) -> Tuple[Any, ...]:
+        """Build a cache key including root mtime bucket (10-second granularity)."""
+        try:
+            root_mtime = os.path.getmtime(str(root))
+            root_mtime_bucket = int(root_mtime // 10)
+        except OSError:
+            root_mtime_bucket = 0
+        patterns_tuple = tuple(file_patterns.split(",")) if file_patterns else ()
+        return (str(root), query, patterns_tuple, mode, context_lines, root_mtime_bucket)
+
+    @classmethod
+    def _memo_get(cls, key: Tuple[Any, ...]) -> Optional[List[dict]]:
+        """Check memo for a cached result. Returns None on miss."""
+        with cls._search_memo_lock:
+            entry = cls._search_memo.get(key)
+            if entry is None:
+                return None
+            cached_results, cached_time = entry
+            if (time.time() - cached_time) > cls._SEARCH_MEMO_TTL:
+                # Expired
+                del cls._search_memo[key]
+                return None
+            # LRU update
+            cls._search_memo.move_to_end(key)
+            # Return a deep copy so callers can't mutate the cached list
+            return [dict(r) for r in cached_results]
+
+    @classmethod
+    def _memo_put(cls, key: Tuple[Any, ...], results: List[dict]):
+        """Store search results in the memo."""
+        with cls._search_memo_lock:
+            if key in cls._search_memo:
+                cls._search_memo.move_to_end(key)
+            else:
+                if len(cls._search_memo) >= cls._SEARCH_MEMO_MAX:
+                    cls._search_memo.popitem(last=False)
+            # Store copies to prevent mutation of cached data
+            cls._search_memo[key] = ([dict(r) for r in results], time.time())
+
+    @classmethod
+    def clear_memo(cls):
+        """Clear all cached search results (for testing)."""
+        with cls._search_memo_lock:
+            cls._search_memo.clear()
 
     def ripgrep_available(self) -> bool:
         """ripgrep 설치 여부 확인"""
@@ -69,13 +129,27 @@ class SearchEngine:
         """
         통합 검색 — ripgrep 우선, git grep 차선, walk 폴백.
         각 결과: {file, line, column, content, context_before, context_after, score}
+
+        ST-07: Checks query-result memo before running the actual search.
+        On cache hit (fresh + same mtime bucket), returns cached results.
+        On miss, runs search and stores results in memo.
         """
+        # ST-07: Check memo first
+        memo_key = self._memo_key(self._root, query, file_patterns, mode, context_lines)
+        cached = self._memo_get(memo_key)
+        if cached is not None:
+            return cached[:max_results]
+
         if self.ripgrep_available():
-            return self._search_ripgrep(query, file_patterns, max_results, context_lines, mode)
+            results = self._search_ripgrep(query, file_patterns, max_results, context_lines, mode)
         elif self._is_git_repo() and self.git_grep_available():
-            return self._search_git_grep(query, file_patterns, max_results, context_lines, mode)
+            results = self._search_git_grep(query, file_patterns, max_results, context_lines, mode)
         else:
-            return self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
+            results = self._fallback_to_walk(query, file_patterns, max_results, context_lines, mode)
+
+        # ST-07: Store in memo
+        self._memo_put(memo_key, results)
+        return results
 
     def search_fast(self, query: str, max_results: int = 50) -> List[dict]:
         """점진적 검색 — 먼저 50개 결과를 빠르게 반환"""

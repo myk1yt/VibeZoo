@@ -25,12 +25,6 @@ class BaseTool:
         return ""
 
     @staticmethod
-    def partial_result(name: str, data: dict) -> str:
-        """점진적 스트리밍 — 부분 결과 반환 (향후 확장)"""
-        import json
-        return json.dumps({"partial": True, "tool": name, "data": data})
-
-    @staticmethod
     def report_error(name: str, error: Exception, context: dict = None) -> str:
         """구조화된 에러 보고 (ErrorRegistry 자동 기록 포함)"""
         import json

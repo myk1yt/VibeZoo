@@ -28,17 +28,7 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
-
-# ── 싱글톤 ──────────────────────────────────────────
-
-_ast_engine = None
-
-
-def _get_ast_engine() -> AstEngine:
-    global _ast_engine
-    if _ast_engine is None:
-        _ast_engine = AstEngine()
-    return _ast_engine
+from bridge.ast_singleton import get_ast_engine as _get_ast_engine
 
 
 # ── AST 기반 복잡도/중첩 계산 ────────────────────────

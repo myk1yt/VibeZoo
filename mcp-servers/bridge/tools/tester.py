@@ -22,20 +22,12 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
+from bridge.ast_singleton import get_ast_engine as _get_ast_engine
 from bridge.tool_context import (
     make_generate_tests_context,
     format_manifest_markdown,
     MANIFEST_GENERATE_TESTS,
 )
-
-_ast_engine = None
-
-
-def _get_ast_engine() -> AstEngine:
-    global _ast_engine
-    if _ast_engine is None:
-        _ast_engine = AstEngine()
-    return _ast_engine
 
 
 def register(mcp):

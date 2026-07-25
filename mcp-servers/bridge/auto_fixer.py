@@ -59,8 +59,8 @@ KNOWN_PATTERNS = {
     ("web_search", "ConnectionError"): {
         "action": "hint_only",
         "hint": (
-            "Cannot connect to search engine. "
-            "Check internet connection or try a different engine parameter."
+            "Cannot connect to Exa search engine API. "
+            "Check internet connection or verify EXA_API_KEY environment/keyring setting."
         ),
     },
 }

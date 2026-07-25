@@ -26,6 +26,7 @@ from bridge.utils import (
     _read_file_content, _truncate, _normalize_path,
     _iter_project_files, _iter_project_files_cached,
     get_project_root,
+    truncate_to_tokens,
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.search_engine import SearchEngine
@@ -303,23 +304,12 @@ def register(mcp):
     _tool_registry = {
         "search_codebase": None,
         "review_code": None,
-        "check_quality": None,
         "extract_patterns": None,
         "map_dependencies": None,
         "analyze_call_graph": None,
         "reverse_engineer": None,
         "summarize_architecture": None,
         "draw_on_whiteboard": None,
-        "generate_tests": None,
-        "analyze_coverage": None,
-        "explain_code": None,
-        "analyze_changes": None,
-        "review_pr": None,
-        "refactor_across_files": None,
-        "learn_project": None,
-        "recall_project": None,
-        "learn_preference": None,
-        "get_preferences": None,
     }
 
     # ── FileCache 워밍 (첫 번째 도구 호출 시 미리 스캔) ──
@@ -332,15 +322,6 @@ def register(mcp):
         cache.warm(root=root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS)
     except Exception:
         pass  # 워밍 실패는 치명적이지 않음
-
-    # register가 호출될 때 다른 모듈의 도구를 참조할 수 있도록 지연 바인딩
-    def _lazy_tool(name):
-        if _tool_registry.get(name) is None:
-            # 다른 모듈의 등록된 함수 찾기
-            for mod_name, mod_fn in _tool_registry.items():
-                if mod_name == name:
-                    break
-        return _tool_registry.get(name)
 
     # ── integrated 도구들은 지연 임포트로 내부 함수 참조 ──
 
@@ -538,7 +519,7 @@ def register(mcp):
             stats = {"files_reviewed": reviewed, "total_files": total_files}
             result = BaseTool.final_result(result, stats)
 
-        return result
+        return truncate_to_tokens(result, max_tokens)
 
     @mcp.tool
     def find_bugs(target_path: Optional[str] = None, mode: str = "summary", max_tokens: int = 500) -> str:
@@ -751,7 +732,7 @@ def register(mcp):
 
         result = "\n\n---\n\n".join(sections)
         result += _markdown_footer()
-        return result
+        return truncate_to_tokens(result, max_tokens)
 
     @mcp.tool
     def suggest_refactor(target_path: Optional[str] = None, mode: str = "summary", max_tokens: int = 500) -> str:
@@ -880,7 +861,7 @@ def register(mcp):
 
         result = "\n\n---\n\n".join(sections)
         result += _markdown_footer()
-        return result
+        return truncate_to_tokens(result, max_tokens)
 
     @mcp.tool
     def generate_docs(target_path: Optional[str] = None, output_format: str = "markdown",
@@ -1035,4 +1016,4 @@ def register(mcp):
 
         result = "\n\n---\n\n".join(sections)
         result += _markdown_footer()
-        return result
+        return truncate_to_tokens(result, max_tokens)

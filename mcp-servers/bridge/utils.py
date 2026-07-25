@@ -562,3 +562,24 @@ def _find_related_tests(file_path: str) -> list:
     except Exception:
         pass
     return tests[:5]
+
+
+# ── ST-08: Token Truncation ────────────────────────────
+
+
+def truncate_to_tokens(text: str, max_tokens: int) -> str:
+    """Truncate text to approximately max_tokens using chars ≈ tokens × 4 heuristic.
+
+    Args:
+        text: The text to potentially truncate.
+        max_tokens: Maximum approximate token count. If <= 0, returns text unchanged.
+
+    Returns:
+        The original text if within the limit, or truncated text with a marker.
+    """
+    if max_tokens <= 0:
+        return text
+    max_chars = max_tokens * 4
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n\n... [truncated to ~{} tokens]".format(max_tokens)

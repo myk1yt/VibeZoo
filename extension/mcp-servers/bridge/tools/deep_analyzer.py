@@ -4,7 +4,6 @@
 import json
 import os
 import re
-import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
 import sys
@@ -27,17 +26,7 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
-
-# ── 싱글톤 ──────────────────────────────────────────
-
-_ast_engine = None
-
-
-def _get_ast_engine() -> AstEngine:
-    global _ast_engine
-    if _ast_engine is None:
-        _ast_engine = AstEngine()
-    return _ast_engine
+from bridge.ast_singleton import get_ast_engine as _get_ast_engine
 
 
 # ── AST 패턴 템플릿 라이브러리 ───────────────────────
@@ -533,7 +522,10 @@ def register(mcp):
         Args:
             file_path: 분석할 파일 경로 (기본: 전체 프로젝트)
             depth: 호출 깊이 (기본: 3)
-            include_external: 외부 라이브러리 호출 포함 여부 (기본: False)
+            include_external: 외부 라이브러리 호출 포함 여부 (기본: False).
+                False인 경우, 프로젝트 내에 정의되지 않은 함수 호출(외부 라이브러리 호출)은
+                fan-in/fan-out 메트릭 및 파일별 호출 분석에서 제외됩니다.
+                True인 경우, 모든 호출을 포함합니다.
         """
         err = _validate_int(depth, "depth", 1, 20)
         if err:
@@ -597,7 +589,8 @@ def register(mcp):
                         matched = True
                         break
                 if not matched:
-                    all_calls[caller_key].append(c["name"])
+                    if include_external:
+                        all_calls[caller_key].append(c["name"])
 
         fan_out_list = [(len(targets), caller) for caller, targets in all_calls.items()]
         fan_out_list.sort(key=lambda x: -x[0])
@@ -646,15 +639,25 @@ def register(mcp):
             ext = p.suffix.lower()
             calls = ast_engine.extract_calls(content, ext)
             if calls:
-                call_counts = Counter(c["name"] for c in calls)
+                if include_external:
+                    filtered_calls = calls
+                else:
+                    # 프로젝트 내 정의된 함수명 집합 구축
+                    project_func_names = {finfo["name"] for finfo in func_defs.values()}
+                    filtered_calls = [
+                        c for c in calls
+                        if c["name"] in project_func_names
+                        or any(c["name"].endswith("." + fn) for fn in project_func_names)
+                    ]
+                call_counts = Counter(c["name"] for c in filtered_calls)
                 top_calls = call_counts.most_common(10)
                 output += f"### `{rel}`\n\n"
-                output += f"- **Total calls**: {len(calls)}\n"
+                output += f"- **Total calls**: {len(filtered_calls)}" + (f" (of {len(calls)} including external)" if not include_external and len(filtered_calls) != len(calls) else "") + "\n"
                 output += f"- **Unique functions called**: {len(call_counts)}\n"
                 for func_name, count in top_calls:
                     output += f"  - `{func_name}` ({count}x)\n"
                 output += "\n"
-                total_calls += len(calls)
+                total_calls += len(filtered_calls)
 
         if total_calls == 0:
             if processed_files == 0:

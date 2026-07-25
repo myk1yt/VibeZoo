@@ -49,7 +49,7 @@ def _search(query: str, limit: int = 5) -> str:
         result.append(f"   - Language: {item.get('language')}")
         result.append("")
         
-    result.append("\n💡 Tip: Use `github_explore_repository(repo_name)` to view its file structure.")
+    result.append("\n💡 Tip: Use `explore_github(repo='...')` to view its file structure.")
     return "\n".join(result)
 
 def _explore(repo_name: str) -> str:
@@ -99,7 +99,7 @@ def _explore(repo_name: str) -> str:
     for path in filtered_paths:
         result.append(f"  - {path}")
         
-    result.append("\n💡 Tip: Use `github_read_file(repo_name, file_path)` to extract the code.")
+    result.append("\n💡 Tip: Use `explore_github(repo='...', file_path='...')` to extract the code.")
     return "\n".join(result)
 
 def _read(repo_name: str, file_path: str) -> str:

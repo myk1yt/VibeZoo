@@ -8,7 +8,7 @@ from typing import List
 class ResultRanker:
     """BM25 + 시그니처 + 위치 기반 하이브리드 랭킹"""
 
-    def rank(self, query: str, results: List[dict]) -> List[dict]:
+    def rank(self, query: str, results: List[dict], context_lines: int = 3) -> List[dict]:
         """
         각 결과에 score 부여 후 정렬:
         - BM25 유사도 (0.4)
@@ -21,7 +21,7 @@ class ResultRanker:
             score += self._bm25_similarity(query, r.get('content', '')) * 0.4
             score += self._exact_match_bonus(query, r.get('content', '')) * 0.3
             score += self._location_boost(r.get('type', '')) * 0.2
-            score += self._context_density(r) * 0.1
+            score += self._context_density(r, context_lines) * 0.1
             r['score'] = round(score, 4)
 
         return sorted(results, key=lambda r: r.get('score', 0), reverse=True)
@@ -69,12 +69,12 @@ class ResultRanker:
         }
         return boosts.get(loc_type, 0.3)
 
-    def _context_density(self, result: dict) -> float:
+    def _context_density(self, result: dict, context_lines: int = 3) -> float:
         """주변 컨텍스트 밀도"""
         ctx_before = result.get('context_before', [])
         ctx_after = result.get('context_after', [])
         total = len(ctx_before) + len(ctx_after)
         if total == 0:
             return 0.0
-        # 컨텍스트가 많을수록 좋음 (최대 3줄)
-        return min(total / 3.0, 1.0)
+        # 컨텍스트가 많을수록 좋음 (context_lines 기반 정규화)
+        return min(total / max(context_lines, 1), 1.0)

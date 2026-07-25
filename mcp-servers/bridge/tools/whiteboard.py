@@ -861,6 +861,108 @@ def _open_file_picker() -> str:
 
 # ── 도구 등록 ────────────────────────────────────────
 
+# ── Whiteboard Analysis Suggestions ──────────────────────
+
+
+def _generate_whiteboard_suggestions() -> str:
+    """화이트보드 상태를 기반으로 분석 제안 블록을 생성합니다.
+
+    get_whiteboard_state(analyze=True) 호출 시 상태 텍스트 뒤에 appended 됩니다.
+    auto_analyze_whiteboard() (deprecated)에서도 동일한 내용을 사용합니다.
+    """
+    parts = [
+        "",
+        "### 💡 분석 제안",
+        "화이트보드 내용을 기반으로 다음을 수행할 수 있습니다:",
+        "1. **다이어그램 변환** — 화이트보드 내용을 Mermaid 다이어그램으로 변환",
+        "2. **설명 생성** — 화이트보드 내용에 대한 설명 제공",
+        "3. **코드 생성** — 화이트보드 설계를 기반으로 코드 생성",
+        "4. **개선 제안** — 설계에 대한 피드백 제공",
+    ]
+    return "\n".join(parts)
+
+
+def _get_whiteboard_state_impl(analyze: bool = False) -> str:
+    """화이트보드 상태 조회 구현 (모듈 레벨).
+
+    register() 내부의 MCP 툴 래퍼와 ux_coordinator.py의
+    auto_analyze_whiteboard() 양쪽에서 호출 가능합니다.
+
+    Args:
+        analyze: True면 상태 조회 후 분석 제안 블록을 함께 반환합니다.
+                 (이전 auto_analyze_whiteboard()와 동일한 동작)
+                 False(기본값)면 상태만 반환합니다.
+    """
+    try:
+        if not os.path.exists(WHITEBOARD_FILE):
+            output = (_markdown_header("Whiteboard State")
+                      + "Whiteboard is empty.\n")
+            if analyze:
+                output += _generate_whiteboard_suggestions() + "\n"
+            output += _markdown_footer()
+            return output
+
+        with open(WHITEBOARD_FILE) as f:
+            data = json.load(f)
+
+        # 데이터 타입에 따라 다른 처리
+        if "image" in data:
+            # 스크린샷 데이터
+            width = data.get("width", 0)
+            height = data.get("height", 0)
+            output = (_markdown_header("Whiteboard State")
+                      + f"**Screenshot** ({width}×{height}px)\n\n"
+                      + f"Use `aggregate_spatial_pixels()` with the saved image path "
+                      + f"for detailed spatial analysis.\n\n"
+                      + f"Raw JSON (truncated):\n"
+                      + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
+            try_crow_ingest(f"Whiteboard state: screenshot {width}x{height}", register="context")
+            if analyze:
+                output += _generate_whiteboard_suggestions() + "\n"
+            else:
+                output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `get_whiteboard_state(analyze=True)`를 호출하세요.\n"
+            output += _markdown_footer()
+            return output
+
+        if "commands" in data and data["commands"]:
+            # Fabric.js 명령어 → WhiteboardDataConverter로 변환
+            fabric_json = {"objects": data["commands"]}
+            try:
+                report = _converter.fabric_json_to_text(fabric_json)
+                output = (_markdown_header("Whiteboard State")
+                          + report + "\n\n"
+                          + "**Raw JSON (truncated):**\n"
+                          + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
+                try_crow_ingest(f"Whiteboard state: analyzed {len(data['commands'])} commands",
+                                register="context")
+                if analyze:
+                    output += _generate_whiteboard_suggestions() + "\n"
+                else:
+                    output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `get_whiteboard_state(analyze=True)`를 호출하세요.\n"
+                output += _markdown_footer()
+                return output
+            except Exception as conv_err:
+                # 변환 실패 시 fallback: raw JSON
+                pass
+
+        # Fallback: raw JSON만 표시
+        commands_count = len(data.get("commands", [])) if isinstance(data.get("commands"), list) else 0
+        output = (_markdown_header("Whiteboard State")
+                  + f"Whiteboard has {commands_count} objects.\n\n"
+                  + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
+        if analyze:
+            output += _generate_whiteboard_suggestions() + "\n"
+        else:
+            output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `get_whiteboard_state(analyze=True)`를 호출하세요.\n"
+        output += _markdown_footer()
+        return output
+
+    except Exception as e:
+        return (_markdown_header("Whiteboard Error", "❌")
+                + f"**Failed:** `{e}`\n"
+                + _markdown_footer())
+
+
 def register(mcp):
     """Whiteboard 도구 등록"""
 
@@ -985,62 +1087,13 @@ def register(mcp):
                     + _markdown_footer())
 
     @mcp.tool
-    def get_whiteboard_state() -> str:
-        """현재 화이트보드의 상태를 조회합니다. 사용자가 수정한 내용을 확인합니다."""
-        try:
-            if not os.path.exists(WHITEBOARD_FILE):
-                return (_markdown_header("Whiteboard State")
-                        + "Whiteboard is empty.\n"
-                        + _markdown_footer())
+    def get_whiteboard_state(analyze: bool = False) -> str:
+        """현재 화이트보드의 상태를 조회합니다. 사용자가 수정한 내용을 확인합니다.
 
-            with open(WHITEBOARD_FILE) as f:
-                data = json.load(f)
-
-            # 데이터 타입에 따라 다른 처리
-            if "image" in data:
-                # 스크린샷 데이터
-                width = data.get("width", 0)
-                height = data.get("height", 0)
-                output = (_markdown_header("Whiteboard State")
-                          + f"**Screenshot** ({width}×{height}px)\n\n"
-                          + f"Use `aggregate_spatial_pixels()` with the saved image path "
-                          + f"for detailed spatial analysis.\n\n"
-                          + f"Raw JSON (truncated):\n"
-                          + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
-                try_crow_ingest(f"Whiteboard state: screenshot {width}x{height}", register="context")
-                output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analyze_whiteboard()`를 호출하세요.\n"
-                output += _markdown_footer()
-                return output
-
-            if "commands" in data and data["commands"]:
-                # Fabric.js 명령어 → WhiteboardDataConverter로 변환
-                fabric_json = {"objects": data["commands"]}
-                try:
-                    report = _converter.fabric_json_to_text(fabric_json)
-                    output = (_markdown_header("Whiteboard State")
-                              + report + "\n\n"
-                              + "**Raw JSON (truncated):**\n"
-                              + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
-                    try_crow_ingest(f"Whiteboard state: analyzed {len(data['commands'])} commands",
-                                    register="context")
-                    output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analyze_whiteboard()`를 호출하세요.\n"
-                    output += _markdown_footer()
-                    return output
-                except Exception as conv_err:
-                    # 변환 실패 시 fallback: raw JSON
-                    pass
-
-            # Fallback: raw JSON만 표시
-            commands_count = len(data.get("commands", [])) if isinstance(data.get("commands"), list) else 0
-            output = (_markdown_header("Whiteboard State")
-                      + f"Whiteboard has {commands_count} objects.\n\n"
-                      + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
-            output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `auto_analyze_whiteboard()`를 호출하세요.\n"
-            output += _markdown_footer()
-            return output
-
-        except Exception as e:
-            return (_markdown_header("Whiteboard Error", "❌")
-                    + f"**Failed:** `{e}`\n"
-                    + _markdown_footer())
+        Args:
+            analyze: True면 상태 조회 후 분석 제안 블록을 함께 반환합니다.
+                     (이전 auto_analyze_whiteboard()와 동일한 동작)
+                     False(기본값)면 상태만 반환합니다.
+        """
+        return _get_whiteboard_state_impl(analyze=analyze)
 
