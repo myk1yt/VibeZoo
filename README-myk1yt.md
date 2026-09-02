@@ -62,7 +62,7 @@ Key infrastructure modules:
 
 ---
 
-### 1.1 Scout & Code Search (5 Tools)
+### 1.1 Scout & Code Search (3 Tools)
 Tools: [`search_codebase`](extension/mcp-servers/bridge/tools/scout.py), [`find_references`](extension/mcp-servers/bridge/tools/scout.py), [`summarize_architecture`](extension/mcp-servers/bridge/tools/scout.py), [`embedding_health_check`](extension/mcp-servers/bridge/tools/scout.py), [`rebuild_code_index`](extension/mcp-servers/bridge/tools/scout.py)
 
 - **`search_codebase`**: Multi-mode codebase search supporting `auto`, `exact`, `fuzzy`, `ast`, and `semantic` modes.

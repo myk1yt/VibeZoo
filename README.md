@@ -119,7 +119,7 @@ Quickly grasp the project structure and find symbols or functions accurately usi
 
 **Search result caching**: Results are cached with a 20s TTL via the existing FileCache L1 layer.
 
-### 1.3 Reviewer (2 Tools) — Code Quality Check
+### 1.3 Reviewer (1 Tool) — Code Quality Check
 Automatically check code quality before submitting a PR. Integrates with ESLint and go vet.
 
 ### 1.4 Tester (2 Tools) — Test Generation and Coverage
@@ -141,13 +141,13 @@ If a build fails, the LLM automatically analyzes the error, looks up past fix pa
 
 New **`fix_loop` intent** — the [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py) can now route bug-fix and error-recovery scenarios directly to the Fix Loop workflow, enabling seamless transitions from intent detection to autonomous repair.
 
-### 1.8 Integrated (4 Tools) — Unified Scenario Tools
+### 1.8 Integrated (1 Tool) — Unified Scenario Tools
 Combines multiple tools into a single workflow. Just say "Review this", and it runs search → review → quality → patterns sequentially.
 
 ### 1.9 Analysis (4 Tools) — Code Explanation and Diff Analysis
 Explains what specific code lines do, analyzes git diffs, supports PR reviews, and proposes bulk refactoring.
 
-### 1.10 Knowledge (2 Tools) — Project Knowledge Memory
+### 1.10 Knowledge (3 Tools) — Project Knowledge Memory
 Saves project structures and patterns into Crow Memory and recalls them later.
 
 ### 1.11 Preferences (2 Tools) — User Preference Learning
@@ -164,7 +164,7 @@ Used to reference external documentation or search for the latest technical info
 ### 1.13 SSA (1 Tool) — Spatial Statistical Analysis
 Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, including OCR.
 
-### 1.14 Editor (2 Tools) — AI-Safe File Editing
+### 1.14 Editor (1 Tool) — AI-Safe File Editing
 Apply patches to files without worrying about missing parameters. The [`apply_patch`](mcp-servers/bridge/tools/editor.py) tool:
 - **`path` optional**: Auto-detects target file from diff content
 - **Fuzzy matching**: Auto-corrects up to 85% similarity (ignores whitespace/indentation differences)

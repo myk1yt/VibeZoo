@@ -389,7 +389,6 @@ mcp-servers/bridge/ (legacy mirror)
 │   ├── feedback.py
 │   ├── file_analyzer.py
 │   ├── fix_loop.py
-│   ├── github_diver.py
 │   ├── integrated.py
 │   ├── knowledge.py
 │   ├── reviewer.py
