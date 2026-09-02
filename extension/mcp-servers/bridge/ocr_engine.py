@@ -15,10 +15,11 @@ from typing import Optional
 _TESSERACT_WINDOWS_PATHS = []
 if os.environ.get("TESSERACT_PATH"):
     _TESSERACT_WINDOWS_PATHS.append(os.environ["TESSERACT_PATH"])
-_TESSERACT_WINDOWS_PATHS.extend([
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-])
+
+for _pf_env in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "LOCALAPPDATA"):
+    _pf_dir = os.environ.get(_pf_env)
+    if _pf_dir:
+        _TESSERACT_WINDOWS_PATHS.append(os.path.join(_pf_dir, "Tesseract-OCR", "tesseract.exe"))
 
 # 사용자 환경변수 PATH에서 tesseract 찾기
 _TESSERACT_PATH: Optional[str] = None

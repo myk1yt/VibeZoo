@@ -39,6 +39,7 @@ from bridge.ast_engine import AstEngine
 from bridge.ast_singleton import get_ast_engine as _get_ast_engine
 from bridge.file_cache import FileCache
 from bridge.tools._base import BaseTool
+from bridge.i18n import t
 
 # ── 싱글톤 인스턴스 ──────────────────────────────────
 

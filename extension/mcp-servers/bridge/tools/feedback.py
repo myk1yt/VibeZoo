@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 from bridge.utils import _markdown_header, _markdown_footer
+from bridge.i18n import t
 
 def register(mcp):
     @mcp.tool()
@@ -17,7 +18,7 @@ def register(mcp):
         """
         valid_categories = ['missing_tool', 'repetitive_task', 'optimization_idea', 'bug_report']
         if category not in valid_categories:
-            return _markdown_header("Feedback Error", "❌") + f"Invalid category. Must be one of: {', '.join(valid_categories)}" + _markdown_footer()
+            return _markdown_header("Feedback Error", "❌") + t("Invalid category. Must be one of: {0}", ', '.join(valid_categories)) + _markdown_footer()
 
         # Write to feedbacks/autonomous_agent_suggestions.jsonl
         feedback_dir = "feedbacks"
@@ -39,10 +40,10 @@ def register(mcp):
             output += f"**Category**: {category}\n"
             output += f"**Description**: {description}\n"
             if suggested_snippet:
-                output += f"**Snippet Attached**: Yes\n"
-            output += "Thank you for the autonomous suggestion. The user will review it.\n"
+                output += f"**{t('Snippet Attached: Yes')}**\n"
+            output += t("Thank you for the autonomous suggestion. The user will review it.") + "\n"
             output += _markdown_footer()
             return output
             
         except Exception as e:
-            return _markdown_header("Feedback Error", "❌") + f"Failed to save feedback: {str(e)}" + _markdown_footer()
+            return _markdown_header("Feedback Error", "❌") + t("Failed to save feedback: {0}", str(e)) + _markdown_footer()

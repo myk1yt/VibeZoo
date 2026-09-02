@@ -17,6 +17,7 @@ from bridge.utils import (
     _truncate, _atomic_write_json, _npx_cmd,
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
+from bridge.i18n import t
 
 
 def _extract_build_errors(build_output: str) -> list[dict]:

@@ -12,6 +12,7 @@ from typing import Optional
 from bridge.config import (
     VERSION, FIX_REQUEST_FILE, WHITEBOARD_FILE, CHAT_PENDING_FILE,
 )
+from bridge.i18n import t
 from bridge.utils import (
     _markdown_header, _markdown_footer,
     _truncate, _atomic_write_json, _npx_cmd,
@@ -139,7 +140,7 @@ def register(mcp):
             JSON: { status, attempt, maxAttempts, diagnostics, history, pastFixes }
         """
         if not os.path.exists(FIX_REQUEST_FILE):
-            return json.dumps({"status": "idle", "message": "No active fix request", "timestamp": time.time()})
+            return json.dumps({"status": "idle", "message": t("No active fix request"), "timestamp": time.time()})
 
         try:
             with open(FIX_REQUEST_FILE, "r", encoding="utf-8") as f:
@@ -197,7 +198,7 @@ def register(mcp):
                     "exitCode": -1,
                     "diagnostics": [],
                     "success": False,
-                    "error": "No build command detected (package.json not found)",
+                    "error": t("No build command detected (package.json not found)"),
                     "timestamp": time.time(),
                 })
 
@@ -285,7 +286,7 @@ def register(mcp):
             return json.dumps({
                 "exitCode": -1,
                 "success": False,
-                "error": "Build timed out after 60s",
+                "error": t("Build timed out after 60s"),
                 "timestamp": time.time(),
             })
         except Exception as e:
@@ -340,9 +341,9 @@ def register(mcp):
         if result["whiteboard_annotations"] or result["pending_messages"]:
             guidance_parts = []
             if result["whiteboard_annotations"]:
-                guidance_parts.append("Whiteboard annotations found")
+                guidance_parts.append(t("Whiteboard annotations found"))
             if result["pending_messages"]:
-                guidance_parts.append("Pending chat messages found")
+                guidance_parts.append(t("Pending chat messages found"))
             result["user_guidance"] = "; ".join(guidance_parts)
             result["should_pause"] = bool(result["pending_messages"])
 

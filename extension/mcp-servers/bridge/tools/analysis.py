@@ -14,6 +14,7 @@ from typing import Optional
 from bridge.config import (
     VERSION, DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS, TS_JS_EXTS,
 )
+from bridge.i18n import t
 from bridge.utils import (
     _markdown_header, _markdown_footer,
     _validate_string, _validate_int, _validate_file_path,
@@ -200,25 +201,25 @@ def register(mcp):
         target = root / file_path
         if not target.exists():
             return (_markdown_header("Code Explanation Error", "❌")
-                    + f"**File not found: `{file_path}`**\n"
+                    + f"**{t('File not found: `{0}`', file_path)}**\n"
                     + _markdown_footer())
 
         content = _read_file_content(target)
         if content is None:
             return (_markdown_header("Code Explanation Error", "❌")
-                    + f"**Cannot read file: `{file_path}`**\n"
+                    + f"**{t('Cannot read file: `{0}`', file_path)}**\n"
                     + _markdown_footer())
 
         lines = content.split("\n")
         if line_number < 1 or line_number > len(lines):
             return (_markdown_header("Code Explanation Error", "❌")
-                    + f"**Line {line_number} is out of range (file has {len(lines)} lines)**\n"
+                    + f"**{t('Line {0} is out of range (file has {1} lines)', line_number, len(lines))}**\n"
                     + _markdown_footer())
 
         line_content = lines[line_number - 1].strip()
         if not line_content:
             return (_markdown_header("Code Explanation", "ℹ️")
-                    + f"Line {line_number} is empty.\n"
+                    + f"{t('Line {0} is empty.', line_number)}\n"
                     + _markdown_footer())
 
         ast_engine = _get_ast_engine()
@@ -439,7 +440,7 @@ def register(mcp):
             diff_output = diff_result.stdout.strip()
 
             if not stat_output:
-                output += "✅ No uncommitted changes detected.\n"
+                output += f"✅ {t('No uncommitted changes detected.')}\n"
                 output += _markdown_footer()
                 return output
 
@@ -506,14 +507,14 @@ def register(mcp):
                                 content = item.get("content", item.get("value", str(item)))
                                 output += f"- `{file_name}`: {content[:200]}\n"
                         else:
-                            output += f"- `{file_name}`: No Crow context found.\n"
+                            output += f"- `{file_name}`: {t('No Crow context found.')}\n"
                     except Exception:
-                        output += f"- `{file_name}`: Could not query Crow.\n"
+                        output += f"- `{file_name}`: {t('Could not query Crow.')}\n"
 
         except FileNotFoundError:
-            output += "❌ Git not available. Make sure git is installed and this is a git repository.\n"
+            output += f"❌ {t('Git not available. Make sure git is installed and this is a git repository.')}\n"
         except subprocess.TimeoutExpired:
-            output += "❌ Git diff timed out.\n"
+            output += f"❌ {t('Git diff timed out.')}\n"
         except Exception as e:
             output += f"❌ Error: {e}\n"
 
@@ -554,7 +555,7 @@ def register(mcp):
             diff_output = diff_result.stdout.strip()
 
             if not stat_output:
-                output += "⚠️ No differences found between branches.\n"
+                output += f"⚠️ {t('No differences found between branches.')}\n"
                 output += _markdown_footer()
                 return output
 
@@ -682,9 +683,9 @@ def register(mcp):
                         output += f"- `{file_name}`: {content[:200]}\n"
 
         except FileNotFoundError:
-            output += "❌ Git not available. Make sure git is installed and this is a git repository.\n"
+            output += f"❌ {t('Git not available. Make sure git is installed and this is a git repository.')}\n"
         except subprocess.TimeoutExpired:
-            output += "❌ Git diff timed out.\n"
+            output += f"❌ {t('Git diff timed out.')}\n"
         except Exception as e:
             output += f"❌ Error: {e}\n"
 
@@ -733,7 +734,7 @@ def register(mcp):
                 occurrences.append(m2.group(1))
 
         if not occurrences:
-            output += "✅ No occurrences found for this pattern.\n"
+            output += f"✅ {t('No occurrences found for this pattern.')}\n"
             output += _markdown_footer()
             return output
 

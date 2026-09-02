@@ -18,6 +18,7 @@ from bridge.utils import (
     _html_to_markdown,
 )
 from bridge.crow_client import try_crow_ingest
+from bridge.i18n import t
 
 logger = logging.getLogger(__name__)
 

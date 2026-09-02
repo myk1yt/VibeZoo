@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from bridge.config import VERSION
+from bridge.i18n import t
 from bridge.utils import (
     _iter_project_files_cached,
     _markdown_footer,
@@ -480,7 +481,8 @@ def _format_failure_report(blocks: list[dict], results: list, file_path: Path, c
         failed_search = failed_block.get("_original_search", failed_block["search"])
         output += "\n### 💡 제안: 파일 현재 상태 기준 SEARCH 블록\n"
         output += f"실패한 블록의 SEARCH 텍스트와 가장 유사한 실제 코드를 찾지 못했습니다.\n"
-        output += f"원본 SEARCH (처음 80자): `{failed_search[:80].replace(chr(10), '\\\\n')}`\n"
+        search_preview_80 = failed_search[:80].replace("\n", "\\n")
+        output += f"원본 SEARCH (처음 80자): `{search_preview_80}`\n"
 
     return output + _markdown_footer()
 
@@ -499,7 +501,7 @@ def _apply_patch_transactional(
     # ── Phase 0: 파싱 및 파일 결정 ──
     blocks = _parse_diff(diff)
     if not blocks:
-        return _markdown_header("Apply Patch Error", "❌") + "**`diff`에서 SEARCH/REPLACE 블록을 찾을 수 없습니다.**\n\n올바른 형식:\n```\n<<<<<<< SEARCH\n찾을 내용\n-------\n교체할 내용\n>>>>>>> REPLACE\n```\n" + _markdown_footer()
+        return _markdown_header("Apply Patch Error", "❌") + f"**{t('No SEARCH/REPLACE blocks found in `diff`.')}**\n" + _markdown_footer()
 
     # 파일 결정
     file_path: Optional[Path] = None
@@ -520,22 +522,22 @@ def _apply_patch_transactional(
                     p.resolve().relative_to(project_root)
                     file_path = p
                 except ValueError:
-                    return _markdown_header("Apply Patch Error", "❌") + f"**경로가 프로젝트 루트를 벗어났습니다:** `{path}`\n" + _markdown_footer()
+                    return _markdown_header("Apply Patch Error", "❌") + f"**{t('Path is outside project root: `{0}`', path)}**\n" + _markdown_footer()
             else:
-                return _markdown_header("Apply Patch Error", "❌") + f"**파일을 찾을 수 없습니다:** `{path}`\n" + _markdown_footer()
+                return _markdown_header("Apply Patch Error", "❌") + f"**{t('File not found:')}** `{path}`\n" + _markdown_footer()
 
     if file_path is None:
         search_sample = blocks[0]["search"][:100]
         candidates = _find_file_by_content(search_sample, target_path or os.getcwd())
         if not candidates:
-            return _markdown_header("Apply Patch Error", "❌") + "**`path`가 지정되지 않았고, `diff` 내용과 일치하는 파일도 찾을 수 없습니다.**\n\n`path`에 파일 경로를 명시적으로 지정해주세요.\n" + _markdown_footer()
+            return _markdown_header("Apply Patch Error", "❌") + f"**{t('`path` not specified and no matching file found in diff content. Please specify `path` explicitly.')}**\n" + _markdown_footer()
         file_path = candidates[0]
 
     # ── 파일 읽기 (D5: 명시적 인코딩) ──
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
-        return _markdown_header("Apply Patch Error", "❌") + f"**파일 읽기 실패:** `{file_path}`\n```\n{e}\n```\n" + _markdown_footer()
+        return _markdown_header("Apply Patch Error", "❌") + f"**{t('File read failed: `{0}`', file_path)}**\n```\n{e}\n```\n" + _markdown_footer()
 
     # ── Ellipsis 전처리 ──
     blocks = _preprocess_blocks(blocks, file_path, content)
@@ -593,7 +595,7 @@ def _apply_patch_transactional(
         try:
             file_path.write_text(virtual, encoding="utf-8")
         except Exception as e:
-            return _markdown_header("Apply Patch Error", "❌") + f"**파일 쓰기 실패:** `{file_path}`\n```\n{e}```\n" + _markdown_footer()
+            return _markdown_header("Apply Patch Error", "❌") + f"**{t('File write failed: `{0}`', file_path)}**\n```\n{e}```\n" + _markdown_footer()
         return _format_success_report(blocks, results, file_path, bak)
     else:
         # virtual 버퍼 폐기 (아무것도 쓰지 않음) — 원자적 롤백

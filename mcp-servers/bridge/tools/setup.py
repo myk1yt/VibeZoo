@@ -23,6 +23,7 @@ if _EXT_ROOT not in sys.path:
 from typing import Optional
 
 from bridge.config import VERSION
+from bridge.i18n import t
 
 
 # ── 상수 ──────────────────────────────────────────────

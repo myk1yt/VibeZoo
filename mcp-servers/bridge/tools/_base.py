@@ -1,5 +1,6 @@
 # VibeZoo Bridge — 도구 기본 클래스 + 공통 데코레이터
 
+from bridge.i18n import t
 
 class BaseTool:
     """도구 기본 클래스 — 검증, 부분 결과, 에러 보고, 점진적 스트리밍"""

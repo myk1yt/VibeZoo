@@ -16,6 +16,7 @@ from typing import Optional
 from bridge.config import (
     VERSION, DEFAULT_EXCLUDE_DIRS, SOURCE_EXTS, TS_JS_EXTS,
 )
+from bridge.i18n import t
 from bridge.utils import (
     _markdown_header, _markdown_footer,
     _validate_string, _validate_int,
@@ -263,7 +264,7 @@ def _run_map_dependencies(target_path: Optional[str] = None) -> str:
         for pm in pkg_managers:
             output += pm + "\n"
     else:
-        output += "- No package manager detected.\n"
+        output += f"- {t('No package manager detected.')}\n"
     output += "\n"
 
     # 순환 참조 탐지
@@ -297,7 +298,7 @@ def _run_map_dependencies(target_path: Optional[str] = None) -> str:
         for cycle in all_cycles:
             output += f"- `{cycle}`\n"
     else:
-        output += "✅ No circular dependencies detected.\n"
+        output += f"✅ {t('No circular dependencies detected.')}\n"
     output += "\n"
 
     # 영향도 분석
@@ -325,7 +326,7 @@ def _run_map_dependencies(target_path: Optional[str] = None) -> str:
     for direct_affected, file_path, grade in impact_entries[:10]:
         output += f"- `{file_path}` → affects **{direct_affected}** file(s) — **{grade}**\n"
     if not impact_entries:
-        output += "- No dependency data for impact analysis.\n"
+        output += f"- {t('No dependency data for impact analysis.')}\n"
     output += "\n"
 
     # Import Count by File
@@ -505,7 +506,7 @@ def _extract_patterns_ast(target_path: Optional[str] = None, min_occurrences: in
         lines.append("")
 
     if len(lines) <= 2:
-        lines.append("- No structural patterns met the minimum occurrence threshold.\n")
+        lines.append(f"- {t('No structural patterns met the minimum occurrence threshold.')}\n")
 
     return "\n".join(lines)
 
@@ -564,7 +565,7 @@ def register(mcp):
             for f, cnt in sorted(file_func_count.items(), key=lambda x: -x[1])[:10]:
                 output += f"- `{f}`: {cnt} functions\n"
         else:
-            output += "- No function definitions found.\n"
+            output += f"- {t('No function definitions found.')}\n"
         output += "\n"
 
         # Fan-in / Fan-out 메트릭 (멀티랭귀지)
@@ -605,7 +606,7 @@ def register(mcp):
             output += f"- `{callee}` ← {count} callers\n"
 
         if not fan_out_list and not fan_in_list:
-            output += "- No call data available.\n"
+            output += f"- {t('No call data available.')}\n"
         output += "\n"
 
         # 데드 코드 감지
@@ -623,7 +624,7 @@ def register(mcp):
             if len(dead_funcs) > 10:
                 output += f"- ... +{len(dead_funcs)-10} more\n"
         else:
-            output += "✅ No dead code detected (or all functions have callers).\n"
+            output += f"✅ {t('No dead code detected (or all functions have callers).')}\n"
         output += "\n"
 
         # Per-File Call Analysis (멀티랭귀지)
@@ -661,9 +662,9 @@ def register(mcp):
 
         if total_calls == 0:
             if processed_files == 0:
-                output += "- No supported source files found (TS/JS/Python/Go/Rust).\n"
+                output += f"- {t('No supported source files found (TS/JS/Python/Go/Rust).')}\n"
             else:
-                output += "- No function calls detected via AST.\n"
+                output += f"- {t('No function calls detected via AST.')}\n"
 
         try_crow_ingest(f"Call graph: {total_calls} calls, {len(dead_funcs)} dead funcs, {len(func_defs)} defs", register="arch")
         output += _markdown_footer()
@@ -711,7 +712,7 @@ def register(mcp):
         allowed_formats = {"markdown", "openapi", "mermaid"}
         if output_format not in allowed_formats:
             return (_markdown_header("Reverse Engineering Error", "❌")
-                    + f"**Invalid format: `{output_format}`. Allowed: {', '.join(allowed_formats)}**\n"
+                    + f"**{t('Invalid format: `{0}`. Allowed: {1}', output_format, ', '.join(allowed_formats))}**\n"
                     + _markdown_footer())
 
         root = Path(get_project_root(target_path))
@@ -771,7 +772,7 @@ def register(mcp):
         for ep in endpoints[:30]:
             output += ep + "\n"
         if not endpoints:
-            output += "- No API endpoints detected.\n"
+            output += f"- {t('No API endpoints detected.')}\n"
 
         # 데이터 모델 (AST 기반 필드 추출)
         output += "\n## Data Models\n\n"
@@ -815,13 +816,13 @@ def register(mcp):
                         relation_count += 1
                         output += f"- `{model_name}` → `{ftype}` ({card}) via `{f['name']}`\n"
             if relation_count == 0:
-                output += "- No explicit model relationships detected.\n"
+                output += f"- {t('No explicit model relationships detected.')}\n"
         else:
             for m in models[:20]:
                 output += m + "\n"
 
         if not models and not all_fields:
-            output += "- No data models detected.\n"
+            output += f"- {t('No data models detected.')}\n"
 
         # 형식별 출력
         if output_format == "mermaid":

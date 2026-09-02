@@ -29,6 +29,7 @@ from bridge.utils import (
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
 from bridge.ast_singleton import get_ast_engine as _get_ast_engine
+from bridge.i18n import t
 
 
 # ── AST 기반 복잡도/중첩 계산 ────────────────────────
@@ -120,7 +121,7 @@ def _review_project_core(target_path: Optional[str] = None, mode: str = "quality
     if target_path is None:
         target_path = os.getcwd()
     root = Path(get_project_root(target_path))
-    output = _markdown_header("Code Quality Check")
+    output = _markdown_header(t("Code Quality Check"))
 
     source_files = list(_iter_project_files_cached(root, extensions=SOURCE_EXTS, exclude_dirs=DEFAULT_EXCLUDE_DIRS, include_names=CONFIG_FILES))
     total_files = len(source_files)
@@ -190,7 +191,7 @@ def _review_project_core(target_path: Optional[str] = None, mode: str = "quality
         else:
             file_grades[rel] = "F"
 
-    output += "## Quality Metrics\n\n"
+    output += f"## {t('Quality Metrics')}\n\n"
     output += f"- Source files: {total_files}\n"
     output += f"- Total lines: {total_lines}\n"
     output += f"- Functions: {func_count_total}\n"
@@ -290,19 +291,19 @@ def _review_project_core(target_path: Optional[str] = None, mode: str = "quality
         grade = "A+"
         grade_desc = "Perfect"
 
-    output += f"\n## Quality Grade\n\n"
-    output += f"- **Grade**: `{grade}` ({grade_desc})\n"
-    output += f"- **Score**: {score:.1f}/100\n"
-    output += f"- **Issues found**: {issues_found}\n\n"
+    output += f"\n## {t('Quality Grade')}\n\n"
+    output += f"- **{t('Grade')}**: `{grade}` ({grade_desc})\n"
+    output += f"- **{t('Score')}**: {score:.1f}/100\n"
+    output += f"- **{t('Issues found')}**: {issues_found}\n\n"
 
     # 파일별 품질 등급 (상위/하위 5개)
     if file_grades:
         sorted_grades = sorted(file_grades.items(), key=lambda x: x[1])
-        output += "## File-by-File Quality Grades\n\n"
-        output += "### Top 5 Best\n\n"
+        output += f"## {t('File-by-File Quality Grades')}\n\n"
+        output += f"### {t('Top 5 Best')}\n\n"
         for fname, fgrade in sorted_grades[:5]:
             output += f"- `{fname}` → **{fgrade}**\n"
-        output += "\n### Bottom 5 Worst\n\n"
+        output += f"\n### {t('Bottom 5 Worst')}\n\n"
         for fname, fgrade in sorted_grades[-5:]:
             output += f"- `{fname}` → **{fgrade}**\n"
         output += "\n"
@@ -315,11 +316,11 @@ def _review_project_core(target_path: Optional[str] = None, mode: str = "quality
             if result.stdout:
                 output += f"## ESLint\n\n```\n{_truncate(result.stdout, 2000)}\n```\n"
             else:
-                output += "## ESLint\n\n✅ No issues found.\n"
+                output += f"## ESLint\n\n✅ {t('No issues found.')}\n"
         except FileNotFoundError:
-            output += "## ESLint\n\n⚠️ ESLint not installed.\n"
+            output += f"## ESLint\n\n⚠️ {t('ESLint not installed.')}\n"
         except subprocess.TimeoutExpired:
-            output += "## ESLint\n\n⚠️ ESLint timed out (30s).\n"
+            output += f"## ESLint\n\n⚠️ {t('ESLint timed out (30s).')}\n"
         except Exception as e:
             output += f"## ESLint\n\n❌ Error: {e}\n"
 
@@ -342,17 +343,17 @@ def register(mcp):
         """
         err = _validate_file_path(file_path)
         if err:
-            return _markdown_header("Code Review Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Code Review Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
         p = Path(file_path)
         if not p.exists():
             p = Path(os.getcwd()) / file_path
         if not p.exists() or not p.is_file():
-            return _markdown_header("Code Review Error", "❌") + f"**File not found: {file_path}**\n" + _markdown_footer()
+            return _markdown_header(t("Code Review Error"), "❌") + f"**{t('File not found: {0}', file_path)}**\n" + _markdown_footer()
 
         content = _read_file_content(p)
         if content is None:
-            return _markdown_header("Code Review Error", "❌") + f"**Cannot read file: {file_path}**\n" + _markdown_footer()
+            return _markdown_header(t("Code Review Error"), "❌") + f"**{t('Cannot read file: {0}', file_path)}**\n" + _markdown_footer()
 
         lines = content.split("\n")
         ext = p.suffix.lower()
@@ -370,7 +371,7 @@ def register(mcp):
         # M5: 지원하지 않는 파일 형식은 얼리 리턴
         if ext not in REVIEWABLE_EXTS and p.name not in CONFIG_FILES:
             return _markdown_header(f"Review: `{rel}`", "⚠️") \
-                   + f"File type `{ext}` is not reviewable. Supported: {sorted(REVIEWABLE_EXTS)}\n" \
+                   + f"{t('File type `{0}` is not reviewable. Supported: {1}', ext, sorted(REVIEWABLE_EXTS))}\n" \
                    + _markdown_footer()
 
         # ════════════════════════════════════════════════════════════
@@ -982,7 +983,7 @@ def register(mcp):
             issues = filtered_issues
 
         # 출력
-        output += "## Structure\n"
+        output += f"## {t('Structure')}\n"
         if stats["functions"] > 0:
             output += f"- Functions/Methods: {stats['functions']}\n"
         if stats["classes"] > 0:
@@ -992,13 +993,13 @@ def register(mcp):
         if stats["max_depth"] > 0:
             output += f"- Max nesting depth: {stats['max_depth']}\n"
 
-        output += "\n## Issues\n"
+        output += f"\n## {t('Issues')}\n"
         if issues:
             for level, msg in issues:
                 output += f"- {level} {msg}\n"
-            output += f"\n**{len(issues)} issue(s) found.**\n"
+            output += f"\n**{t('{0} issue(s) found.', len(issues))}**\n"
         else:
-            output += "✅ No issues found.\n"
+            output += f"✅ {t('No issues found.')}\n"
 
         try_crow_ingest(f"Reviewed {p.name}: {len(issues)} issues, {stats['functions']} functions", register="style")
         output += _markdown_footer()

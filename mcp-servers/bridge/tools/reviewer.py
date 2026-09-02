@@ -29,6 +29,7 @@ from bridge.utils import (
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 from bridge.ast_engine import AstEngine
 from bridge.ast_singleton import get_ast_engine as _get_ast_engine
+from bridge.i18n import t
 
 
 # ── AST 기반 복잡도/중첩 계산 ────────────────────────

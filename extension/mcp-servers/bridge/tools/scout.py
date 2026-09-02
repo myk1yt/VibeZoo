@@ -39,6 +39,7 @@ from bridge.ast_engine import AstEngine
 from bridge.ast_singleton import get_ast_engine as _get_ast_engine
 from bridge.file_cache import FileCache
 from bridge.tools._base import BaseTool
+from bridge.i18n import t
 
 # ── 싱글톤 인스턴스 ──────────────────────────────────
 
@@ -66,7 +67,7 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
     """search_codebase의 실제 구현 (모듈 레벨)"""
     err = _validate_string(query, "query")
     if err:
-        return _markdown_header("Search Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header(t("Search Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
     # max_results 상한: mode="exact"일 때 500까지 허용
     upper_limit = 500 if mode == "exact" else 200
@@ -79,9 +80,9 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
         import subprocess
         rg_check = subprocess.run(["rg", "--version"], capture_output=True, timeout=2)
         if rg_check.returncode != 0:
-            rg_note = "> ⚠️ **Note:** ripgrep not installed - falling back to os.walk (slower, extension-limited). Install with vibezoo_setup(target=full) for faster search.\n\n"
+            rg_note = f"> ⚠️ **{t('Note:')}** {t('ripgrep not installed - falling back to os.walk (slower, extension-limited). Install with vibezoo_setup(target=full) for faster search.')}\n\n"
     except Exception:
-        rg_note = "> ⚠️ **Note:** ripgrep not installed - falling back to os.walk (slower, extension-limited). Install with vibezoo_setup(target=full) for faster search.\n\n"
+        rg_note = f"> ⚠️ **{t('Note:')}** {t('ripgrep not installed - falling back to os.walk (slower, extension-limited). Install with vibezoo_setup(target=full) for faster search.')}\n\n"
 
     if target_path and not Path(target_path).exists():
         rg_note += f"<!-- WARNING: target_path '{target_path}' not found, using current directory -->\n"
@@ -113,15 +114,16 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
                 search_results = rank_by_embedding(
                     query_vec[0], search_results, embed_client.embed
                 )[:max_results]
-                semantic_note = "> 🧠 semantic: embedding-based ranking (rank_source=\"embedding\")\n\n"
+                msg = t('semantic: embedding-based ranking (rank_source="embedding")')
+                semantic_note = f"> 🧠 {msg}\n\n"
             else:
                 ranker = ResultRanker()
                 search_results = ranker.rank(query, search_results, context_lines)[:max_results]
-                semantic_note = "> ⚠️ semantic: embedding server returned empty, used BM25 keyword ranking\n\n"
+                semantic_note = f"> ⚠️ {t('semantic: embedding server returned empty, used BM25 keyword ranking')}\n\n"
         else:
             ranker = ResultRanker()
             search_results = ranker.rank(query, search_results, context_lines)[:max_results]
-            semantic_note = "> ⚠️ semantic: embedding server unavailable, used BM25 keyword ranking\n\n"
+            semantic_note = f"> ⚠️ {t('semantic: embedding server unavailable, used BM25 keyword ranking')}\n\n"
 
     # AST 검색 (보완)
     ast_engine = _get_ast_engine()
@@ -249,16 +251,16 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
 
     # AST 결과 우선
     if ast_results:
-        output += f"AST matches: {len(ast_results)}. "
+        output += f"{t('AST matches')}: {len(ast_results)}. "
         unique_ast = list(dict.fromkeys(ast_results))[:max_results]
-        output += "\n### Symbols\n"
+        output += f"\n### {t('Symbols')}\n"
         for r in unique_ast:
             output += f"- {r}\n"
 
     # SearchEngine 결과
     if search_results:
-        output += f"Line matches: {len(search_results)} found, showing top {len(search_results)}.\n"
-        output += "\n### Matches\n"
+        output += f"{t('Line matches: {0} found, showing top {1}.', len(search_results), len(search_results))}\n"
+        output += f"\n### {t('Matches')}\n"
         for r in search_results[:max_results]:
             rel_path = _normalize_path(r.get("file", ""))
             line = r.get("line", 0)
@@ -274,7 +276,7 @@ def _search_codebase_impl(query: str, file_patterns: Optional[str] = None,
             output += "\n"
 
     if not ast_results and not search_results:
-        output += "No matches.\n"
+        output += f"{t('No matches.')}\n"
 
     try_crow_ingest(f"Search: {query} → {len(ast_results)} AST + {len(search_results)} line matches",
                    register="life_context")
@@ -286,7 +288,7 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
     """find_references의 실제 구현 (모듈 레벨)"""
     err = _validate_string(symbol, "symbol")
     if err:
-        return _markdown_header("Find References Error", "❌") + f"**{err}**\n" + _markdown_footer()
+        return _markdown_header(t("Find References Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
     # SRF: Precompile a word-boundary regex so that searching for a short symbol
     # like "io" does NOT match substrings inside "action", "configuration", etc.
@@ -364,14 +366,14 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
     output = _markdown_header(f'References: `{symbol}`')
 
     if definitions:
-        output += f"## 📍 Definition ({len(definitions)})\n"
+        output += f"## 📍 {t('Definition')} ({len(definitions)})\n"
         for d in definitions:
             output += f"- `{d['file']}:{d['line']}` — {d['desc']}\n"
         output += "\n"
 
     if usages:
-        output += f"## 🔗 References ({len(usages)})\n\n"
-        output += "### By Reference Type\n\n"
+        output += f"## 🔗 {t('References')} ({len(usages)})\n\n"
+        output += f"### {t('By Reference Type')}\n\n"
         type_labels = {"call": "📞 Function Calls", "read": "📖 Read Access",
                       "write": "✏️ Write Access", "type_ref": "🔤 Type Reference",
                       "import_ref": "📦 Import Reference"}
@@ -382,10 +384,10 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
                 for item in items[:8]:
                     output += f"- {item}\n"
                 if len(items) > 8:
-                    output += f"- ... +{len(items)-8} more\n"
+                    output += f"- ... +{len(items)-8} {t('more')}\n"
                 output += "\n"
 
-        output += "### By File\n\n"
+        output += f"### {t('By File')}\n\n"
         by_file = defaultdict(list)
         for u in usages:
             by_file[u["file"]].append(u)
@@ -394,11 +396,11 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
             for r in refs[:5]:
                 output += f"- Line {r['line']}: [{r['type']}] `{r['text'][:80]}`\n"
             if len(refs) > 5:
-                output += f"  ... +{len(refs)-5} more\n"
+                output += f"  ... +{len(refs)-5} {t('more')}\n"
             output += "\n"
 
         # Call Chain
-        output += "### Call Chain — Functions using this symbol\n\n"
+        output += f"### {t('Call Chain — Functions using this symbol')}\n\n"
         caller_functions = {}
         for u in usages:
             if u["type"] == "call":
@@ -420,9 +422,9 @@ def _find_references_impl(symbol: str, target_path: Optional[str] = None) -> str
                 lines_str = ", ".join(str(l) for l in cinfo["call_lines"][:5])
                 output += f"- `{cinfo['file']}` → `{cinfo['function']}()` (calls at line(s) {lines_str})\n"
         else:
-            output += "- No call chain data available.\n"
+            output += f"- {t('No call chain data available.')}\n"
     else:
-        output += f"No references found for `{symbol}`.\n"
+        output += f"{t('No references found for `{0}`.', symbol)}\n"
 
     output += _markdown_footer()
     return output
@@ -459,7 +461,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
 
     total_files = len(all_files)
 
-    output = _markdown_header("Architecture Analysis")
+    output = _markdown_header(t("Architecture Analysis"))
     output += f"**Project**: `{root.name}`\n"
     output += f"**Tech Stack**: {', '.join(found_techs) if found_techs else 'Auto-detect failed'}\n"
     output += f"**Mode**: `{mode}`  \n**Max tokens**: `{max_tokens if max_tokens > 0 else 'unlimited'}`\n\n"
@@ -494,7 +496,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
         dep_output = _run_map_dependencies(target_path=root_str)
         has_cycles = "✅ No circular dependencies" not in dep_output
 
-        output += "## Summary\n\n"
+        output += f"## {t('Summary')}\n\n"
         output += f"- **Source files**: {total_files}\n"
         output += f"- **Total lines**: ~{total_lines}\n"
         if entries:
@@ -505,7 +507,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
         output += f"- **Circular dependencies**: {'⚠️ Yes' if has_cycles else '✅ No'}\n\n"
 
         # 주요 발견
-        output += "### Key Findings\n"
+        output += f"### {t('Key Findings')}\n"
         ext_summary = []
         for ext, count in sorted(ext_count.items(), key=lambda x: -x[1])[:3]:
             ext_summary.append(f"`{ext}`: {count}")
@@ -546,7 +548,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
                     entries.append(rel)
         entries = entries[:5]
         if entries:
-            output += "## Entry Points\n"
+            output += f"## {t('Entry Points')}\n"
             for e in entries:
                 output += f"- `{e}`\n"
             output += "\n"
@@ -555,8 +557,8 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
         ext_count = defaultdict(int)
         for p in all_files:
             ext_count[p.suffix] += 1
-        output += "## Code Metrics\n\n"
-        output += "### File Type Distribution\n"
+        output += f"## {t('Code Metrics')}\n\n"
+        output += f"### {t('File Type Distribution')}\n"
         for ext, count in sorted(ext_count.items(), key=lambda x: -x[1]):
             output += f"- `{ext}`: {count} files\n"
 
@@ -567,7 +569,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
                 total_lines += len(p.read_text(encoding="utf-8", errors="ignore").split("\n"))
             except Exception:
                 pass
-        output += "\n### Basic Stats\n"
+        output += f"\n### {t('Basic Stats')}\n"
         output += f"- Source files: {total_files}\n"
         output += f"- Total lines: ~{total_lines}\n"
         if found_techs:
@@ -578,14 +580,14 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
         if streaming:
             output += BaseTool.progress_chunk(
                 "1/2", 50,
-                "🏗️ 기본 정보 확인 완료 — 의존성 분석 및 git 트렌드는 아래에 계속됩니다..."
+                t("🏗️ 기본 정보 확인 완료 — 의존성 분석 및 git 트렌드는 아래에 계속됩니다...")
             )
-            output += "> **의존성 분석 및 git 트렌드는 아래에 계속됩니다...**\n\n"
+            output += f"> **{t('의존성 분석 및 git 트렌드는 아래에 계속됩니다...')}**\n\n"
 
         # ── Stage 2: 의존성 분석 + git 트렌드 ──
 
         # Import 기반 레이어 자동 발견
-        output += "## Auto-Discovered Layers (import-based)\n\n"
+        output += f"## {t('Auto-Discovered Layers (import-based)')}\n\n"
         dir_import_count = defaultdict(int)
         for p in all_files:
             content = _read_file_content(p)
@@ -609,11 +611,11 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
             for dir_name, count in top_dirs:
                 output += f"- **{dir_name}/** → imported by {count} files\n"
         else:
-            output += "- No significant import-based layers detected.\n"
+            output += f"- {t('No significant import-based layers detected.')}\n"
         output += "\n"
 
         # 기술 부채 진단
-        output += "## Technical Debt Diagnosis\n\n"
+        output += f"## {t('Technical Debt Diagnosis')}\n\n"
         debt_items = []
         has_cycles = "✅ No circular dependencies" not in dep_output
         if has_cycles:
@@ -630,11 +632,11 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
             for item in debt_items:
                 output += f"- {item}\n"
         else:
-            output += "- ✅ No significant technical debt detected.\n"
+            output += f"- ✅ {t('No significant technical debt detected.')}\n"
         output += "\n"
 
         # Dependency Metrics
-        output += "## Dependency Metrics\n"
+        output += f"## {t('Dependency Metrics')}\n"
         if highest_deps:
             output += f"- **Most imported files** (hub modules):\n"
             for fpath, count in highest_deps[:5]:
@@ -642,7 +644,7 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
         output += f"- **Circular dependencies**: {'⚠️ Detected' if has_cycles else '✅ None'}\n\n"
 
         # Git 활동 트렌드
-        output += "### Change Trend (git log)\n"
+        output += f"### {t('Change Trend (git log)')}\n"
         try:
             git_result = subprocess.run(
                 ["git", "log", "--oneline", "--since=30.days", "--format=%ad", "--date=short"],
@@ -656,9 +658,9 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
                 if most_active:
                     output += f"- Most active days: {', '.join(f'{d}({c})' for d, c in most_active)}\n"
             else:
-                output += "- No recent git activity found.\n"
+                output += f"- {t('No recent git activity found.')}\n"
         except Exception:
-            output += "- Git history not available.\n"
+            output += f"- {t('Git history not available.')}\n"
         output += "\n"
 
         # 레이어 분류 (path-based)
@@ -686,21 +688,21 @@ def _summarize_architecture_impl(target_path: Optional[str] = None, streaming: b
             elif "templates" in rel or "plans" in rel or "fromscratch" in rel:
                 layers["Documentation/Config"].append(rel)
         if layers:
-            output += "## Layer Structure (path-based)\n"
+            output += f"## {t('Layer Structure (path-based)')}\n"
             for layer_name, files in sorted(layers.items(), key=lambda x: -len(x[1])):
                 if files:
                     output += f"- **{layer_name}** ({len(files)} files)\n"
                     for f in files[:5]:
                         output += f"  - `{f}`\n"
                     if len(files) > 5:
-                        output += f"  - ... +{len(files)-5} more\n"
+                        output += f"  - ... +{len(files)-5} {t('more')}\n"
             output += "\n"
 
         # ── 스트리밍 분기점: Stage 2 완료 ──
         if streaming:
             output += BaseTool.progress_chunk(
                 "2/2", 100,
-                "✅ 아키텍처 분석 완료"
+                t("✅ Architecture analysis complete")
             )
 
     # 캐시 통계 (접힘, full 모드에서도 추가)

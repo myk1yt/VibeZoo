@@ -21,6 +21,7 @@ from bridge.utils import (
     _normalize_path,
     get_project_root,
 )
+from bridge.i18n import t
 # Pylance path fix
 _EXT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _EXT_ROOT not in sys.path:
@@ -480,7 +481,8 @@ def _format_failure_report(blocks: list[dict], results: list, file_path: Path, c
         failed_search = failed_block.get("_original_search", failed_block["search"])
         output += "\n### 💡 제안: 파일 현재 상태 기준 SEARCH 블록\n"
         output += f"실패한 블록의 SEARCH 텍스트와 가장 유사한 실제 코드를 찾지 못했습니다.\n"
-        output += f"원본 SEARCH (처음 80자): `{failed_search[:80].replace(chr(10), '\\\\n')}`\n"
+        search_preview_80 = failed_search[:80].replace("\n", "\\n")
+        output += f"원본 SEARCH (처음 80자): `{search_preview_80}`\n"
 
     return output + _markdown_footer()
 

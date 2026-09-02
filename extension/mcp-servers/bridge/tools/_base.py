@@ -1,5 +1,7 @@
 # VibeZoo Bridge — 도구 기본 클래스 + 공통 데코레이터
 
+from bridge.i18n import t
+
 
 class BaseTool:
     """도구 기본 클래스 — 검증, 부분 결과, 에러 보고, 점진적 스트리밍"""
@@ -11,7 +13,7 @@ class BaseTool:
         err = _validate_file_path(file_path)
         if err:
             from bridge.utils import _markdown_header, _markdown_footer
-            return _markdown_header("Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Error"), "❌") + f"**{err}**\n" + _markdown_footer()
         return ""
 
     @staticmethod
@@ -21,7 +23,7 @@ class BaseTool:
         err = _validate_string(value, name)
         if err:
             from bridge.utils import _markdown_header, _markdown_footer
-            return _markdown_header("Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Error"), "❌") + f"**{err}**\n" + _markdown_footer()
         return ""
 
     @staticmethod

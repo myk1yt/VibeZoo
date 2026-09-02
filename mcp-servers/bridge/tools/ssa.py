@@ -21,6 +21,7 @@ from bridge.utils import (
     _atomic_write_json,
 )
 from bridge.crow_client import try_crow_ingest
+from bridge.i18n import t
 
 
 # ── OpenCV 상태 ─────────────────────────────────────

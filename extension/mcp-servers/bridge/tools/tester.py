@@ -28,6 +28,7 @@ from bridge.tool_context import (
     format_manifest_markdown,
     MANIFEST_GENERATE_TESTS,
 )
+from bridge.i18n import t
 
 
 def register(mcp):
@@ -44,7 +45,7 @@ def register(mcp):
         """
         err = _validate_file_path(source_path)
         if err:
-            return _markdown_header("Test Generation Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Test Generation Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
         root = Path(os.getcwd())
         target = Path(source_path)
@@ -52,11 +53,11 @@ def register(mcp):
             target = root / source_path
 
         if not target.exists() or not target.is_file():
-            return _markdown_header("Test Generation Error", "❌") + f"**File not found: {source_path}**\n" + _markdown_footer()
+            return _markdown_header(t("Test Generation Error"), "❌") + f"**{t('File not found: {0}', source_path)}**\n" + _markdown_footer()
 
         content = _read_file_content(target)
         if content is None:
-            return _markdown_header("Test Generation Error", "❌") + f"**Cannot read file: {source_path}**\n" + _markdown_footer()
+            return _markdown_header(t("Test Generation Error"), "❌") + f"**{t('Cannot read file: {0}', source_path)}**\n" + _markdown_footer()
 
         ext = target.suffix.lower()
         lines = content.split("\n")
@@ -170,12 +171,12 @@ def register(mcp):
         output += f"- **Lines**: {len(lines)}\n\n"
 
         if function_names:
-            output += "### Functions Found\n\n"
+            output += f"### {t('Functions Found')}\n\n"
             for name in function_names:
                 output += f"- `{name}()`\n"
             output += "\n"
 
-        output += "## Boundary Value Test Cases\n\n"
+        output += f"## {t('Boundary Value Test Cases')}\n\n"
         if function_details:
             param_guesses = []
             for fn in function_details[:5]:
@@ -189,24 +190,24 @@ def register(mcp):
                 for fn_name, param_name, param_type in param_guesses:
                     output += f"- `{fn_name}('{param_name}')`: boundary tests → null, empty, valid, invalid, large input\n"
             else:
-                output += "- No parameters detected for boundary analysis.\n"
+                output += f"- {t('No parameters detected for boundary analysis.')}\n"
         else:
-            output += "- No function details available.\n"
+            output += f"- {t('No function details available.')}\n"
         output += "\n"
 
-        output += "## Branch Coverage\n\n"
+        output += f"## {t('Branch Coverage')}\n\n"
         branch_count = 0
         for line in lines:
             if re.search(r'\bif\s*\(', line) or 'else if' in line or 'else' in line.strip()[:4]:
                 branch_count += 1
         output += f"- **Conditional branches detected**: {branch_count}\n"
-        output += "- **Suggested test cases**: test each branch (true/false)\n"
+        output += f"- **{t('Suggested test cases')}**: {t('test each branch (true/false)')}\n"
         switch_count = len(re.findall(r'\bswitch\s*\(', content))
         if switch_count > 0:
             output += f"- **Switch statements**: {switch_count} — test each case including default\n"
         output += "\n"
 
-        output += "## Error Case Generation\n\n"
+        output += f"## {t('Error Case Generation')}\n\n"
         error_indicators = {
             "try-catch": len(re.findall(r'\btry\s*\{', content)),
             "null check": len(re.findall(r'(?:===?\s*null|!==?\s*null|==\s*null)', content)),
@@ -219,13 +220,13 @@ def register(mcp):
                 output += f"- `{name}`: {count} occurrence(s) → add error-handling test\n"
                 has_errors = True
         if not has_errors:
-            output += "- No explicit error handling detected. Add tests for:\n"
-            output += "  - Null/undefined inputs\n"
-            output += "  - Empty collections\n"
-            output += "  - Invalid parameter types\n"
+            output += f"- {t('No explicit error handling detected. Add tests for:')}\n"
+            output += f"  - {t('Null/undefined inputs')}\n"
+            output += f"  - {t('Empty collections')}\n"
+            output += f"  - {t('Invalid parameter types')}\n"
         output += "\n"
 
-        output += "## Mock Data Suggestions\n\n"
+        output += f"## {t('Mock Data Suggestions')}\n\n"
         mock_suggestions = []
         if ext == ".py":
             mock_suggestions.append("- Use `unittest.mock` or `pytest.fixture`")
@@ -257,7 +258,7 @@ def register(mcp):
         for s in mock_suggestions:
             output += s + "\n"
 
-        output += "\n## Expected Behavior Inference\n\n"
+        output += f"\n## {t('Expected Behavior Inference')}\n\n"
         for fn in function_details[:5]:
             fn_name = fn["name"]
             if fn_name.startswith("get") or fn_name.startswith("find") or fn_name.startswith("fetch"):
@@ -276,15 +277,15 @@ def register(mcp):
                 output += f"- `{fn_name}()`: Check function → test return value\n"
 
         if ext in (".ts", ".tsx"):
-            output += "\n## Jest/Vitest Test Structure\n\n"
+            output += f"\n## {t('Jest/Vitest Test Structure')}\n\n"
             output += "```typescript\nimport { describe, it, expect } from 'vitest';\n"
             output += f"import {{ ... }} from './{target.stem}';\n\n"
             output += "describe('', () => {\n  it('should work', () => {\n    // TODO: write test\n  });\n});\n```\n"
         elif ext == ".py":
-            output += "\n## pytest Test Structure\n\n"
+            output += f"\n## {t('pytest Test Structure')}\n\n"
             output += '```python\nimport pytest\n\n\ndef test_():\n    """TODO: write test"""\n    pass\n```\n'
         elif ext == ".go":
-            output += "\n## Go Test Structure\n\n"
+            output += f"\n## {t('Go Test Structure')}\n\n"
             output += '```go\npackage main\n\nimport "testing"\n\nfunc Test_(t *testing.T) {\n\t// TODO: write test\n}\n```\n'
 
         # ── LLM_TASK 섹션 추가 ──
@@ -315,7 +316,7 @@ def register(mcp):
             target_path: 분석 대상 경로
         """
         root = Path(get_project_root(target_path))
-        output = _markdown_header("Coverage Analysis")
+        output = _markdown_header(t("Coverage Analysis"))
 
         test_patterns = {
             ".ts": [".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx", "__tests__"],
@@ -358,18 +359,18 @@ def register(mcp):
         total_tests = len(test_files)
         ratio = round(total_tests / max(total_source, 1), 2)
 
-        output += "## Coverage Analysis (no external tools)\n\n"
+        output += f"## {t('Coverage Analysis (no external tools)')}\n\n"
         output += f"- **Source files**: {total_source}\n"
         output += f"- **Test files**: {total_tests}\n"
         output += f"- **Test/Source ratio**: {ratio}\n"
         if total_tests == 0:
-            output += "- ⚠️ **No test files detected.**\n"
+            output += f"- ⚠️ **{t('No test files detected.')}**\n"
         elif ratio < 0.3:
             output += f"- ⚠️ Low coverage likely (ratio {ratio} < 0.3)\n"
         elif ratio >= 0.5:
             output += f"- ✅ Decent test presence (ratio {ratio})\n"
 
-        output += "\n## Missing Test Detection\n\n"
+        output += f"\n## {t('Missing Test Detection')}\n\n"
         untested_sources = [src for src in source_files if src not in source_to_test]
         if untested_sources:
             output += f"⚠️ {len(untested_sources)} source files have NO corresponding test:\n\n"
@@ -377,19 +378,19 @@ def register(mcp):
                 output += f"- `{src}`\n"
             if len(untested_sources) > 10:
                 output += f"- ... +{len(untested_sources)-10} more\n"
-            output += "\n> Tip: Create test files following naming conventions (`.test.ts`, `_test.go`, `test_*.py`)\n"
+            output += f"\n> {t('Tip: Create test files following naming conventions (`.test.ts`, `_test.go`, `test_*.py`)')}\n"
         else:
-            output += "✅ All source files have corresponding test files.\n"
+            output += f"✅ {t('All source files have corresponding test files.')}\n"
         output += "\n"
 
         if test_files:
-            output += "### Test Files\n"
+            output += f"### {t('Test Files')}\n"
             for tf in test_files[:10]:
                 output += f"- `{tf}`\n"
             if len(test_files) > 10:
-                output += f"- ... +{len(test_files)-10} more\n"
+                output += f"- ... +{len(test_files)-10} {t('more')}\n"
         if test_to_source:
-            output += "\n### Test → Source Mapping\n\n"
+            output += f"\n### {t('Test → Source Mapping')}\n\n"
             for test_f, src_list in list(test_to_source.items())[:5]:
                 output += f"- `{test_f}` → {', '.join(src_list[:3])}\n"
 
@@ -418,7 +419,7 @@ def register(mcp):
                 pass
 
         if not ext_tool_used and (root / "package.json").exists() or py_indicator:
-            output += "\n> ℹ️ External coverage tool not available. Analysis based on file presence.\n"
+            output += f"\n> ℹ️ {t('External coverage tool not available. Analysis based on file presence.')}\n"
 
         try_crow_ingest(json.dumps({"coverage_ratio": ratio, "source": total_source, "tests": total_tests, "untested": len(untested_sources)}), register="context")
         output += _markdown_footer()

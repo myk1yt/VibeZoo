@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 from bridge.utils import _markdown_header, _markdown_footer
+from bridge.i18n import t
 
 def register(mcp):
     @mcp.tool()

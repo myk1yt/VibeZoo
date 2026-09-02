@@ -29,6 +29,7 @@ from bridge.tool_context import (
     make_explain_code_context,
     format_manifest_markdown,
 )
+from bridge.i18n import t
 
 
 def _get_git_blame(target: Path, line_number: int) -> dict:

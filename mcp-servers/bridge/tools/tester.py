@@ -28,6 +28,7 @@ from bridge.tool_context import (
     format_manifest_markdown,
     MANIFEST_GENERATE_TESTS,
 )
+from bridge.i18n import t
 
 
 def register(mcp):

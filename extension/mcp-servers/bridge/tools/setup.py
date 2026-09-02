@@ -23,6 +23,7 @@ if _EXT_ROOT not in sys.path:
 from typing import Optional
 
 from bridge.config import VERSION
+from bridge.i18n import t
 
 
 # ── 상수 ──────────────────────────────────────────────
@@ -336,7 +337,7 @@ class SetupManager:
                         "tool": tool_name,
                         "name": tool_info.get("name", tool_name),
                         "url": tool_info.get("url", ""),
-                        "note": f"자동 설치 실패. 위 URL에서 수동 설치하세요.",
+                        "note": t("자동 설치 실패. 위 URL에서 수동 설치하세요."),
                     })
 
         return result
@@ -514,7 +515,7 @@ class SetupManager:
             return {
                 "status": "dry_run",
                 "path": "",
-                "detail": f"Would create/update .roo/mcp.json with {server_name} SSE on port {port}",
+                "detail": t("Would create/update .roo/mcp.json with {0} SSE on port {1}", server_name, port),
             }
 
         mcp_entry = {
@@ -531,7 +532,7 @@ class SetupManager:
             return {
                 "status": "error",
                 "path": "",
-                "detail": "No suitable location found for .roo/mcp.json",
+                "detail": t("No suitable location found for .roo/mcp.json"),
             }
 
         target_path = candidates[0]
@@ -562,7 +563,7 @@ class SetupManager:
             return {
                 "status": status,
                 "path": str(target_path),
-                "detail": f"Server '{server_name}' → http://127.0.0.1:{port}/sse",
+                "detail": t("Server '{0}' → http://127.0.0.1:{1}/sse", server_name, port),
             }
         except Exception as e:
             return {
@@ -620,7 +621,7 @@ class SetupManager:
             return {
                 "status": "dry_run",
                 "path": "",
-                "detail": "Would create/update .zoo/config.json",
+                "detail": t("Would create/update .zoo/config.json"),
             }
 
         zoo_dir = Path.cwd() / ".zoo"
@@ -672,7 +673,7 @@ class SetupManager:
             return {
                 "status": status,
                 "path": str(config_path),
-                "detail": f"Version {VERSION} configured",
+                "detail": t("Version {0} configured", VERSION),
             }
         except Exception as e:
             return {
@@ -797,7 +798,7 @@ class SetupManager:
             return {
                 "status": "dry_run",
                 "path": "",
-                "detail": "Would add VibeZoo custom modes to Zoo Code settings",
+                "detail": t("Would add VibeZoo custom modes to Zoo Code settings"),
                 "added_modes": [],
             }
 
@@ -814,7 +815,7 @@ class SetupManager:
             return {
                 "status": "error",
                 "path": "",
-                "detail": f"Template not found: {template_path}",
+                "detail": t("Template not found: {0}", template_path),
                 "added_modes": [],
             }
 
@@ -829,7 +830,7 @@ class SetupManager:
             return {
                 "status": "error",
                 "path": str(target_path),
-                "detail": f"Failed to read template: {e}",
+                "detail": t("Failed to read template: {0}", e),
                 "added_modes": [],
             }
 
@@ -840,7 +841,7 @@ class SetupManager:
             return {
                 "status": "error",
                 "path": str(target_path),
-                "detail": "No mode blocks found in template",
+                "detail": t("No mode blocks found in template"),
                 "added_modes": [],
             }
 
@@ -857,7 +858,7 @@ class SetupManager:
                 return {
                     "status": "error",
                     "path": str(target_path),
-                    "detail": f"Failed to read target file: {e}",
+                    "detail": t("Failed to read target file: {0}", e),
                     "added_modes": [],
                 }
 
@@ -872,7 +873,7 @@ class SetupManager:
             return {
                 "status": "skipped",
                 "path": str(target_path),
-                "detail": "All VibeZoo modes already present in custom_modes.yaml",
+                "detail": t("All VibeZoo modes already present in custom_modes.yaml"),
                 "added_modes": [],
             }
 
@@ -890,14 +891,14 @@ class SetupManager:
             return {
                 "status": status,
                 "path": str(target_path),
-                "detail": f"Added {len(added_modes)} mode(s): {', '.join(added_modes)}",
+                "detail": t("Added {0} mode(s): {1}", len(added_modes), ', '.join(added_modes)),
                 "added_modes": added_modes,
             }
         except Exception as e:
             return {
                 "status": "error",
                 "path": str(target_path),
-                "detail": f"Failed to write: {e}",
+                "detail": t("Failed to write: {0}", e),
                 "added_modes": [],
             }
 
@@ -912,7 +913,7 @@ class SetupManager:
             })
             return {
                 "status": "dry_run",
-                "detail": "Would download MiniCPM-V-4_6-Q5_K_M.gguf and mmproj-model-f16.gguf (approx 6.5GB)",
+                "detail": t("Would download MiniCPM-V-4_6-Q5_K_M.gguf and mmproj-model-f16.gguf (approx 6.5GB)"),
             }
         
         try:
@@ -920,7 +921,7 @@ class SetupManager:
         except ImportError:
             return {
                 "status": "error",
-                "detail": "huggingface_hub package not installed. Skipping model download.",
+                "detail": t("huggingface_hub package not installed. Skipping model download."),
             }
             
         try:
@@ -942,12 +943,12 @@ class SetupManager:
                 
             return {
                 "status": "success",
-                "detail": "Vision AI models downloaded and verified successfully.",
+                "detail": t("Vision AI models downloaded and verified successfully."),
             }
         except Exception as e:
             return {
                 "status": "error",
-                "detail": f"Model download failed: {str(e)}",
+                "detail": t("Model download failed: {0}", str(e)),
             }
 
     # ── 보고서 생성 ────────────────────────────────────
@@ -976,7 +977,7 @@ class SetupManager:
                     note = PIP_OPTIONAL[pkg_name]
             lines.append(f"| {pkg_name} | ✅ Installed | {note} |")
         for pkg in pip.get("skipped", []):
-            note = PIP_OPTIONAL.get(pkg, "Already installed")
+            note = PIP_OPTIONAL.get(pkg, t("Already installed"))
             lines.append(f"| {pkg} | ⚡ Skipped | {note} |")
         for fail in pip.get("failed", []):
             pkg_name = fail.get("package", "?")
@@ -1207,7 +1208,7 @@ def register(mcp):
             diag = manager.get_diagnostics()
             plan_lines: list[str] = []
             plan_lines.append("# 🔍 VibeZoo Setup — Dry Run Plan\n")
-            plan_lines.append(f"> **Target**: `{target}` | No changes will be made.\n")
+            plan_lines.append(f"> **{t('Target')}**: `{target}` | {t('No changes will be made.')}\n")
             plan_lines.append(diag)
 
             plan_lines.append("\n### 📋 Installation Plan\n")

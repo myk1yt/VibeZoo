@@ -21,6 +21,7 @@ from bridge.utils import (
     _atomic_write_json,
 )
 from bridge.crow_client import try_crow_ingest
+from bridge.i18n import t
 
 
 # ── OpenCV 상태 ─────────────────────────────────────
@@ -461,18 +462,18 @@ def _ssim_analyze(image_path1: str, image_path2: str = None) -> str:
     image_path2가 없으면 image_path1의 self-SSIM (블러/노이즈 감지).
     """
     if not _CV2_AVAILABLE:
-        return "SSIM: OpenCV not available."
+        return t("SSIM: OpenCV not available.")
 
     img1 = _imread_korean_safe(image_path1)
     if img1 is None:
-        return f"SSIM: Cannot read image: {image_path1}"
+        return t("SSIM: Cannot read image: {0}", image_path1)
 
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
 
     if image_path2:
         img2 = _imread_korean_safe(image_path2)
         if img2 is None:
-            return f"SSIM: Cannot read image: {image_path2}"
+            return t("SSIM: Cannot read image: {0}", image_path2)
         gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
         # 크기 맞추기
@@ -518,15 +519,15 @@ def _ssim_analyze(image_path1: str, image_path2: str = None) -> str:
     lines.append(f"- SSIM: {ssim_score:.4f}")
 
     if ssim_score > 0.95:
-        lines.append("- Verdict: Nearly identical (or already very smooth)")
+        lines.append(f"- {t('Verdict:')} {t('Nearly identical (or already very smooth)')}")
     elif ssim_score > 0.85:
-        lines.append("- Verdict: Very similar (minor differences)")
+        lines.append(f"- {t('Verdict:')} {t('Very similar (minor differences)')}")
     elif ssim_score > 0.70:
-        lines.append("- Verdict: Moderately similar (noticeable differences)")
+        lines.append(f"- {t('Verdict:')} {t('Moderately similar (noticeable differences)')}")
     elif ssim_score > 0.50:
-        lines.append("- Verdict: Low similarity (significant differences)")
+        lines.append(f"- {t('Verdict:')} {t('Low similarity (significant differences)')}")
     else:
-        lines.append("- Verdict: Very different images")
+        lines.append(f"- {t('Verdict:')} {t('Very different images')}")
 
     return "\n".join(lines)
 
@@ -654,8 +655,8 @@ def register(mcp):
             마크다운 형식의 이미지 분석 보고서 (SSA + OCR 통합)
         """
         if not _CV2_AVAILABLE:
-            return (_markdown_header("SSA Error", "❌")
-                    + "**OpenCV not installed.** Run: `pip install opencv-contrib-python-headless numpy`\n"
+            return (_markdown_header(t("SSA Error"), "❌")
+                    + f"**{t('OpenCV not installed.')}** {t('Run:')} `pip install opencv-contrib-python-headless numpy`\n"
                     + _markdown_footer())
 
         if detail not in ("auto", "quick", "full"):
@@ -668,9 +669,9 @@ def register(mcp):
             # 한글 경로 지원: cv2.imread 대신 cv2.imdecode 사용
             img_raw = _imread_korean_safe(image_path)
             if img_raw is None:
-                return (_markdown_header("SSA Error", "❌")
-                        + f"**Cannot read image:** `{image_path}`\n"
-                        + "Try: check file path (Korean characters?) or file format.\n"
+                return (_markdown_header(t("SSA Error"), "❌")
+                        + f"**{t('Cannot read image:')}** `{image_path}`\n"
+                        + f"{t('Try: check file path (Korean characters?) or file format.')}\n"
                         + _markdown_footer())
 
             orig_h, orig_w = img_raw.shape[:2]
@@ -735,13 +736,13 @@ def register(mcp):
                         if not ocr_section:
                             ocr_section = _format_ocr_section(ocr_result, img.shape)
                     else:
-                        ocr_section = ("\n### OCR\n"
-                                       "- ⚠️ OCR not available. Install Tesseract: "
-                                       "`pip install pytesseract` + system package, "
-                                       "or `pip install paddleocr`\n")
+                        ocr_section = (f"\n### {t('OCR')}\n"
+                                       f"- ⚠️ {t('OCR not available. Install Tesseract:')} "
+                                       f"`pip install pytesseract` + {t('system package, ')}"
+                                       f"{t('or')} `pip install paddleocr`\n")
                 except ImportError:
-                    ocr_section = ("\n### OCR\n"
-                                   "- ⚠️ OCR module not loaded. Run `vibezoo_setup()` to install.\n")
+                    ocr_section = (f"\n### {t('OCR')}\n"
+                                   f"- ⚠️ {t('OCR module not loaded. Run `vibezoo_setup()` to install.')}\n")
                 except Exception:
                     # OCR 실패 시 조용히 스킵 (에러 아님)
                     pass
@@ -764,8 +765,8 @@ def register(mcp):
             return report
 
         except Exception as e:
-            return (_markdown_header("SSA Error", "❌")
-                    + f"**Analysis failed:** {e}\n" + _markdown_footer())
+            return (_markdown_header(t("SSA Error"), "❌")
+                    + f"**{t('Analysis failed:')}** {e}\n" + _markdown_footer())
 
 # ── OCR 결과 포맷팅 ──────────────────────────────────
 
@@ -819,8 +820,8 @@ def _format_ocr_section(ocr_result: dict, img_shape: tuple) -> str:
     else:
         lines.append(f"- **Engine**: {engine}")
         if ocr_result.get("text") is not None:
-            lines.append("- No text detected in image.")
+            lines.append(f"- {t('No text detected in image.')}")
         else:
-            lines.append("- OCR not performed.")
+            lines.append(f"- {t('OCR not performed.')}")
 
     return "\n".join(lines)

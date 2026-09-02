@@ -114,6 +114,7 @@ export class SubagentManager {
       env: {
         ...process.env,
         CROW_SERVER_URL: ConfigService.getCrowUrl(),
+        VIBEZOO_LANG: vscode.env.language,
       },
     });
 

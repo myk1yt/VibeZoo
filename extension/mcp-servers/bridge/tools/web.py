@@ -18,6 +18,7 @@ from bridge.utils import (
     _html_to_markdown,
 )
 from bridge.crow_client import try_crow_ingest
+from bridge.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +210,8 @@ class WebSearchEngine:
                 engine = "ddg"
         elif engine not in ("exa", "ddg"):
             self._last_error = (
-                f"WEB/search/001: 알 수 없는 엔진 '{engine}'. "
-                f"auto|exa|ddg 중 하나를 사용하세요."
+                f"WEB/search/001: {t('Unknown engine')} '{engine}'. "
+                f"{t('Use one of auto|exa|ddg.')}"
             )
             return []
 
@@ -223,7 +224,7 @@ class WebSearchEngine:
         except Exception as exc:
             # B.2: Structured error capture instead of silent swallow
             self._last_error = (
-                f"WEB/search/002: 검색 실패 ({engine}): "
+                f"WEB/search/002: {t('Search failed')} ({engine}): "
                 f"{type(exc).__name__}: {exc}"
             )
             logger.error(
@@ -259,7 +260,7 @@ def register(mcp):
         """
         err = _validate_string(url, "url")
         if err:
-            return _markdown_header("Fetch Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Fetch Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
@@ -299,16 +300,16 @@ def register(mcp):
             return output
 
         except urllib.error.HTTPError as e:
-            return (_markdown_header("Fetch Error", "❌")
-                    + f"**HTTP {e.code}**: {e.reason} for `{url}`\n"
+            return (_markdown_header(t("Fetch Error"), "❌")
+                    + f"**HTTP {e.code}**: {e.reason} {t('for')} `{url}`\n"
                     + _markdown_footer())
         except urllib.error.URLError as e:
-            return (_markdown_header("Fetch Error", "❌")
-                    + f"**Connection failed**: {e.reason}\n"
+            return (_markdown_header(t("Fetch Error"), "❌")
+                    + f"**{t('Connection failed')}**: {e.reason}\n"
                     + _markdown_footer())
         except Exception as e:
-            return (_markdown_header("Fetch Error", "❌")
-                    + f"**Error**: {e}\n"
+            return (_markdown_header(t("Fetch Error"), "❌")
+                    + f"**{t('Error')}**: {e}\n"
                     + _markdown_footer())
 
     @mcp.tool
@@ -325,18 +326,18 @@ def register(mcp):
         """
         err = _validate_string(query, "query")
         if err:
-            return _markdown_header("Search Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Search Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
         web_engine = WebSearchEngine()
         results = web_engine.search(query, max_results, engine)
 
         if not results:
-            error_reason = web_engine._last_error or "결과 없음"
+            error_reason = web_engine._last_error or t("No results")
             return (_markdown_header(f"Search: {query}", "⚠️")
-                    + f"**검색 실패: {error_reason}**\n\n"
-                    + "- `engine=auto` (기본): EXA_API_KEY가 있으면 Exa, 없으면 DuckDuckGo 사용\n"
-                    + "- `engine=exa`: Exa 전용 (키 필요)\n"
-                    + "- `engine=ddg`: DuckDuckGo 전용\n"
+                    + f"**{t('Search failed: {0}', error_reason)}**\n\n"
+                    + f"- `engine=auto` ({t('default')}): {t('EXA_API_KEY present → Exa, absent → DuckDuckGo')}\n"
+                    + f"- `engine=exa`: {t('Exa only (key required)')}\n"
+                    + f"- `engine=ddg`: {t('DuckDuckGo only')}\n"
                     + _markdown_footer())
 
         # Determine which engine was actually used
