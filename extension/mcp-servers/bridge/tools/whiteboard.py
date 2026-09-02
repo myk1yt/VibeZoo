@@ -24,6 +24,7 @@ from bridge.utils import (
     _truncate,
 )
 from bridge.crow_client import try_crow_ingest
+from bridge.i18n import t
 
 # ── 드롭존 HTML (Webview 내장) ──────────────────────
 
@@ -780,10 +781,10 @@ $graphics.Dispose()
             pass
 
     if img is None:
-        return (_markdown_header("Screen Capture Error", "❌")
-                + "**No screen capture method available.**\n\n"
-                + "Install Pillow: `pip install Pillow`\n"
-                + "Or on Windows: ensure PowerShell 5+ is available.\n"
+        return (_markdown_header(t("Screen Capture Error"), "❌")
+                + f"**{t('No screen capture method available.')}**\n\n"
+                + f"{t('Install Pillow:')} `pip install Pillow`\n"
+                + f"{t('Or on Windows: ensure PowerShell 5+ is available.')}\n"
                 + _markdown_footer())
 
     try:
@@ -801,15 +802,15 @@ $graphics.Dispose()
         }
         _atomic_write_json(WHITEBOARD_FILE, data, indent=2)
 
-        output = (_markdown_header("Screen Capture")
-                  + f"Screen captured ({width}x{height}). Content saved to whiteboard.\n\n"
-                  + f"Use `get_whiteboard_state()` to view the captured content.\n")
+        output = (_markdown_header(t("Screen Capture"))
+                  + f"{t('Screen captured ({0}x{1}). Content saved to whiteboard.', width, height)}\n\n"
+                  + f"{t('Use `get_whiteboard_state()` to view the captured content.')}\n")
         try_crow_ingest(f"Screen captured: {width}x{height}", register="context")
         output += _markdown_footer()
         return output
     except Exception as e:
-        return (_markdown_header("Screen Capture Error", "❌")
-                + f"**Capture failed:** `{e}`\n"
+        return (_markdown_header(t("Screen Capture Error"), "❌")
+                + f"**{t('Capture failed:')}** `{e}`\n"
                 + _markdown_footer())
 
 
@@ -835,10 +836,10 @@ def _open_dropzone_in_webview() -> str:
     }
     _atomic_write_json(DZ_ACTION_FILE, data, indent=2)
 
-    return (_markdown_header("File Drop Zone", "📎")
-            + "Drop zone opened. Upload a file and I'll check it.\n\n"
-            + "File saved to: `~/.vibezoo-uploads/{date}/`\n"
-            + "After upload, call `check_uploaded_files()` to see the latest uploads.\n"
+    return (_markdown_header(t("File Drop Zone"), "📎")
+            + f"{t('Drop zone opened. Upload a file and I will check it.')}\n\n"
+            + f"{t('File saved to:')} `~/.vibezoo-uploads/{{date}}/`\n"
+            + f"{t('After upload, call `check_uploaded_files()` to see the latest uploads.')}\n"
             + _markdown_footer())
 
 
@@ -851,11 +852,11 @@ def _open_file_picker() -> str:
     }
     _atomic_write_json(WHITEBOARD_ACTION_FILE, data, indent=2)
 
-    return (_markdown_header("File Picker", "📁")
-            + "File picker opened in VS Code Webview.\n\n"
-            + "1. Select an image file from the file picker\n"
-            + "2. File will be saved to `~/.vibezoo-cache/dropped_image.png`\n"
-            + "3. Then call `aggregate_spatial_pixels(image_path='...')` to analyze\n"
+    return (_markdown_header(t("File Picker"), "📁")
+            + f"{t('File picker opened in VS Code Webview.')}\n\n"
+            + f"1. {t('Select an image file from the file picker')}\n"
+            + f"2. {t('File will be saved to')} `~/.vibezoo-cache/dropped_image.png`\n"
+            + f"3. {t('Then call `aggregate_spatial_pixels(image_path=...` to analyze')}\n"
             + _markdown_footer())
 
 
@@ -868,16 +869,15 @@ def _generate_whiteboard_suggestions() -> str:
     """화이트보드 상태를 기반으로 분석 제안 블록을 생성합니다.
 
     get_whiteboard_state(analyze=True) 호출 시 상태 텍스트 뒤에 appended 됩니다.
-    auto_analyze_whiteboard() (deprecated)에서도 동일한 내용을 사용합니다.
     """
     parts = [
         "",
-        "### 💡 분석 제안",
-        "화이트보드 내용을 기반으로 다음을 수행할 수 있습니다:",
-        "1. **다이어그램 변환** — 화이트보드 내용을 Mermaid 다이어그램으로 변환",
-        "2. **설명 생성** — 화이트보드 내용에 대한 설명 제공",
-        "3. **코드 생성** — 화이트보드 설계를 기반으로 코드 생성",
-        "4. **개선 제안** — 설계에 대한 피드백 제공",
+        f"### 💡 {t('Analysis Suggestions')}",
+        t("Based on the whiteboard content, you can:"),
+        f"1. **{t('Diagram Conversion')}** — {t('Convert whiteboard content to a Mermaid diagram')}",
+        f"2. **{t('Description Generation')}** — {t('Provide a description of the whiteboard content')}",
+        f"3. **{t('Code Generation')}** — {t('Generate code based on the whiteboard design')}",
+        f"4. **{t('Improvement Suggestions')}** — {t('Provide feedback on the design')}",
     ]
     return "\n".join(parts)
 
@@ -885,18 +885,16 @@ def _generate_whiteboard_suggestions() -> str:
 def _get_whiteboard_state_impl(analyze: bool = False) -> str:
     """화이트보드 상태 조회 구현 (모듈 레벨).
 
-    register() 내부의 MCP 툴 래퍼와 ux_coordinator.py의
-    auto_analyze_whiteboard() 양쪽에서 호출 가능합니다.
+    register() 내부의 MCP 툴 래퍼에서 호출됩니다.
 
     Args:
         analyze: True면 상태 조회 후 분석 제안 블록을 함께 반환합니다.
-                 (이전 auto_analyze_whiteboard()와 동일한 동작)
                  False(기본값)면 상태만 반환합니다.
     """
     try:
         if not os.path.exists(WHITEBOARD_FILE):
-            output = (_markdown_header("Whiteboard State")
-                      + "Whiteboard is empty.\n")
+            output = (_markdown_header(t("Whiteboard State"))
+                      + f"{t('Whiteboard is empty.')}\n")
             if analyze:
                 output += _generate_whiteboard_suggestions() + "\n"
             output += _markdown_footer()
@@ -910,17 +908,16 @@ def _get_whiteboard_state_impl(analyze: bool = False) -> str:
             # 스크린샷 데이터
             width = data.get("width", 0)
             height = data.get("height", 0)
-            output = (_markdown_header("Whiteboard State")
-                      + f"**Screenshot** ({width}×{height}px)\n\n"
-                      + f"Use `aggregate_spatial_pixels()` with the saved image path "
-                      + f"for detailed spatial analysis.\n\n"
-                      + f"Raw JSON (truncated):\n"
+            output = (_markdown_header(t("Whiteboard State"))
+                      + f"**{t('Screenshot')}** ({width}×{height}px)\n\n"
+                      + f"{t('Use `aggregate_spatial_pixels()` with the saved image path for detailed spatial analysis.')}\n\n"
+                      + f"{t('Raw JSON (truncated):')}\n"
                       + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
             try_crow_ingest(f"Whiteboard state: screenshot {width}x{height}", register="context")
             if analyze:
                 output += _generate_whiteboard_suggestions() + "\n"
             else:
-                output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `get_whiteboard_state(analyze=True)`를 호출하세요.\n"
+                output += f"\n> 💡 {t('To auto-analyze whiteboard content, call `get_whiteboard_state(analyze=True)`.')}\n"
             output += _markdown_footer()
             return output
 
@@ -929,16 +926,16 @@ def _get_whiteboard_state_impl(analyze: bool = False) -> str:
             fabric_json = {"objects": data["commands"]}
             try:
                 report = _converter.fabric_json_to_text(fabric_json)
-                output = (_markdown_header("Whiteboard State")
+                output = (_markdown_header(t("Whiteboard State"))
                           + report + "\n\n"
-                          + "**Raw JSON (truncated):**\n"
+                          + f"**{t('Raw JSON (truncated):')}**\n"
                           + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
                 try_crow_ingest(f"Whiteboard state: analyzed {len(data['commands'])} commands",
                                 register="context")
                 if analyze:
                     output += _generate_whiteboard_suggestions() + "\n"
                 else:
-                    output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `get_whiteboard_state(analyze=True)`를 호출하세요.\n"
+                    output += f"\n> 💡 {t('To auto-analyze whiteboard content, call `get_whiteboard_state(analyze=True)`.')}\n"
                 output += _markdown_footer()
                 return output
             except Exception as conv_err:
@@ -947,19 +944,19 @@ def _get_whiteboard_state_impl(analyze: bool = False) -> str:
 
         # Fallback: raw JSON만 표시
         commands_count = len(data.get("commands", [])) if isinstance(data.get("commands"), list) else 0
-        output = (_markdown_header("Whiteboard State")
-                  + f"Whiteboard has {commands_count} objects.\n\n"
+        output = (_markdown_header(t("Whiteboard State"))
+                  + f"{t('Whiteboard has {0} objects.', commands_count)}\n\n"
                   + f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```\n")
         if analyze:
             output += _generate_whiteboard_suggestions() + "\n"
         else:
-            output += "\n> 💡 화이트보드 내용을 자동 분석하려면 `get_whiteboard_state(analyze=True)`를 호출하세요.\n"
+            output += f"\n> 💡 {t('To auto-analyze whiteboard content, call `get_whiteboard_state(analyze=True)`.')}\n"
         output += _markdown_footer()
         return output
 
     except Exception as e:
-        return (_markdown_header("Whiteboard Error", "❌")
-                + f"**Failed:** `{e}`\n"
+        return (_markdown_header(t("Whiteboard Error"), "❌")
+                + f"**{t('Failed:')}** `{e}`\n"
                 + _markdown_footer())
 
 
@@ -976,7 +973,7 @@ def register(mcp):
         registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
 
         if not os.path.exists(registry_path):
-            return "📂 아직 업로드된 파일이 없습니다."
+            return f"📂 {t('No files uploaded yet.')}"
 
         # 세션 시작 시간 읽기
         session_start = 0.0
@@ -1003,9 +1000,9 @@ def register(mcp):
             ]
 
             if not entries:
-                return "📂 현재 세션에 업로드된 파일이 없습니다. 드롭존에 파일을 업로드해주세요."
+                return f"📂 {t('No files uploaded in the current session. Please upload a file to the dropzone.')}"
 
-            lines = ["## 📎 최근 업로드된 파일", ""]
+            lines = [f"## 📎 {t('Recently Uploaded Files')}", ""]
             for i, entry in enumerate(entries):
                 path = entry.get("path", "?")
                 name = entry.get("fileName", "?")
@@ -1014,16 +1011,16 @@ def register(mcp):
 
                 size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
                 lines.append(f"### {i+1}. {name}")
-                lines.append(f"- **경로**: `{path}`")
-                lines.append(f"- **크기**: {size_str}")
-                lines.append(f"- **타입**: {mime}")
+                lines.append(f"- **{t('Path')}**: `{path}`")
+                lines.append(f"- **{t('Size')}**: {size_str}")
+                lines.append(f"- **{t('Type')}**: {mime}")
                 lines.append("")
 
             if entries:
-                lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
+                lines.append(f"**{t('Analysis example')}**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
             return "\n".join(lines)
         except Exception as e:
-            return f"⚠️ 업로드 레지스트리 읽기 실패: {e}"
+            return f"⚠️ {t('Failed to read upload registry: {0}', e)}"
     
     @mcp.tool
     def capture_screen(source: str = "screen") -> str:
@@ -1032,8 +1029,8 @@ def register(mcp):
         사용자가 "파일 보여줄게", "이것 좀 봐줘" 등의 표현을 쓸 때
         source="dropzone"으로 호출하여 파일 업로드 UI를 띄우세요.
 
-        드롭존에서 파일 업로드 후에는 auto_analyze_after_drop()을 호출하여
-        자동 분석을 실행하세요.
+        드롭존에서 파일 업로드 후에는 analyze_uploaded_file(file_path, track_dropzone=True)을
+        호출하여 자동 분석을 실행하세요.
 
         AI가 시각적 분석이 필요할 때 호출합니다.
         source="dropzone" 시 VS Code Webview 드롭존을 열어 이미지를 업로드할 수 있습니다.
@@ -1059,17 +1056,17 @@ def register(mcp):
         """
         err = _validate_string(commands, "commands")
         if err:
-            return _markdown_header("Whiteboard Error", "❌") + f"**{err}**\n" + _markdown_footer()
+            return _markdown_header(t("Whiteboard Error"), "❌") + f"**{err}**\n" + _markdown_footer()
 
         try:
             parsed = json.loads(commands)
             if not isinstance(parsed, list):
-                return (_markdown_header("Whiteboard Error", "❌")
-                        + "**Commands must be a JSON array.**\n"
+                return (_markdown_header(t("Whiteboard Error"), "❌")
+                        + f"**{t('Commands must be a JSON array.')}**\n"
                         + _markdown_footer())
         except json.JSONDecodeError as e:
-            return (_markdown_header("Whiteboard Error", "❌")
-                    + f"**Invalid JSON:** `{e}`\n"
+            return (_markdown_header(t("Whiteboard Error"), "❌")
+                    + f"**{t('Invalid JSON:')}** `{e}`\n"
                     + _markdown_footer())
 
         try:
@@ -1078,12 +1075,12 @@ def register(mcp):
             # 자동으로 화이트보드 패널 열기 (Extension이 WHITEBOARD_ACTION_FILE watch)
             _atomic_write_json(WHITEBOARD_ACTION_FILE, {"action": "open", "message": f"Drew {len(parsed)} shapes", "timestamp": time.time()}, indent=2)
             try_crow_ingest(f"Whiteboard: {len(parsed)} drawing commands", register="context")
-            return (_markdown_header("Whiteboard Drawing")
-                    + f"Drew {len(parsed)} shapes on whiteboard.\n"
+            return (_markdown_header(t("Whiteboard Drawing"))
+                    + f"{t('Drew {0} shapes on whiteboard.', len(parsed))}\n"
                     + _markdown_footer())
         except Exception as e:
-            return (_markdown_header("Whiteboard Error", "❌")
-                    + f"**Failed to draw:** `{e}`\n"
+            return (_markdown_header(t("Whiteboard Error"), "❌")
+                    + f"**{t('Failed to draw:')}** `{e}`\n"
                     + _markdown_footer())
 
     @mcp.tool
@@ -1092,7 +1089,6 @@ def register(mcp):
 
         Args:
             analyze: True면 상태 조회 후 분석 제안 블록을 함께 반환합니다.
-                     (이전 auto_analyze_whiteboard()와 동일한 동작)
                      False(기본값)면 상태만 반환합니다.
         """
         return _get_whiteboard_state_impl(analyze=analyze)

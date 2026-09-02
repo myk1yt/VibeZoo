@@ -16,7 +16,7 @@ def _write_dz_session(file_path: str):
     [v2.0 D1] 이 함수가 없으면 Pillar 2의 _check_dropzone_session()이
     항상 None을 반환하여 Dropzone 시간적 바인딩이 완전히 무력화됨.
 
-    [v2.1 B1] auto_analyze_after_drop 제거에 따라 ux_coordinator.py에서
+    [v2.1 B1] 드롭존 자동 분석 책임이 ux_coordinator.py에서
     이 모듈로 이동됨. analyze_uploaded_file(track_dropzone=True)에서 호출.
     """
     dz_file = os.path.expanduser(DZ_SESSION_FILE)

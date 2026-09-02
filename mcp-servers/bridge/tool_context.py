@@ -58,57 +58,11 @@ MANIFEST_GENERATE_TESTS = {
     "llm_load": "high",
 }
 
-MANIFEST_FIND_BUGS = {
-    "tool": "find_bugs",
-    "version": "1.0",
-    "description": "코드베이스에서 잠재적 버그 패턴 탐지 및 Crow Memory 과거 패턴 활용",
-    "data_collected": {
-        "target_path": "분석 대상 경로",
-        "suspicious_patterns": "의심스러운 코드 패턴 목록 (console.log, debugger, .only 등)",
-        "past_bugs_from_crow": "Crow Memory에서 가져온 과거 버그 패턴",
-        "code_metrics": "코드 메트릭 (파일 수, 라인 수, 복잡도)",
-        "pattern_analysis": "AST 기반 패턴 분석 결과 (안티패턴 포함)",
-    },
-    "llm_instructions": (
-        "LLM은 이 데이터를 바탕으로:\n"
-        "1. 각 의심 패턴의 심각도 분류 (P0: 크래시 위험, P1: 로직 버그, P2: 코드 스멜)\n"
-        "2. Crow 과거 패턴과 교차 참조하여 유사 문제 식별\n"
-        "3. 각 버그에 대해: 위치, 원인, 수정 제안, 영향도 추정\n"
-        "4. 심각도 × 발생 빈도 × 파일 중요도로 우선순위 지정"
-    ),
-    "llm_load": "high",
-}
-
-MANIFEST_SUGGEST_REFACTOR = {
-    "tool": "suggest_refactor",
-    "version": "1.0",
-    "description": "의존성 맵, 중복 패턴, 호출 그래프 기반 리팩토링 제안",
-    "data_collected": {
-        "target_path": "분석 대상 경로",
-        "dependency_map": "모듈 간 의존성 관계",
-        "pattern_duplications": "중복 코드 패턴",
-        "call_graph": "함수 호출 그래프",
-        "crow_style_rules": "Crow Memory 코딩 스타일 규칙",
-    },
-    "llm_instructions": (
-        "LLM은 이 데이터를 바탕으로:\n"
-        "1. 과도한 의존성을 가진 파일 (허브 모듈) 식별\n"
-        "2. 순환 의존성 감지 및 분해 전략 제안\n"
-        "3. 중복 코드 패턴 발견 및 추출 제안\n"
-        "4. God 함수 (높은 팬아웃) 및 데드 코드 (팬인 0) 분석\n"
-        "5. 각 제안에 대해: before/after 코드 예제, 영향도, 마이그레이션 단계 제공"
-    ),
-    "llm_load": "high",
-}
-
-
 # ── manifest 조회 헬퍼 ──────────────────────────────
 
 _MANIFEST_REGISTRY: dict[str, dict] = {
     "explain_code": MANIFEST_EXPLAIN_CODE,
     "generate_tests": MANIFEST_GENERATE_TESTS,
-    "find_bugs": MANIFEST_FIND_BUGS,
-    "suggest_refactor": MANIFEST_SUGGEST_REFACTOR,
 }
 
 
@@ -379,46 +333,6 @@ def make_find_bugs_context(
     return ctx
 
 
-def make_suggest_refactor_context(
-    target_path: str,
-    dependency_map: dict,
-    pattern_duplications: list[dict],
-    call_graph: dict,
-    crow_style_rules: list[dict],
-) -> ToolContext:
-    """suggest_refactor 도구용 ToolContext 생성
-
-    Args:
-        target_path: 분석 대상 경로
-        dependency_map: 모듈 의존성 맵
-        pattern_duplications: 중복 패턴 목록
-        call_graph: 호출 그래프
-        crow_style_rules: Crow Memory 스타일 규칙
-
-    Returns:
-        suggest_refactor용 ToolContext
-    """
-    ctx = ToolContext(
-        tool_name="suggest_refactor",
-        data={
-            "target_path": target_path,
-            "dependency_map": dependency_map,
-            "pattern_duplications": pattern_duplications,
-            "call_graph": call_graph,
-            "crow_style_rules": crow_style_rules,
-        },
-        language="mixed",
-        suggested_steps=[
-            "1. Identify files with excessive dependencies (hub modules)",
-            "2. Detect circular dependencies and propose break strategies",
-            "3. Find duplicated code patterns and suggest extraction",
-            "4. Analyze call graph for God functions (high fan-out) and dead code (zero fan-in)",
-            "5. For each suggestion, provide: before/after code example, impact estimate, migration steps",
-        ],
-    )
-    return ctx
-
-
 # ── 공개 API ────────────────────────────────────────
 
 __all__ = [
@@ -426,14 +340,12 @@ __all__ = [
     # Manifest 상수
     "MANIFEST_EXPLAIN_CODE",
     "MANIFEST_GENERATE_TESTS",
-    "MANIFEST_FIND_BUGS",
-    "MANIFEST_SUGGEST_REFACTOR",
     # Manifest 헬퍼
     "get_manifest",
     "format_manifest_markdown",
     # 팩토리 함수
     "make_explain_code_context",
     "make_generate_tests_context",
+    # find_bugs는 integrated-myk1yt.py 변형이 참조하므로 유지 (감사 C3 판정)
     "make_find_bugs_context",
-    "make_suggest_refactor_context",
 ]

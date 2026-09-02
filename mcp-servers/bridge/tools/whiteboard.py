@@ -24,6 +24,7 @@ from bridge.utils import (
     _truncate,
 )
 from bridge.crow_client import try_crow_ingest
+from bridge.i18n import t
 
 # ── 드롭존 HTML (Webview 내장) ──────────────────────
 
@@ -868,7 +869,6 @@ def _generate_whiteboard_suggestions() -> str:
     """화이트보드 상태를 기반으로 분석 제안 블록을 생성합니다.
 
     get_whiteboard_state(analyze=True) 호출 시 상태 텍스트 뒤에 appended 됩니다.
-    auto_analyze_whiteboard() (deprecated)에서도 동일한 내용을 사용합니다.
     """
     parts = [
         "",
@@ -885,12 +885,10 @@ def _generate_whiteboard_suggestions() -> str:
 def _get_whiteboard_state_impl(analyze: bool = False) -> str:
     """화이트보드 상태 조회 구현 (모듈 레벨).
 
-    register() 내부의 MCP 툴 래퍼와 ux_coordinator.py의
-    auto_analyze_whiteboard() 양쪽에서 호출 가능합니다.
+    register() 내부의 MCP 툴 래퍼에서 호출됩니다.
 
     Args:
         analyze: True면 상태 조회 후 분석 제안 블록을 함께 반환합니다.
-                 (이전 auto_analyze_whiteboard()와 동일한 동작)
                  False(기본값)면 상태만 반환합니다.
     """
     try:
@@ -1032,8 +1030,8 @@ def register(mcp):
         사용자가 "파일 보여줄게", "이것 좀 봐줘" 등의 표현을 쓸 때
         source="dropzone"으로 호출하여 파일 업로드 UI를 띄우세요.
 
-        드롭존에서 파일 업로드 후에는 auto_analyze_after_drop()을 호출하여
-        자동 분석을 실행하세요.
+        드롭존에서 파일 업로드 후에는 analyze_uploaded_file(file_path, track_dropzone=True)을
+        호출하여 자동 분석을 실행하세요.
 
         AI가 시각적 분석이 필요할 때 호출합니다.
         source="dropzone" 시 VS Code Webview 드롭존을 열어 이미지를 업로드할 수 있습니다.
@@ -1092,7 +1090,6 @@ def register(mcp):
 
         Args:
             analyze: True면 상태 조회 후 분석 제안 블록을 함께 반환합니다.
-                     (이전 auto_analyze_whiteboard()와 동일한 동작)
                      False(기본값)면 상태만 반환합니다.
         """
         return _get_whiteboard_state_impl(analyze=analyze)
