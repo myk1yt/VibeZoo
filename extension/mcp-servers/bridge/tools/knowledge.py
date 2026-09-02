@@ -1,6 +1,6 @@
 # VibeZoo Bridge — Knowledge 도구 그룹
-# learn_project + recall_project + learn_preference + get_preferences
-# 자동 learn_project (register 시 지연 초기화, 1회만)
+# recall_project + learn_preference + get_preferences
+# 프로젝트 지식 자동 수집 (_auto_learn_project, register 시 지연 초기화, 1회만)
 
 import hashlib
 import json
@@ -13,6 +13,7 @@ from typing import Optional
 from bridge.config import (
     VERSION, PREFERENCES_FILE,
 )
+from bridge.i18n import t
 from bridge.utils import (
     _markdown_header, _markdown_footer,
     _validate_string,
@@ -21,7 +22,7 @@ from bridge.utils import (
 )
 from bridge.crow_client import try_crow_ingest, try_crow_recall
 
-# ── 자동 learn_project 관리 ──────────────────────────
+# ── 자동 프로젝트 지식 수집 관리 ──────────────────────
 
 _learned_projects: set[str] = set()
 _learning_lock = threading.Lock()
@@ -29,13 +30,13 @@ _auto_learn_scheduled = False
 
 
 def _auto_learn_project(target_path: Optional[str] = None) -> None:
-    """등록 시 자동 learn_project (지연 초기화, 최초 1회만).
+    """등록 시 프로젝트 지식을 자동 수집 (지연 초기화, 최초 1회만).
     
     Args:
         target_path: 분석 대상 경로 (기본: 현재 작업 디렉토리)
     
     Thread-safe하며, 이미 학습된 프로젝트는 건너뜁니다.
-    learn_project 실패 시에도 예외를 삼키고 조용히 진행합니다.
+    자동 수집 실패 시에도 예외를 삼키고 조용히 진행합니다.
     """
     root = str(Path(get_project_root(target_path)).resolve())
     
@@ -45,7 +46,7 @@ def _auto_learn_project(target_path: Optional[str] = None) -> None:
         _learned_projects.add(root)
     
     try:
-        # learn_project 내부 로직을 직접 호출 (async-safe)
+        # 자동 수집 로직 직접 호출 (async-safe)
         from bridge.tools.scout import summarize_architecture
         from bridge.tools.deep_analyzer import extract_patterns, map_dependencies
         
@@ -105,14 +106,14 @@ def _auto_learn_project(target_path: Optional[str] = None) -> None:
 
 
 def register(mcp):
-    """Knowledge 도구 등록 (자동 learn_project 스케줄 포함)"""
+    """Knowledge 도구 등록 (자동 프로젝트 지식 수집 스케줄 포함)"""
     
-    # ── 자동 learn_project 스케줄 (지연 초기화, 1회만) ──
+    # ── 자동 프로젝트 지식 수집 스케줄 (지연 초기화, 1회만) ──
     global _auto_learn_scheduled
     if not _auto_learn_scheduled:
         _auto_learn_scheduled = True
         def _deferred_learn():
-            """서버 시작 후 3초 지연 → 자동 learn_project 실행"""
+            """서버 시작 후 3초 지연 → 자동 프로젝트 지식 수집 실행"""
             import time as _time
             _time.sleep(3.0)
             _auto_learn_project()
@@ -120,100 +121,8 @@ def register(mcp):
         t.start()
 
     @mcp.tool
-    def learn_project(target_path: Optional[str] = None) -> str:
-        """summarize_architecture + extract_patterns + map_dependencies 결과를 Crow Memory에 축적합니다.
-        프로젝트 분석 결과를 Crow arch/style/life_context 레지스터에 각각 저장하여,
-        이후 세션에서 프로젝트 컨텍스트를 자동으로 복원할 수 있게 합니다.
-
-        Args:
-            target_path: 분석 대상 디렉토리 경로 (기본: 현재 작업 디렉토리)
-
-        Returns:
-            Markdown 보고서: Crow에 저장된 내용 요약
-        """
-        from bridge.tools.scout import summarize_architecture
-        from bridge.tools.deep_analyzer import extract_patterns, map_dependencies
-
-        root = Path(get_project_root(target_path))
-        output = _markdown_header("Project Knowledge Ingestion")
-        output += f"> Target: `{root}`\n\n"
-
-        # 1. Summarize architecture
-        output += "## 1. Architecture Summary\n\n"
-        arch_summary = summarize_architecture(target_path=str(root))
-        try_crow_ingest(
-            json.dumps({
-                "action": "learn_project",
-                "type": "architecture",
-                "target": str(root),
-                "summary": arch_summary[:1000],
-                "timestamp": time.time(),
-            }),
-            register="arch"
-        )
-        for line in arch_summary.split("\n"):
-            if "file types" in line:
-                output += f"- {line.strip()}\n"
-        output += "- ✅ Architecture stored in Crow `arch` register\n\n"
-
-        # 2. Extract patterns
-        output += "## 2. Code Patterns\n\n"
-        patterns = extract_patterns(target_path=str(root), min_occurrences=3)
-        try_crow_ingest(
-            json.dumps({
-                "action": "learn_project",
-                "type": "patterns",
-                "target": str(root),
-                "patterns": patterns[:1000],
-                "timestamp": time.time(),
-            }),
-            register="style"
-        )
-        for line in patterns.split("\n"):
-            if "occurrences" in line:
-                output += f"- {line.strip()}\n"
-        output += "- ✅ Patterns stored in Crow `style` register\n\n"
-
-        # 3. Map dependencies
-        output += "## 3. Dependency Map\n\n"
-        deps = map_dependencies(target_path=str(root))
-        try_crow_ingest(
-            json.dumps({
-                "action": "learn_project",
-                "type": "dependencies",
-                "target": str(root),
-                "deps": deps[:1000],
-                "timestamp": time.time(),
-            }),
-            register="arch"
-        )
-        for line in deps.split("\n"):
-            if "circular" in line.lower() or "import" in line.lower() or "dependencies" in line:
-                output += f"- {line.strip()}\n"
-        output += "- ✅ Dependencies stored in Crow `arch` register\n\n"
-
-        # 4. Project identity
-        project_key = f"project:{hashlib.md5(str(root).encode()).hexdigest()[:8]}"
-        try_crow_ingest(
-            json.dumps({
-                "action": "learn_project",
-                "type": "identity",
-                "project_key": project_key,
-                "target": str(root),
-                "timestamp": time.time(),
-            }),
-            register="life_context"
-        )
-        output += f"- ✅ Project identity stored in Crow `life_context` (key: `{project_key}`)\n\n"
-
-        output += "---\n"
-        output += "✅ **Project knowledge ingestion complete.**\n"
-        output += _markdown_footer()
-        return output
-
-    @mcp.tool
     def recall_project(target_path: Optional[str] = None) -> str:
-        """Crow Memory에서 learn_project로 저장된 프로젝트 지식을 회상합니다.
+        """Crow Memory에 자동 수집된 프로젝트 지식을 회상합니다.
         arch, style, life_context 레지스터에서 관련 정보를 조회하여 반환합니다.
 
         Args:
@@ -238,8 +147,8 @@ def register(mcp):
                 content = item.get("content", item.get("value", str(item)))
                 output += f"- {_truncate(content, 300)}\n"
         else:
-            output += "- No architecture data found in Crow.\n"
-            output += "  → Run `learn_project()` first to store project knowledge.\n"
+            output += f"- {t('No architecture data found in Crow.')}\n"
+            output += f"  → {t('Project knowledge is auto-captured at bridge startup (_auto_learn_project); force-refresh via summarize_architecture/extract_patterns/map_dependencies and recall again.')}\n"
 
         # 2. style register
         output += "\n## 📊 Code Patterns (style register)\n\n"
@@ -249,7 +158,7 @@ def register(mcp):
                 content = item.get("content", item.get("value", str(item)))
                 output += f"- {_truncate(content, 300)}\n"
         else:
-            output += "- No pattern data found in Crow.\n"
+            output += f"- {t('No pattern data found in Crow.')}\n"
 
         # 3. life_context
         output += "\n## 🔑 Project Identity (life_context)\n\n"
@@ -259,7 +168,7 @@ def register(mcp):
                 content = item.get("content", item.get("value", str(item)))
                 output += f"- {_truncate(content, 300)}\n"
         else:
-            output += "- No project identity found in Crow.\n"
+            output += f"- {t('No project identity found in Crow.')}\n"
 
         total = len(arch_results) + len(style_results) + len(life_results)
         output += f"\n---\n**Total {total} knowledge items recalled from Crow.**\n"
@@ -287,7 +196,7 @@ def register(mcp):
         allowed_categories = {"coding_style", "coding", "naming", "formatting", "architecture", "workflow"}
         if category not in allowed_categories:
             return (_markdown_header("Learn Preference Error", "❌")
-                    + f"**Invalid category: `{category}`. Allowed: {', '.join(allowed_categories)}**\n"
+                    + f"**{t('Invalid category: `{0}`. Allowed: {1}', category, ', '.join(allowed_categories))}**\n"
                     + _markdown_footer())
 
         # Store in local preferences file
@@ -308,7 +217,7 @@ def register(mcp):
             _atomic_write_json(PREFERENCES_FILE, prefs, indent=2)
         except Exception as e:
             return (_markdown_header("Learn Preference Error", "❌")
-                    + f"**Failed to save: `{e}`**\n"
+                    + f"**{t('Failed to save: `{0}`', e)}**\n"
                     + _markdown_footer())
 
         # Also store in Crow life_context
@@ -325,7 +234,7 @@ def register(mcp):
         return (_markdown_header("Preference Saved")
                 + f"**Category**: `{category}`\n"
                 + f"**Rule**: `{rule}`\n\n"
-                + "Stored in local preferences file and Crow Memory (`life_context`).\n"
+                + t("Stored in local preferences file and Crow Memory (`life_context`).") + "\n"
                 + _markdown_footer())
 
     @mcp.tool
@@ -349,8 +258,8 @@ def register(mcp):
                 prefs = {}
 
         if not prefs:
-            output += "No preferences saved yet.\n"
-            output += "\n> Use `learn_preference(rule, category)` to save your first preference.\n"
+            output += f"{t('No preferences saved yet.')}\n"
+            output += f"\n> {t('Use `learn_preference(rule, category)` to save your first preference.')}\n"
             output += _markdown_footer()
             return output
 
@@ -358,7 +267,7 @@ def register(mcp):
 
         for cat in categories_to_show:
             if cat not in prefs:
-                output += f"### {cat}\n\n⚠️ Category not found.\n\n"
+                output += f"### {cat}\n\n⚠️ {t('Category not found.')}\n\n"
                 continue
             rules = prefs[cat]
             if not rules:
@@ -382,7 +291,7 @@ def register(mcp):
                 content = item.get("content", item.get("value", str(item)))
                 output += f"- {_truncate(content, 200)}\n"
         else:
-            output += "- No preference data in Crow.\n"
+            output += f"- {t('No preference data in Crow.')}\n"
 
         output += _markdown_footer()
         return output
