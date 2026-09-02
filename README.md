@@ -2,7 +2,7 @@
 
 [![Guard.git - .git Protection](https://img.shields.io/badge/Guard.git-.git%20Protected-blueviolet)](https://github.com/vibezoo/VibeZoo_forZoocode)
 
-> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-40-tools) (40 Tools)**
+> **VibeZoo = [Crow Memory](#3-crow-memory-overview) (Synaptic Memory) + [VibeZoo MCP Bridge](#1-vibezoo-mcp-bridge--tool-overview-33-tools) (33 Tools)**
 
 VibeZoo is a Companion Extension for Zoo Code. Without modifying a single line of Zoo Code's source code, it enables the LLM to search, analyze, review, and document code more intelligently. It remembers your habits and preferences, and enables real-time visual collaboration (Whiteboard, Dropzone, Vision AI).
 
@@ -75,15 +75,15 @@ All MCP servers (`crow-memory`, `vibezoo`, etc.) coexist under `%USERPROFILE%\mc
    - Configure `.zoo/config.json`
    - **Install 6 custom modes** to Zoo Code's global `custom_modes.yaml` with VibeZoo tool priority enabled
 
-   > **No regex errors!** All modes are instructed to prefer VibeZoo MCP tools (`search_codebase`, `review_code`, `find_bugs`, etc.) over native tools. VibeZoo tools handle invalid regex gracefully with automatic substring fallback.
+   > **No regex errors!** All modes are instructed to prefer VibeZoo MCP tools (`search_codebase`, `review_code`, `review_project`, etc.) over native tools. VibeZoo tools handle invalid regex gracefully with automatic substring fallback.
 
    > **Tip:** You can still use the manual template from `global_install_templates/vibezoo_mode.yaml` if you prefer a hands-on approach. The `vibezoo_setup` tool automates this process for convenience.
 
 ---
 
-## 1. VibeZoo MCP Bridge — Tool Overview (40 Tools)
+## 1. VibeZoo MCP Bridge — Tool Overview (33 Tools)
 
-The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **40 MCP tools** through a modular architecture (`bridge/tools/`).
+The VibeZoo MCP Bridge operates based on FastMCP + Streamable HTTP, communicating with the Zoo Code MCP client via `vibezoo_mcp_bridge.py` at `localhost:9027/mcp`. It provides a total of **33 MCP tools** through a modular architecture (`bridge/tools/`).
 
 Key infrastructure modules:
 - [`ast_singleton.py`](mcp-servers/bridge/ast_singleton.py) — Shared AST engine singleton (consolidated from 5 duplicated copies)
@@ -95,10 +95,10 @@ Key infrastructure modules:
 ### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
 The `web_search` tool leverages the **Exa API** (neural search engine) to autonomously fetch real-time data and documentation with high-quality highlighted snippets. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
 
-### 1.1 UX (3 Tools) — Intent Detection + Auto Tool Chains
+### 1.1 UX (2 Tools) — Intent Detection + Auto Tool Chains
 When you say "I'll show you a file", the Dropzone opens. Uploaded files are automatically analyzed through the SSA→OCR→MiniCPM pipeline.
 
-Tools: [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py), [`analyze_uploaded_file`](mcp-servers/bridge/tools/file_analyzer.py), [`auto_analyze_after_drop`](mcp-servers/bridge/tools/ux_coordinator.py)
+Tools: [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py), [`analyze_uploaded_file`](mcp-servers/bridge/tools/file_analyzer.py)
 
 The [`ux_coordinator`](mcp-servers/bridge/tools/ux_coordinator.py) tool is now **Crow Memory-aware** — when keyword-based intent detection has low confidence, it queries Crow Memory for recent context (dropzone uploads, conversation history) to disambiguate. Detected intents include `file_share`, `drawing_request`, `code_analysis`, `project_setup`, and the new **`fix_loop`** — automatic bug fix / error recovery.
 
@@ -135,7 +135,6 @@ Tools: [`draw_on_whiteboard`](mcp-servers/bridge/tools/whiteboard.py), [`get_whi
 
 The AI draws on a Fabric.js canvas, reads user modifications, and can capture the screen.
 
-> **v0.16.0**: `auto_analyze_whiteboard` has been merged into [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py) via the `analyze=True` parameter. The old `auto_analyze_whiteboard` name remains as a deprecated alias for backward compatibility.
 
 ### 1.7 Fix Loop (3 Tools) — Autonomous Build & Fix Loop
 If a build fails, the LLM automatically analyzes the error, looks up past fix patterns in Crow Memory, and suggests fixes. Supports Human-in-the-Loop.
@@ -174,7 +173,6 @@ Apply patches to files without worrying about missing parameters. The [`apply_pa
 - **Auto backup**: Backs up to `~/.vibezoo-backup/` before modification
 - **Supports both `=======` / `-------`**: Compatible with `apply_diff`
 
-- **`read_project_file`**: Read file or list directory contents. If path is a file, returns content with syntax highlighting. If path is a directory, returns listing with sizes.
 
 ### 1.15 Setup (1 Tool) — Automation
 Installs VibeZoo dependencies and auto-configures MCP/Zoo settings.
@@ -258,7 +256,6 @@ VibeZoo Bridge stores and retrieves memories via Crow Memory's REST API:
   - `web_search` DuckDuckGo fallback when EXA_API_KEY absent
   - Dead code cleanup: 12 dead entries removed from `_tool_registry` (20→8)
   - Tool consolidation: 5 duplicated AST singletons → shared `ast_singleton.py`
-  - `auto_analyze_whiteboard` merged into `get_whiteboard_state(analyze=True)`
   - `max_tokens` truncation now works in 5 tools
   - 104 CI tests pass
 - **v0.15.1** (2026-06-16):

@@ -155,7 +155,7 @@ When the extension activates, auto-connect proceeds in the following order:
 | Layer | Directory | Responsibility |
 |-------|-----------|----------------|
 | **Layer 1** | [`extension/src/`](extension/src/) | VS Code Extension — UI, Safety, Flow, Orchestra, Visual |
-| **Layer 2** | [`mcp-servers/bridge/`](mcp-servers/bridge/) | Python MCP Bridge — 33 tools, AST, search, OCR, vision, error handling |
+| **Layer 2** | [`extension/mcp-servers/bridge/`](extension/mcp-servers/bridge/) | Python MCP Bridge — 33 tools, AST, search, OCR, vision, error handling |
 | **Layer 3** | Crow Memory (external) | Synaptic memory server — Hebbian EMA, 8 Registers, `crow.bin` |
 
 ### 3.2 Crow Memory's 8 Registers
@@ -291,28 +291,28 @@ User drag-and-drop / Ctrl+V
 | | [`visual/ErrorDashboard.ts`](extension/src/visual/ErrorDashboard.ts:12) | `registry.json` watch → Webview dashboard |
 | **Types** | [`types/index.ts`](extension/src/types/index.ts:1) | Common type definitions (CrowServerConfig, BuildResult, SubagentNode, GuardGit, etc.) |
 
-### 6.2 Layer 2 — Python MCP Bridge (`mcp-servers/bridge/`)
+### 6.2 Layer 2 — Python MCP Bridge (`extension/mcp-servers/bridge/`)
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **Config** | [`config.py`](mcp-servers/bridge/config.py:1) | Version, URLs, file paths, extension filters, cache settings |
-| **Crow Client** | [`crow_client.py`](mcp-servers/bridge/crow_client.py:1) | REST API client (`try_crow_ingest`, `try_crow_recall`, `crow_health_check`) |
-| **AST Engine** | [`ast_engine.py`](mcp-servers/bridge/ast_engine.py:16) | Multi-language tree-sitter parser (TS/JS/Python/Go/Rust/C/C++), regex fallback |
-| **AST Singleton** | [`ast_singleton.py`](mcp-servers/bridge/ast_singleton.py) | Shared AST engine singleton (consolidated from 5 duplicated copies in v0.16.0) |
-| **Search Engine** | [`search_engine.py`](mcp-servers/bridge/search_engine.py:21) | 3-tier search (rg → git grep → os.walk) |
-| **Fuzzy Matcher** | [`fuzzy_matcher.py`](mcp-servers/bridge/fuzzy_matcher.py) | Trigram Dice coefficient fuzzy matching for `search_codebase(mode="fuzzy")` (new in v0.16.0) |
-| **Embedding Client** | [`embedding_client.py`](mcp-servers/bridge/embedding_client.py) | Embedding-based semantic search with Ollama/OpenAI auto-detection and BM25 fallback (new in v0.16.0) |
-| **OCR Engine** | [`ocr_engine.py`](mcp-servers/bridge/ocr_engine.py:70) | Tesseract first, PaddleOCR fallback, AdaptiveThresholding preprocessing |
-| **Intent Detector** | [`intent_detector.py`](mcp-servers/bridge/intent_detector.py:1) | Keyword-based intent classification + Crow Memory bias + Dropzone time binding |
-| **Error Handler** | [`error_handler.py`](mcp-servers/bridge/error_handler.py:1) | Global error capture decorator, ErrorRegistry (JSON+DCLP singleton) |
-| **Auto Fixer** | [`auto_fixer.py`](mcp-servers/bridge/auto_fixer.py) | Known error pattern DB + fix suggestion generation |
-| **File Cache** | [`file_cache.py`](mcp-servers/bridge/file_cache.py) | L1 memory cache with 20s TTL for search results |
-| **LLM Pipeline** | [`llm_pipeline.py`](mcp-servers/bridge/llm_pipeline.py) | LLM call pipeline |
-| **Result Ranker** | [`result_ranker.py`](mcp-servers/bridge/result_ranker.py) | Search result ranking (BM25 + embedding cosine similarity) |
-| **Tool Context** | [`tool_context.py`](mcp-servers/bridge/tool_context.py) | Tool execution context management |
-| **Utils** | [`utils.py`](mcp-servers/bridge/utils.py) | Common utilities |
-| **Vision** | [`vision/minicpm.py`](mcp-servers/bridge/vision/minicpm.py:1) | MiniCPM-V GGUF wrapper (`llama-cpp-python`) |
-| **Tools** | [`tools/`](mcp-servers/bridge/tools/__init__.py:1) | 16 files, 33 MCP tools registered |
+| **Config** | [`config.py`](extension/mcp-servers/bridge/config.py:1) | Version, URLs, file paths, extension filters, cache settings |
+| **Crow Client** | [`crow_client.py`](extension/mcp-servers/bridge/crow_client.py:1) | REST API client (`try_crow_ingest`, `try_crow_recall`, `crow_health_check`) |
+| **AST Engine** | [`ast_engine.py`](extension/mcp-servers/bridge/ast_engine.py:16) | Multi-language tree-sitter parser (TS/JS/Python/Go/Rust/C/C++), regex fallback |
+| **AST Singleton** | [`ast_singleton.py`](extension/mcp-servers/bridge/ast_singleton.py) | Shared AST engine singleton (consolidated from 5 duplicated copies in v0.16.0) |
+| **Search Engine** | [`search_engine.py`](extension/mcp-servers/bridge/search_engine.py:21) | 3-tier search (rg → git grep → os.walk) |
+| **Fuzzy Matcher** | [`fuzzy_matcher.py`](extension/mcp-servers/bridge/fuzzy_matcher.py) | Trigram Dice coefficient fuzzy matching for `search_codebase(mode="fuzzy")` (new in v0.16.0) |
+| **Embedding Client** | [`embedding_client.py`](extension/mcp-servers/bridge/embedding_client.py) | Embedding-based semantic search with Ollama/OpenAI auto-detection and BM25 fallback (new in v0.16.0) |
+| **OCR Engine** | [`ocr_engine.py`](extension/mcp-servers/bridge/ocr_engine.py:70) | Tesseract first, PaddleOCR fallback, AdaptiveThresholding preprocessing |
+| **Intent Detector** | [`intent_detector.py`](extension/mcp-servers/bridge/intent_detector.py:1) | Keyword-based intent classification + Crow Memory bias + Dropzone time binding |
+| **Error Handler** | [`error_handler.py`](extension/mcp-servers/bridge/error_handler.py:1) | Global error capture decorator, ErrorRegistry (JSON+DCLP singleton) |
+| **Auto Fixer** | [`auto_fixer.py`](extension/mcp-servers/bridge/auto_fixer.py) | Known error pattern DB + fix suggestion generation |
+| **File Cache** | [`file_cache.py`](extension/mcp-servers/bridge/file_cache.py) | L1 memory cache with 20s TTL for search results |
+| **LLM Pipeline** | [`llm_pipeline.py`](extension/mcp-servers/bridge/llm_pipeline.py) | LLM call pipeline |
+| **Result Ranker** | [`result_ranker.py`](extension/mcp-servers/bridge/result_ranker.py) | Search result ranking (BM25 + embedding cosine similarity) |
+| **Tool Context** | [`tool_context.py`](extension/mcp-servers/bridge/tool_context.py) | Tool execution context management |
+| **Utils** | [`utils.py`](extension/mcp-servers/bridge/utils.py) | Common utilities |
+| **Vision** | [`vision/minicpm.py`](extension/mcp-servers/bridge/vision/minicpm.py:1) | MiniCPM-V GGUF wrapper (`llama-cpp-python`) |
+| **Tools** | [`tools/`](extension/mcp-servers/bridge/tools/__init__.py:1) | 16 files, 33 MCP tools registered |
 
 ### 6.3 Directory Tree
 
@@ -433,7 +433,7 @@ mcp-servers/bridge/ (legacy mirror)
 | HTTP REST | 9020 | `POST /ingest` | Memory storage (errors, context) |
 | HTTP REST | 9020 | `GET /recall` | Memory search (similar patterns, context) |
 
-Crow Memory URL is configured via the `CROW_SERVER_URL` environment variable (default: `http://localhost:9020`) ([`config.py:13`](mcp-servers/bridge/config.py:13)).
+Crow Memory URL is configured via the `CROW_SERVER_URL` environment variable (default: `http://localhost:9020`) ([`config.py:13`](extension/mcp-servers/bridge/config.py:13)).
 
 ### 7.4 JSON File IPC Paths
 
@@ -457,27 +457,27 @@ The VibeZoo MCP Bridge provides 33 MCP tools modularized across 16 files.
 
 | Category | File | Tools | Description |
 |----------|------|-------|-------------|
-| Setup | [`tools/setup.py`](mcp-servers/bridge/tools/setup.py) | `vibezoo_setup` | Dependency installation and MCP/Zoo config automation |
-| Scout | [`tools/scout.py`](mcp-servers/bridge/tools/scout.py) | `search_codebase`, `find_references`, `summarize_architecture` | Code search and exploration |
-| Reviewer | [`tools/reviewer.py`](mcp-servers/bridge/tools/reviewer.py) | `review_code` | Code quality check (ESLint, go vet integration) |
-| Tester | [`tools/tester.py`](mcp-servers/bridge/tools/tester.py) | `generate_tests`, `analyze_coverage` | Test generation and coverage analysis |
-| Deep Analyzer | [`tools/deep_analyzer.py`](mcp-servers/bridge/tools/deep_analyzer.py) | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | Deep AST analysis |
-| File Analyzer | [`tools/file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | `analyze_uploaded_file` | Uploaded file analysis (list check and SSA/OCR/Vision support) |
-| Whiteboard | [`tools/whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | `draw_on_whiteboard`, `get_whiteboard_state`, `capture_screen` | AI-Human visual collaboration |
-| Fix Loop | [`tools/fix_loop.py`](mcp-servers/bridge/tools/fix_loop.py) | `auto_fix_status`, `retry_build`, `check_intervention` | Autonomous build fix loop |
-| Integrated | [`tools/integrated.py`](mcp-servers/bridge/tools/integrated.py) | `review_project` | Unified project review |
-| Analysis | [`tools/analysis.py`](mcp-servers/bridge/tools/analysis.py) | `explain_code`, `analyze_changes`, `review_pr`, `refactor_across_files` | Code explanation and diff analysis |
-| Knowledge | [`tools/knowledge.py`](mcp-servers/bridge/tools/knowledge.py) | `recall_project`, `learn_preference`, `get_preferences` | User knowledge memory |
-| Web | [`tools/web.py`](mcp-servers/bridge/tools/web.py) | `fetch_page`, `web_search` | Web search and page analysis |
-| SSA | [`tools/ssa.py`](mcp-servers/bridge/tools/ssa.py) | `aggregate_spatial_pixels` | Spatial statistical analysis |
-| Editor | [`tools/editor.py`](mcp-servers/bridge/tools/editor.py) | `apply_patch` | AI-safe file editing |
-| UX Coordinator | [`tools/ux_coordinator.py`](mcp-servers/bridge/tools/ux_coordinator.py) | `ux_coordinator` | Intent detection and auto tool chains |
-| Feedback | [`tools/feedback.py`](mcp-servers/bridge/tools/feedback.py) | `vibezoo_feedback` | Feedback/telemetry logging |
+| Setup | [`tools/setup.py`](extension/mcp-servers/bridge/tools/setup.py) | `vibezoo_setup` | Dependency installation and MCP/Zoo config automation |
+| Scout | [`tools/scout.py`](extension/mcp-servers/bridge/tools/scout.py) | `search_codebase`, `find_references`, `summarize_architecture` | Code search and exploration |
+| Reviewer | [`tools/reviewer.py`](extension/mcp-servers/bridge/tools/reviewer.py) | `review_code` | Code quality check (ESLint, go vet integration) |
+| Tester | [`tools/tester.py`](extension/mcp-servers/bridge/tools/tester.py) | `generate_tests`, `analyze_coverage` | Test generation and coverage analysis |
+| Deep Analyzer | [`tools/deep_analyzer.py`](extension/mcp-servers/bridge/tools/deep_analyzer.py) | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | Deep AST analysis |
+| File Analyzer | [`tools/file_analyzer.py`](extension/mcp-servers/bridge/tools/file_analyzer.py) | `analyze_uploaded_file` | Uploaded file analysis (list check and SSA/OCR/Vision support) |
+| Whiteboard | [`tools/whiteboard.py`](extension/mcp-servers/bridge/tools/whiteboard.py) | `draw_on_whiteboard`, `get_whiteboard_state`, `capture_screen` | AI-Human visual collaboration |
+| Fix Loop | [`tools/fix_loop.py`](extension/mcp-servers/bridge/tools/fix_loop.py) | `auto_fix_status`, `retry_build`, `check_intervention` | Autonomous build fix loop |
+| Integrated | [`tools/integrated.py`](extension/mcp-servers/bridge/tools/integrated.py) | `review_project` | Unified project review |
+| Analysis | [`tools/analysis.py`](extension/mcp-servers/bridge/tools/analysis.py) | `explain_code`, `analyze_changes`, `review_pr`, `refactor_across_files` | Code explanation and diff analysis |
+| Knowledge | [`tools/knowledge.py`](extension/mcp-servers/bridge/tools/knowledge.py) | `recall_project`, `learn_preference`, `get_preferences` | User knowledge memory |
+| Web | [`tools/web.py`](extension/mcp-servers/bridge/tools/web.py) | `fetch_page`, `web_search` | Web search and page analysis |
+| SSA | [`tools/ssa.py`](extension/mcp-servers/bridge/tools/ssa.py) | `aggregate_spatial_pixels` | Spatial statistical analysis |
+| Editor | [`tools/editor.py`](extension/mcp-servers/bridge/tools/editor.py) | `apply_patch` | AI-safe file editing |
+| UX Coordinator | [`tools/ux_coordinator.py`](extension/mcp-servers/bridge/tools/ux_coordinator.py) | `ux_coordinator` | Intent detection and auto tool chains |
+| Feedback | [`tools/feedback.py`](extension/mcp-servers/bridge/tools/feedback.py) | `vibezoo_feedback` | Feedback/telemetry logging |
 
 
 ### 8.1 Key Tool Highlights
 
-- **[`apply_patch`](mcp-servers/bridge/tools/editor.py)**
+- **[`apply_patch`](extension/mcp-servers/bridge/tools/editor.py)**
   - `path` optional — auto-detects target file from diff content
   - Fuzzy matching — auto-corrects up to 85% similarity
   - AST-Guided Smart Ellipsis — handles `// ...` placeholders
@@ -519,10 +519,10 @@ Async communication between the Extension and Python Bridge/MCP tools uses **fil
 
 | Area | Fallback Chain |
 |------|----------------|
-| Search | ripgrep → git grep → os.walk ([`search_engine.py:73-78`](mcp-servers/bridge/search_engine.py:73)) |
-| AST | tree_sitter_languages → individual tree-sitter packages → regex ([`ast_engine.py:127-166`](mcp-servers/bridge/ast_engine.py:127)) |
-| OCR | Tesseract → PaddleOCR → disabled ([`ocr_engine.py:203-218`](mcp-servers/bridge/ocr_engine.py:203)) |
-| Semantic Search | Embedding server (Ollama/OpenAI) → BM25 fallback with warning ([`embedding_client.py`](mcp-servers/bridge/embedding_client.py)) |
+| Search | ripgrep → git grep → os.walk ([`search_engine.py:73-78`](extension/mcp-servers/bridge/search_engine.py:73)) |
+| AST | tree_sitter_languages → individual tree-sitter packages → regex ([`ast_engine.py:127-166`](extension/mcp-servers/bridge/ast_engine.py:127)) |
+| OCR | Tesseract → PaddleOCR → disabled ([`ocr_engine.py:203-218`](extension/mcp-servers/bridge/ocr_engine.py:203)) |
+| Semantic Search | Embedding server (Ollama/OpenAI) → BM25 fallback with warning ([`embedding_client.py`](extension/mcp-servers/bridge/embedding_client.py)) |
 | Session Restore | Crow Memory → local file → YOLO yocto directory ([`ContextIntelligence.ts:80-140`](extension/src/context/ContextIntelligence.ts:80)) |
 
 ### 9.4 Event-Driven Architecture (VS Code Events)
@@ -542,22 +542,22 @@ Async communication between the Extension and Python Bridge/MCP tools uses **fil
 | Whiteboard canvasState | 300ms debounce | [`VisualVibePanels.ts:637`](extension/src/visual/VisualVibePanels.ts:637) |
 | Tree scan | 30s TTL + stale-while-revalidate | [`ProjectTreeScanner.ts:39-43`](extension/src/flow/ProjectTreeScanner.ts:39) |
 | Notification | 3s same-message prevention + 10/min rate limit | [`StatusBarManager.ts:18-19`](extension/src/ui/StatusBarManager.ts:18) |
-| Search results | 20s TTL cache | [`file_cache.py`](mcp-servers/bridge/file_cache.py) |
+| Search results | 20s TTL cache | [`file_cache.py`](extension/mcp-servers/bridge/file_cache.py) |
 
 ### 9.6 Graceful Degradation (Best-Effort Architecture)
 
 - Crow Memory connection failure → extension continues normally (all features available without Crow)
 - MCP Bridge failure → VibeZoo stays active ([`extension.ts:178-179`](extension/src/extension.ts:178))
 - Notification throttle → StatusBar fallback ([`StatusBarManager.ts:62-64`](extension/src/ui/StatusBarManager.ts:62))
-- `capture_tool_errors` decorator → zero overhead on success ([`error_handler.py:227`](mcp-servers/bridge/error_handler.py:227))
-- Embedding server unavailable → BM25 fallback with visible warning ([`embedding_client.py`](mcp-servers/bridge/embedding_client.py))
+- `capture_tool_errors` decorator → zero overhead on success ([`error_handler.py:227`](extension/mcp-servers/bridge/error_handler.py:227))
+- Embedding server unavailable → BM25 fallback with visible warning ([`embedding_client.py`](extension/mcp-servers/bridge/embedding_client.py))
 
 ### 9.7 Thread Safety (Python Bridge)
 
-- `ErrorRegistry`: DCLP singleton + `threading.Lock` ([`error_handler.py:51-68`](mcp-servers/bridge/error_handler.py:51))
-- `ThreadPoolExecutor` (max_workers=4) for async error logging ([`error_handler.py:29`](mcp-servers/bridge/error_handler.py:29))
-- `AstEngine`: `threading.Lock` + DCLP pattern ([`ast_engine.py:89`](mcp-servers/bridge/ast_engine.py:89))
-- Shared AST singleton via [`ast_singleton.py`](mcp-servers/bridge/ast_singleton.py) (consolidated in v0.16.0)
+- `ErrorRegistry`: DCLP singleton + `threading.Lock` ([`error_handler.py:51-68`](extension/mcp-servers/bridge/error_handler.py:51))
+- `ThreadPoolExecutor` (max_workers=4) for async error logging ([`error_handler.py:29`](extension/mcp-servers/bridge/error_handler.py:29))
+- `AstEngine`: `threading.Lock` + DCLP pattern ([`ast_engine.py:89`](extension/mcp-servers/bridge/ast_engine.py:89))
+- Shared AST singleton via [`ast_singleton.py`](extension/mcp-servers/bridge/ast_singleton.py) (consolidated in v0.16.0)
 
 ### 9.8 Naming Convention
 
@@ -572,7 +572,7 @@ Async communication between the Extension and Python Bridge/MCP tools uses **fil
 
 - **TypeScript**: `try/catch` with `console.warn` + graceful fallback (non-fatal failures are silently passed)
 - **Python**: `try/except Exception` + `logger.debug` (silent failure philosophy)
-- All MCP tools: auto-wrapped with [`@capture_tool_errors`](mcp-servers/bridge/error_handler.py) → ErrorRegistry logging + Crow ingest → re-raise exception (propagated to LLM)
+- All MCP tools: auto-wrapped with [`@capture_tool_errors`](extension/mcp-servers/bridge/error_handler.py) → ErrorRegistry logging + Crow ingest → re-raise exception (propagated to LLM)
 - `I_instability` (instability index): same-error repetition rate + edit count + build failures for early cutoff ([`FixLoopManager.ts:75-78`](extension/src/orchestra/FixLoopManager.ts:75))
 - **v0.16.0**: `web_search` now surfaces structured error codes instead of silent `except: return []`
 
@@ -580,7 +580,7 @@ Async communication between the Extension and Python Bridge/MCP tools uses **fil
 
 - **Guard.git ACL**: `execFile()` only (no shell), path validation regex, 10-second timeout ([`GuardGitACL.ts:55-73`](extension/src/safety/GuardGitACL.ts:55))
 - **C1/C2**: sudo never used, shell injection prevention, all OS commands via `execFileSafe()`
-- **Anonymization**: User home path → masked as `~` ([`error_handler.py:34-38`](mcp-servers/bridge/error_handler.py:34))
+- **Anonymization**: User home path → masked as `~` ([`error_handler.py:34-38`](extension/mcp-servers/bridge/error_handler.py:34))
 - **Duplicate activation prevention**: `_activeExtensions` Set blocks double activate ([`extension.ts:67`](extension/src/extension.ts:67))
 
 ---
@@ -590,16 +590,16 @@ Async communication between the Extension and Python Bridge/MCP tools uses **fil
 | # | Issue | Description | Location/Evidence |
 |---|-------|-------------|-------------------|
 | 1 | **JSON file IPC reliability** | Async communication between Extension and Bridge relies entirely on JSON files. No file locking mechanism, so race conditions are possible. Mitigated with `fs.watchFile` + mtime comparison but not perfect. | `~/.vibezoo-*.json` |
-| 2 | **Python Bridge SPOF** | 33 MCP tools run in a single Python process (`vibezoo_mcp_bridge.py`). If it crashes, all MCP features go down. | [`mcp-servers/vibezoo_mcp_bridge.py`](mcp-servers/vibezoo_mcp_bridge.py:1) |
-| 3 | **Crow Memory FAKE server** | [`crow_memory_server.py`](mcp-servers/crow_memory_server.py:1) simply prints DEPRECATED and exits. The real Crow server is in a separate repository ([vibezoo/crowmemory](https://github.com/vibezoo/crowmemory)), making dependency tracking difficult. | [`mcp-servers/crow_memory_server.py`](mcp-servers/crow_memory_server.py:1) |
+| 2 | **Python Bridge SPOF** | 33 MCP tools run in a single Python process (`vibezoo_mcp_bridge.py`). If it crashes, all MCP features go down. | [`extension/mcp-servers/vibezoo_mcp_bridge.py`](extension/mcp-servers/vibezoo_mcp_bridge.py:1) |
+| 3 | **Crow Memory FAKE server** | [`crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py:1) simply prints DEPRECATED and exits. The real Crow server is in a separate repository ([vibezoo/crowmemory](https://github.com/vibezoo/crowmemory)), making dependency tracking difficult. | [`extension/mcp-servers/crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py:1) |
 | 3-fix | **(Resolved) Crow Memory fallback server** | In v0.15.0, [`extension/mcp-servers/crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py:1) was replaced with a real HTTP server. Proxies to external Crow if present, otherwise serves Local in-memory mode. `sys.exit(0)` removed. | [`extension/mcp-servers/crow_memory_server.py`](extension/mcp-servers/crow_memory_server.py:1) |
 | 6-fix | **(Resolved) Project-level MCP config missing** | Fixed bug where `autoConfigureMCP()` skipped writing `.roo/mcp.json` when vibezoo was registered in global MCP. Separated into [`McpConfigService`](extension/src/mcp/McpConfigService.ts:1) to always force-write project config regardless of global settings. | [`extension/src/mcp/McpConfigService.ts`](extension/src/mcp/McpConfigService.ts:1) |
 | 7-fix | **(Resolved) Python interpreter discovery failure** | Bridge/Crow spawn failures across various environments (`python`/`python3`/venv/Microsoft Store). Introduced [`PythonResolver`](extension/src/python/PythonResolver.ts:1) with a 6-step chain for deterministic resolution. | [`extension/src/python/PythonResolver.ts`](extension/src/python/PythonResolver.ts:1) |
-| 8-fix | **(Resolved) Python bridge missing from VSIX** | `mcp-servers/` was not included in VSIX, so the installed extension couldn't find the Bridge. Moved `mcp-servers/` to `extension/mcp-servers/` and excluded from `.vscodeignore`. | [`extension/mcp-servers/`](extension/mcp-servers/) |
+| 8-fix | **(Resolved) Python bridge missing from VSIX** | `extension/mcp-servers/` was not included in VSIX, so the installed extension couldn't find the Bridge. Moved `extension/mcp-servers/` to `extension/mcp-servers/` and excluded from `.vscodeignore`. | [`extension/mcp-servers/`](extension/mcp-servers/) |
 | 9-fix | **(Resolved) Cross-platform global MCP path error** | Hardcoded Zoo Code global MCP settings path for Windows only. Introduced [`VscodePaths`](extension/src/platform/VscodePaths.ts:1) for Stable/Insiders distinction and OS-specific path calculation. | [`extension/src/platform/VscodePaths.ts`](extension/src/platform/VscodePaths.ts:1) |
-| 4 | **Excessive `try/except Exception` usage** | Broad exception catches throughout the Python Bridge make debugging difficult. `capture_tool_errors` mitigates this, but silent failures still occur in `_try_crow_ingest`, `_try_auto_fix`, etc. | `mcp-servers/bridge/*.py` |
+| 4 | **Excessive `try/except Exception` usage** | Broad exception catches throughout the Python Bridge make debugging difficult. `capture_tool_errors` mitigates this, but silent failures still occur in `_try_crow_ingest`, `_try_auto_fix`, etc. | `extension/mcp-servers/bridge/*.py` |
 | 5 | **Config duplication** | [`extension/package.json`](extension/package.json:180) `contributes.configuration` and [`ConfigService.ts`](extension/src/config/ConfigService.ts:3) reference the same settings. New settings may be missed. | [`extension/package.json`](extension/package.json:180), [`ConfigService.ts`](extension/src/config/ConfigService.ts:3) |
-| 6 | **Insufficient documentation** | Interface design docs for `mcp-servers/bridge/tools/_base.py` are unclear. JSDoc/Google-style docstrings for tool-specific parameters are lacking. | [`mcp-servers/bridge/tools/_base.py`](mcp-servers/bridge/tools/_base.py) |
+| 6 | **Insufficient documentation** | Interface design docs for `extension/mcp-servers/bridge/tools/_base.py` are unclear. JSDoc/Google-style docstrings for tool-specific parameters are lacking. | [`extension/mcp-servers/bridge/tools/_base.py`](extension/mcp-servers/bridge/tools/_base.py) |
 
 ---
 
