@@ -5,7 +5,7 @@
 > A Companion Extension for Zoo Code that helps the LLM search, analyze, review, and document code more intelligently.
 
 - **Last Updated**: 2026-09-02
-- **Version**: v0.15.1 (extension), v0.16.0 (bridge config)
+- **Version**: v0.16.0 (extension & bridge config)
 - **License**: MIT
 - **Repository**: <https://github.com/vibezoo/VibeZoo_forZoocode>
 

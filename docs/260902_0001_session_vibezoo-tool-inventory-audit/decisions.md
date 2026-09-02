@@ -16,3 +16,10 @@
 ## Out of Scope (kept)
 - `recall_project`, `review_project`, `review_pr`, `apply_patch`, `fetch_page`/`web_search` — differentiated value per audit report
 - B4 (extension/mcp-servers full sync audit) — separate future session
+
+## 2026-09-02 19:48
+
+- "좋아. 이번 버저은 버전을 0.01.0을 올리도록 하자. 중간 한자리만 올리는거야." → [ACTION: APPROVED — minor version bump]
+- "github https://github.com/myk1yt/VibeZoo 여기에 푸시하되, 기존의 찌꺼기 파일들을 제거하는건 가능하겠어?" → [ACTION: APPROVED — push + junk cleanup requested]
+- "이후 이번 버전으로 릴리즈까지 하도록 하자." → [ACTION: APPROVED — GitHub release]
+- "0.16.0으로 진행 — package.json 0.15.1→0.16.0, bridge v0.15.1 표기도 0.16.0으로 통일" → [ACTION: APPROVED — version scheme confirmed]

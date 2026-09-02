@@ -4,7 +4,7 @@
 
 ## Identity
 - **Name**: VibeZoo
-- **Version**: 0.15.1 (extension), 0.16.0 (bridge)
+- **Version**: 0.16.0 (extension & bridge)
 - **Publisher**: local (VS Code marketplace)
 - **License**: MIT
 - **Repository**: https://github.com/vibezoo/vibezoo

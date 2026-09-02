@@ -243,13 +243,13 @@ VibeZoo Bridge stores and retrieves memories via Crow Memory's REST API:
 - `GET /recall` — Search for similar errors and patterns
 
 ### Changelog
-- **v0.16.1** (2026-09-02):
+- **v0.16.0** (2026-09-02):
   - **Tool inventory cleanup (39→33)**: removed aggregate tools `find_bugs`, `suggest_refactor`, `generate_docs`, `learn_project`, `auto_analyze_whiteboard`, `auto_analyze_after_drop` — equivalent workflows are now prompt-level compositions of the remaining tools
   - Deleted dead `github_diver.py`; purged ghost tool `read_project_file`
   - `analyze_uploaded_file` now supports dropzone session tracking (`track_dropzone` parameter)
   - Removed extension wrapper commands `vibezoo.findBugs` / `vibezoo.suggestRefactor` / `vibezoo.generateDocs` / `vibezoo.learnProject` and orphaned NLS keys across 20 locales
   - Path-safety fixes: no absolute/user-specific paths in bridge output and docs
-- **v0.16.0** (2026-07-25):
+- **v0.15.2** (2026-07-25):
   - **Tool Ecosystem Overhaul**: Comprehensive enhancement of the VibeZoo MCP tool ecosystem
   - New modules: `fuzzy_matcher.py` (trigram fuzzy matching), `embedding_client.py` (embedding-based semantic search), `ast_singleton.py` (shared AST singleton)
   - `search_codebase(mode="fuzzy")` now performs real trigram approximate matching (was identical to `auto`)
