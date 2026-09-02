@@ -1,8 +1,51 @@
 """Universal File Analyzer - analyze any uploaded file by type"""
-import os, json, base64
+import os, json, base64, time
 from pathlib import Path
 from datetime import datetime
 from bridge.utils import _markdown_header, _markdown_footer
+from bridge.config import DZ_SESSION_FILE
+from bridge.i18n import t
+
+
+# ── Dropzone Session Writer ──────────────────────────────
+
+
+def _write_dz_session(file_path: str):
+    """드롭존 세션 정보를 dz_session.json에 기록.
+
+    [v2.0 D1] 이 함수가 없으면 Pillar 2의 _check_dropzone_session()이
+    항상 None을 반환하여 Dropzone 시간적 바인딩이 완전히 무력화됨.
+
+    [v2.1 B1] auto_analyze_after_drop 제거에 따라 ux_coordinator.py에서
+    이 모듈로 이동됨. analyze_uploaded_file(track_dropzone=True)에서 호출.
+    """
+    dz_file = os.path.expanduser(DZ_SESSION_FILE)
+    dz_dir = os.path.dirname(dz_file)
+    os.makedirs(dz_dir, exist_ok=True)
+
+    session_entry = {
+        "file_path": file_path,
+        "file_name": os.path.basename(file_path),
+        "timestamp": time.time(),
+    }
+
+    session = {"last_upload": session_entry, "history": [session_entry]}
+
+    # 기존 세션 유지 + 새 업로드 추가
+    try:
+        if os.path.exists(dz_file):
+            with open(dz_file, 'r', encoding='utf-8', errors='replace') as f:
+                existing = json.load(f)
+            existing["last_upload"] = session_entry
+            history = existing.get("history", [])
+            history.insert(0, session_entry)
+            existing["history"] = history[:10]
+            session = existing
+    except Exception:
+        pass
+
+    with open(dz_file, 'w', encoding='utf-8') as f:
+        json.dump(session, f, indent=2, ensure_ascii=False)
 
 def _get_file_info(path: str) -> dict:
     """Get file metadata"""
@@ -342,7 +385,7 @@ def register(mcp):
     """파일 분석 도구 등록"""
     
     @mcp.tool
-    def analyze_uploaded_file(file_path: str) -> str:
+    def analyze_uploaded_file(file_path: str, track_dropzone: bool = False) -> str:
         """드롭존에 업로드된 파일을 분석합니다.
 
         파일 타입 자동 감지 → 분석 파이프라인 실행:
@@ -354,7 +397,12 @@ def register(mcp):
 
         Args:
             file_path: 업로드된 파일의 전체 경로
+            track_dropzone: True면 드롭존 세션 추적(dz_session.json 기록)을 수행합니다.
+                            드롭존 업로드 직후의 분석(자동 후속 처리 바인딩용)에 사용.
+                            기본값 False — 일반 분석은 세션을 기록하지 않습니다.
         Returns:
             마크다운 형식의 파일 분석 보고서
         """
+        if track_dropzone:
+            _write_dz_session(file_path)
         return analyze_file(file_path)

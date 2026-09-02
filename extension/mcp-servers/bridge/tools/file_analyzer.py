@@ -4,6 +4,48 @@ from pathlib import Path
 from datetime import datetime
 from bridge.utils import _markdown_header, _markdown_footer
 from bridge.config import DZ_SESSION_FILE
+from bridge.i18n import t
+
+
+# ── Dropzone Session Writer ──────────────────────────────
+
+
+def _write_dz_session(file_path: str):
+    """드롭존 세션 정보를 dz_session.json에 기록.
+
+    [v2.0 D1] 이 함수가 없으면 Pillar 2의 _check_dropzone_session()이
+    항상 None을 반환하여 Dropzone 시간적 바인딩이 완전히 무력화됨.
+
+    [v2.1 B1] auto_analyze_after_drop 제거에 따라 ux_coordinator.py에서
+    이 모듈로 이동됨. analyze_uploaded_file(track_dropzone=True)에서 호출.
+    """
+    dz_file = os.path.expanduser(DZ_SESSION_FILE)
+    dz_dir = os.path.dirname(dz_file)
+    os.makedirs(dz_dir, exist_ok=True)
+
+    session_entry = {
+        "file_path": file_path,
+        "file_name": os.path.basename(file_path),
+        "timestamp": time.time(),
+    }
+
+    session = {"last_upload": session_entry, "history": [session_entry]}
+
+    # 기존 세션 유지 + 새 업로드 추가
+    try:
+        if os.path.exists(dz_file):
+            with open(dz_file, 'r', encoding='utf-8', errors='replace') as f:
+                existing = json.load(f)
+            existing["last_upload"] = session_entry
+            history = existing.get("history", [])
+            history.insert(0, session_entry)
+            existing["history"] = history[:10]
+            session = existing
+    except Exception:
+        pass
+
+    with open(dz_file, 'w', encoding='utf-8') as f:
+        json.dump(session, f, indent=2, ensure_ascii=False)
 
 def _get_file_info(path: str) -> dict:
     """Get file metadata"""
@@ -123,7 +165,7 @@ def analyze_file(file_path: str) -> str:
     path = os.path.expanduser(file_path)
     if not os.path.exists(path):
         return (_markdown_header("File Error", "❌")
-                + f"**File not found:** `{path}`\n"
+                + f"**{t('File not found:')}** `{path}`\n"
                 + _markdown_footer())
     
     info = _get_file_info(path)
@@ -165,11 +207,11 @@ def analyze_file(file_path: str) -> str:
                 lines.append(ssa_report)
                 lines.append("")
             else:
-                lines.append("### 📊 SSA: Cannot read image for spatial analysis\n")
+                lines.append(f"### 📊 SSA: {t('Cannot read image for spatial analysis')}\n")
         except ImportError:
-            lines.append("### 📊 SSA: OpenCV not available (install opencv-python)\n")
+            lines.append(f"### 📊 SSA: {t('OpenCV not available (install opencv-python)')}\n")
         except Exception as e:
-            lines.append(f"### 📊 SSA: Analysis failed ({e})\n")
+            lines.append(f"### 📊 SSA: {t('Analysis failed: {0}', e)}\n")
 
         # ── Phase 2: OCR 텍스트 추출 ──
         try:
@@ -181,11 +223,11 @@ def analyze_file(file_path: str) -> str:
                 lines.append(ocr_md)
                 lines.append("")
             else:
-                lines.append("### 📝 OCR: Not available (install Tesseract or PaddleOCR)\n")
+                lines.append(f"### 📝 OCR: {t('Not available (install Tesseract or PaddleOCR)')}\n")
         except ImportError:
-            lines.append("### 📝 OCR: Module not loaded\n")
+            lines.append(f"### 📝 OCR: {t('Module not loaded')}\n")
         except Exception as e:
-            lines.append(f"### 📝 OCR: Failed ({e})\n")
+            lines.append(f"### 📝 OCR: {t('Analysis failed: {0}', e)}\n")
 
         # ── Phase 3: MiniCPM-V Vision ──
         try:
@@ -232,9 +274,9 @@ def analyze_file(file_path: str) -> str:
                     # 스캔 문서: 이미지 변환 → OCR/MiniCPM 파이프라인
                     _analyze_pdf_as_image(path, lines)
             except ImportError:
-                lines.append("⚠️ PyMuPDF not installed. Run: `pip install PyMuPDF`")
+                lines.append(t("PyMuPDF not installed. Run: `pip install PyMuPDF`"))
             except Exception as e:
-                lines.append(f"⚠️ PDF read error: {e}")
+                lines.append(t("PDF read error: {0}", e))
         
         elif info['ext'] == '.docx':
             try:
@@ -244,9 +286,9 @@ def analyze_file(file_path: str) -> str:
                 lines.append(f"### 📝 DOCX Content ({len(d.paragraphs)} paragraphs)")
                 lines.append(f"```\n{text[:5000]}\n```")
             except ImportError:
-                lines.append("⚠️ python-docx not installed. Run: `pip install python-docx`")
+                lines.append(t("python-docx not installed. Run: `pip install python-docx`"))
             except Exception as e:
-                lines.append(f"⚠️ DOCX read error: {e}")
+                lines.append(t("DOCX read error: {0}", e))
     
     # For binary files: show hex preview
     if info['type'] == 'binary':
@@ -283,13 +325,13 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
         import fitz
         doc = fitz.open(path)
         if doc.page_count == 0:
-            lines.append("⚠️ PDF has no pages.")
+            lines.append(t("PDF has no pages."))
             doc.close()
             return
 
         lines.append("")
         lines.append("### 🔬 PDF → Image Pipeline (Scanned Document)")
-        lines.append(f"Text extraction failed — {doc.page_count} page(s) being analyzed as image.")
+        lines.append(t("Text extraction failed — {0} page(s) being analyzed as image.", doc.page_count))
         lines.append("")
 
         # 첫 페이지만 이미지 변환
@@ -312,7 +354,7 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
                 lines.append(md)
                 lines.append("")
         except Exception as e:
-            lines.append(f"OCR skipped: {e}")
+            lines.append(t("OCR skipped: {0}", e))
             lines.append("")
 
         # ── MiniCPM-V 비전 분석 ──
@@ -334,9 +376,9 @@ def _analyze_pdf_as_image(path: str, lines: list) -> None:
             pass
 
     except ImportError:
-        lines.append("⚠️ PyMuPDF not installed (required for scanned PDF analysis)")
+        lines.append(t("PyMuPDF not installed (required for scanned PDF analysis)"))
     except Exception as e:
-        lines.append(f"⚠️ PDF image analysis failed: {e}")
+        lines.append(t("PDF image analysis failed: {0}", e))
 
 
 def _check_uploaded_files_impl() -> str:
@@ -344,7 +386,7 @@ def _check_uploaded_files_impl() -> str:
     registry_path = os.path.expanduser("~/.vibezoo-uploads/latest.json")
 
     if not os.path.exists(registry_path):
-        return "📂 아직 업로드된 파일이 없습니다."
+        return f"📂 {t('No uploaded files yet.')}"
 
     # 세션 시작 시간 읽기
     session_start = 0.0
@@ -371,7 +413,7 @@ def _check_uploaded_files_impl() -> str:
         ]
 
         if not entries:
-            return "📂 현재 세션에 업로드된 파일이 없습니다. 드롭존에 파일을 업로드해주세요."
+            return t("No files uploaded in the current session. Please upload a file via the drop zone.")
 
         lines = ["## 📎 최근 업로드된 파일", ""]
         for i, entry in enumerate(entries):
@@ -391,14 +433,14 @@ def _check_uploaded_files_impl() -> str:
             lines.append(f"**분석 예시**: `analyze_uploaded_file(file_path='{entries[0]['path']}')`")
         return "\n".join(lines)
     except Exception as e:
-        return f"⚠️ 업로드 레지스트리 읽기 실패: {e}"
+        return t("Upload registry read failed: {0}", e)
 
 
 def register(mcp):
     """파일 분석 도구 등록"""
     
     @mcp.tool
-    def analyze_uploaded_file(file_path: str = "") -> str:
+    def analyze_uploaded_file(file_path: str = "", track_dropzone: bool = False) -> str:
         """드롭존에 업로드된 파일을 분석하거나, 인자가 없으면 업로드된 파일 목록을 확인합니다.
 
         file_path를 제공하지 않으면 (기본값) 최근 업로드된 파일 목록을 반환합니다.
@@ -412,9 +454,14 @@ def register(mcp):
 
         Args:
             file_path: 업로드된 파일의 전체 경로 (생략 시 최근 업로드된 파일 목록 확인)
+            track_dropzone: True면 드롭존 세션 추적(dz_session.json 기록)을 수행합니다.
+                            드롭존 업로드 직후의 분석(자동 후속 처리 바인딩용)에 사용.
+                            기본값 False — 일반 분석은 세션을 기록하지 않습니다.
         Returns:
             마크다운 형식의 파일 분석 보고서 또는 업로드된 파일 목록
         """
+        if track_dropzone:
+            _write_dz_session(file_path)
         if not file_path:
             return _check_uploaded_files_impl()
         return analyze_file(file_path)
