@@ -1,0 +1,333 @@
+{
+  "name": "vibezoo",
+  "displayName": "%vibezoo.displayName%",
+  "description": "%vibezoo.description%",
+  "version": "0.15.1",
+  "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vibezoo/vibezoo"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vibezoo.selfCheck",
+        "title": "%vibezoo.selfCheck.title%"
+      },
+      {
+        "command": "vibezoo.verifyFoundation",
+        "title": "%vibezoo.verifyFoundation.title%"
+      },
+      {
+        "command": "vibezoo.reconnectCrow",
+        "title": "%vibezoo.reconnectCrow.title%"
+      },
+      {
+        "command": "vibezoo.instantRewind",
+        "title": "%vibezoo.instantRewind.title%"
+      },
+      {
+        "command": "vibezoo.toggleYolo",
+        "title": "%vibezoo.toggleYolo.title%"
+      },
+      {
+        "command": "vibezoo.scanProject",
+        "title": "%vibezoo.scanProject.title%"
+      },
+      {
+        "command": "vibezoo.openWhiteboard",
+        "title": "%vibezoo.openWhiteboard.title%"
+      },
+      {
+        "command": "vibezoo.openUIPreview",
+        "title": "%vibezoo.openUIPreview.title%"
+      },
+      {
+        "command": "vibezoo.openDashboard",
+        "title": "%vibezoo.openDashboard.title%"
+      },
+      {
+        "command": "vibezoo.openDropzone",
+        "title": "%vibezoo.openDropzone.title%"
+      },
+      {
+        "command": "vibezoo.showSessionResume",
+        "title": "%vibezoo.showSessionResume.title%"
+      },
+      {
+        "command": "vibezoo.rebuildCodeIndex",
+        "title": "%vibezoo.rebuildCodeIndex.title%"
+      },
+      {
+        "command": "vibezoo.pauseFixLoop",
+        "title": "%vibezoo.pauseFixLoop.title%"
+      },
+      {
+        "command": "vibezoo.resumeFixLoop",
+        "title": "%vibezoo.resumeFixLoop.title%"
+      },
+      {
+        "command": "vibezoo.abortFixLoop",
+        "title": "%vibezoo.abortFixLoop.title%"
+      },
+      {
+        "command": "vibezoo.startWatching",
+        "title": "%vibezoo.startWatching.title%"
+      },
+      {
+        "command": "vibezoo.stopWatching",
+        "title": "%vibezoo.stopWatching.title%"
+      },
+      {
+        "command": "vibezoo.toggleGuardGit",
+        "title": "%vibezoo.toggleGuardGit.title%"
+      },
+      {
+        "command": "vibezoo.openErrorDashboard",
+        "title": "%vibezoo.openErrorDashboard.title%"
+      },
+      {
+        "command": "vibezoo.configureErrorDashboard",
+        "title": "%vibezoo.configureErrorDashboard.title%"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vibezoo-sidebar",
+          "title": "%viewsContainer.vibezoo-sidebar.title%",
+          "icon": "$(zap)"
+        }
+      ]
+    },
+    "views": {
+      "vibezoo-sidebar": [
+        {
+          "id": "vibezoo.activeSubagents",
+          "name": "%view.vibezoo.activeSubagents.name%",
+          "type": "tree",
+          "icon": "$(extensions)",
+          "contextualTitle": "VibeZoo Subagents"
+        },
+        {
+          "id": "vibezoo.yoloHistory",
+          "name": "%view.vibezoo.yoloHistory.name%",
+          "type": "tree",
+          "icon": "$(history)",
+          "contextualTitle": "VibeZoo YOLO Sessions"
+        },
+        {
+          "id": "vibezoo.sessionResume",
+          "name": "%view.vibezoo.sessionResume.name%",
+          "type": "tree",
+          "icon": "$(debug-restart)",
+          "contextualTitle": "VibeZoo Session Resume"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "VibeZoo",
+      "properties": {
+        "vibezoo.crow.port": {
+          "type": "number",
+          "default": 9020,
+          "description": "%vibezoo.crow.port.description%"
+        },
+        "vibezoo.crow.autoReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.crow.autoReconnect.description%"
+        },
+        "vibezoo.yolo.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.yolo.enabled.description%"
+        },
+        "vibezoo.yolo.rewindShortcut": {
+          "type": "string",
+          "default": "ctrl+shift+z",
+          "description": "%vibezoo.yolo.rewindShortcut.description%"
+        },
+        "vibezoo.build.silentMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.build.silentMode.description%"
+        },
+        "vibezoo.build.autoFix": {
+          "type": "boolean",
+          "default": false,
+          "description": "%vibezoo.build.autoFix.description%"
+        },
+        "vibezoo.build.autoFixMaxAttempts": {
+          "type": "number",
+          "default": 3,
+          "description": "%vibezoo.build.autoFixMaxAttempts.description%"
+        },
+        "vibezoo.context.showFreshness": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.context.showFreshness.description%"
+        },
+        "vibezoo.session.autoResume": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.session.autoResume.description%"
+        },
+        "vibezoo.visual.whiteboardEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.visual.whiteboardEnabled.description%"
+        },
+        "vibezoo.visual.uiPreviewEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.visual.uiPreviewEnabled.description%"
+        },
+        "vibezoo.image.autoAnalyze": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.image.autoAnalyze.description%"
+        },
+        "vibezoo.guard.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.guard.enabled.description%"
+        },
+        "vibezoo.guard.autoEnable": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.guard.autoEnable.description%"
+        },
+        "vibezoo.guard.yoctoBackupEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.guard.yoctoBackupEnabled.description%"
+        },
+        "vibezoo.guard.yoctoBackupIntervalMin": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 1440,
+          "description": "%vibezoo.guard.yoctoBackupIntervalMin.description%"
+        },
+        "vibezoo.guard.integrityCheckIntervalMin": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "%vibezoo.guard.integrityCheckIntervalMin.description%"
+        },
+        "vibezoo.guard.linuxUseChattr": {
+          "type": "boolean",
+          "default": false,
+          "description": "%vibezoo.guard.linuxUseChattr.description%"
+        },
+        "vibezoo.errorCollection.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.errorCollection.enabled.description%"
+        },
+        "vibezoo.errorCollection.autoOpenDashboard": {
+          "type": "string",
+          "enum": [
+            "never",
+            "onCritical",
+            "always"
+          ],
+          "enumDescriptions": [
+            "%vibezoo.errorCollection.autoOpenDashboard.never%",
+            "%vibezoo.errorCollection.autoOpenDashboard.onCritical%",
+            "%vibezoo.errorCollection.autoOpenDashboard.always%"
+          ],
+          "default": "never",
+          "description": "%vibezoo.errorCollection.autoOpenDashboard.description%"
+        },
+        "vibezoo.errorCollection.notifyOnCritical": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.errorCollection.notifyOnCritical.description%"
+        },
+        "vibezoo.errorCollection.maxEntries": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 500,
+          "description": "%vibezoo.errorCollection.maxEntries.description%"
+        },
+        "vibezoo.bridge.port": {
+          "type": "number",
+          "default": 9027,
+          "description": "%vibezoo.bridge.port.description%"
+        },
+        "vibezoo.network.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "%vibezoo.network.host.description%"
+        },
+        "vibezoo.advanced.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "%vibezoo.advanced.pythonPath.description%"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "vibezoo.showSessionResume",
+        "key": "ctrl+shift+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "vibezoo.instantRewind",
+        "key": "ctrl+shift+z",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "vibezoo.openWhiteboard",
+        "key": "ctrl+shift+b",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "vibezoo.instantRewind",
+          "when": "view == vibezoo.yoloHistory && viewItem == yoloSnapshot",
+          "group": "1_rewind"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "lint": "eslint src --ext ts",
+    "l10n:export": "npx @vscode/l10n-dev export --outDir ./l10n ./src"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/l10n-dev": "^0.0.35",
+    "@vscode/vsce": "^2.22.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "minimatch": "^10.2.5"
+  },
+  "l10n": "./l10n"
+}
