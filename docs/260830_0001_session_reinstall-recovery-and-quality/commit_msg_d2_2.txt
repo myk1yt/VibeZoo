@@ -1,0 +1,19 @@
+feat(search): add persistent on-disk code index cache
+
+Code search kept everything in memory, so every OS/VS Code reinstall
+forced a full re-embed with no warm-start path.
+
+What: CodeIndexCache module storing per-project vector index under
+.zoo-code/index-cache/ (meta.json + vectors.npz) with streaming sha256
+file hashing, atomic save with 5000-file LRU trim, corruption-safe
+load, invalidate/rebuild helpers and RLock thread safety; numpy-free
+environments degrade to memory-only with a single warning
+Why: REQ-005 - one-command index rebuild after reinstall instead of
+silent full re-embed; cache invalidation on file changes
+Impact: new module only, no existing behavior changed; mirrored to
+root mcp-servers pending D4 folder removal
+
+Verification: tools/test_d2_2_index_cache.py 6/6 scenarios;
+extension/mcp-servers/tests/test_index_cache.py 6/6 unit tests
+
+Refs: docs/260830_0001_session_reinstall-recovery-and-quality/101000_code-d2-2-index-cache-report.md

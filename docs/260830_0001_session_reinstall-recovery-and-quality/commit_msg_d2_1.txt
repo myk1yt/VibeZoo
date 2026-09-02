@@ -1,0 +1,19 @@
+fix(search): retry embedding server availability with TTL and backoff
+
+is_available() cached the first probe result for the whole process
+lifetime, so once the embedding server was down (e.g. after an OS
+reinstall) code search stayed dead even after the server came back.
+
+What: 60s positive TTL cache, exponential negative backoff 1s..30s,
+EmbeddingClient.is_available(force=True), module-level
+reset_availability(), get_embedding_client() process singleton,
+recovery/unavailable logs wrapped in bridge i18n t()
+Why: REQ-005 - semantic search must self-heal and give tools a way to
+force re-probe (used by upcoming rebuild index command)
+Impact: zero API change for callers; search tools recover without
+bridge restart once the embedding server is reachable again
+
+Verification: AST parse clean on both copies; tools/test_d2_1 7/7;
+existing extension/mcp-servers/tests/test_semantic_search.py 21/21
+
+Refs: docs/260830_0001_session_reinstall-recovery-and-quality/100500_code-d2-1-embedding-cache-report.md

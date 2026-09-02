@@ -1,0 +1,26 @@
+refactor(bridge): remove tools and commands judged useless for AI workflow
+
+Per REQ-006 the only consumers of this codebase are AI agents, so a
+0-4 scored utility audit (110000 report) flagged dead/duplicated
+surface as DELETE. A read-only verification pass (111000 report)
+confirmed every item is safe to remove, and the code pass (112000
+report) implemented the manifest.
+
+What:
+- remove 9 MCP tools (explain_code, analyze_changes, generate_tests,
+  analyze_coverage, ux_coordinator, auto_analyze_after_drop,
+  auto_analyze_whiteboard, apply_patch, explore_github) incl. 5 deleted
+  modules (github_diver/editor/tester/ux_coordinator/intent_detector)
+  and dead registry entries + partial_result stub
+- remove 13 dead chat-referral commands, 4 editor context + 4 palette
+  menu entries, 5 unused settings; drop their i18n keys from 20 nls and
+  20 l10n files
+Why: agents already own editing/diff/test workflows and got these =
+unusable duplicates; fewer tools = clearer tool selection for LLMs
+Impact: 33 MCP tools remain and register cleanly; mirrors SHA-synced;
+no KEEP feature affected
+
+Verification: tsc 0 errors; py_compile 92 files; mock MCP registration
+33 tools / 0 deleted; verify_translations Missing=0 Empty=0 Sync=20/20
+
+Refs: docs/260830_0001_session_reinstall-recovery-and-quality/112000_code-delete-implement-report.md

@@ -1,0 +1,17 @@
+fix(i18n): add 6 missing Japanese package.nls keys for error dashboard
+
+Japanese language pack lagged behind the error-collection feature keys
+introduced in 260725_0003; Japanese users fell back to English text for
+the dashboard auto-open settings and critical error notification.
+
+What: add vincezoo.configureErrorDashboard.title,
+vibezoo.errorCollection.autoOpenDashboard.{description,never,onCritical,always},
+and vibezoo.errorCollection.notifyOnCritical.description with hand-written
+Japanese translations (no EN copy-through)
+Why: REQ-003 requires zero EN fallback for all supported languages
+Impact: ja locale now covers all 69 package.nls keys; verified JSON valid,
+UTF-8 no BOM, key order and count 100% match with EN
+
+Verification: python json.load + node nls diff (PASS:0 missing)
+
+Refs: docs/260830_0001_session_reinstall-recovery-and-quality/094000_code-d1-1-ja-nls-report.md

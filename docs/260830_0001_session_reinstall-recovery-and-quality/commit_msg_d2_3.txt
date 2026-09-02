@@ -1,0 +1,19 @@
+feat(search): unify embedding-server-down guidance and add health/rebuild tools
+
+When the embedding server was unreachable, search tools returned opaque
+errors that gave agents no recovery path.
+
+What: unified recovery message (server/app/port + manual rebuild hint)
+attached to semantic search failure with BM25 fallback preserved; new
+embedding_health_check tool ({available, api_style, url, model, hint});
+new rebuild_code_index tool backed by CodeIndexCache.rebuild; i18n keys
+added in 20 languages (en/ko hand-translated, 172 keys, 0 missing)
+Why: REQ-005 - after an OS reinstall, agents must self-recover or get an
+exact one-line fix instead of dead errors
+Impact: no breaking API change; scout gains 2 new MCP tools; both
+extension and root copies synced byte-identical
+
+Verification: AST parse 8 files clean; tools/test_d2_3 scenario PASS;
+test_scout_health + test_semantic_search all PASS; i18n verify 0 missing
+
+Refs: docs/260830_0001_session_reinstall-recovery-and-quality/102500_code-d2-3-serverdown-guidance-report.md

@@ -1,0 +1,18 @@
+feat(vision): guide users to Dropzone when MiniCPM model is missing
+
+describe_image returned hardcoded English error paths that gave no
+usable alternative when the GGUF model was absent, which is the default
+state on a fresh machine.
+
+What: model-missing and exception paths now return an i18n-wrapped
+message (en/ko hand-translated; key added to all 20 language files,
+173 keys total) pointing to Dropzone (Ctrl+V clipboard markdown handoff)
+and the README Vision section; mirrors synced SHA-identical
+Why: REQ-007 - guarantee a minimum useful path even without the vision
+model installed
+Impact: response text only; no API signature changes
+
+Verification: py_compile clean; verify_translations Missing=0 Empty=0
+Sync=20/20; fallback scenario tests (en/ko/exception) PASS
+
+Refs: docs/260830_0001_session_reinstall-recovery-and-quality/105000_code-light-d3-2-vision-fallback-report.md
