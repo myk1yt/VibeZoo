@@ -12,7 +12,7 @@ set "SCRIPT_DIR=%~dp0"
 set "LOG_DIR=%USERPROFILE%\.vibezoo"
 set "LOG_FILE=%SCRIPT_DIR%vibezoo_servers.log"
 set "PYTHON=python"
-set "CROW_DIR=..\Crow Memory"
+set "CROW_DIR=%~dp0..\Crow Memory"
 set "VIBEZOO_DIR=%~dp0"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
@@ -21,9 +21,10 @@ echo [%date% %time%] ====== VibeZoo Servers Launcher ====== >> "%LOG_FILE%"
 REM ─────────────────────────────────────────────
 REM  1. Check Python availability
 REM ─────────────────────────────────────────────
-if not exist "%PYTHON%" (
-    echo [%date% %time%] ERROR: Python not found at %PYTHON% >> "%LOG_FILE%"
-    echo ERROR: Python not found at %PYTHON%
+where %PYTHON% >nul 2>&1
+if !ERRORLEVEL! neq 0 (
+    echo [%date% %time%] ERROR: Python not found: %PYTHON% >> "%LOG_FILE%"
+    echo ERROR: Python not found: %PYTHON%
     pause
     exit /b 1
 )

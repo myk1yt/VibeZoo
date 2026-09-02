@@ -42,11 +42,11 @@ function getCodeDirectoryName(): string {
  *
  * @example
  * // Windows
- * getCodeUserPath() // → C:\Users\k1yt\AppData\Roaming\Code\User
+ * getCodeUserPath() // → C:\Users\<username>\AppData\Roaming\Code\User
  * // macOS
- * getCodeUserPath() // → /Users/k1yt/Library/Application Support/Code/User
+ * getCodeUserPath() // → /Users/<username>/Library/Application Support/Code/User
  * // Linux
- * getCodeUserPath() // → /home/k1yt/.config/Code/User
+ * getCodeUserPath() // → /home/<username>/.config/Code/User
  */
 export function getCodeUserPath(): string {
   const codeDir = getCodeDirectoryName();
@@ -97,7 +97,7 @@ function getFallbackCodeUserPath(): string {
  * @example
  * // Windows
  * getGlobalMcpSettingsPath()
- * // → C:\Users\k1yt\AppData\Roaming\Code\User\globalStorage\zoocodeorganization.zoo-code\settings\mcp_settings.json
+ * // → C:\Users\<username>\AppData\Roaming\Code\User\globalStorage\zoocodeorganization.zoo-code\settings\mcp_settings.json
  */
 export function getGlobalMcpSettingsPath(): string {
   const codeUserPath = getCodeUserPath();
