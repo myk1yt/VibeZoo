@@ -400,8 +400,8 @@ def get_workflow_hints(intent: str) -> dict:
         "file_share": {
             "primary_tool": "capture_screen",
             "primary_args": {"source": "dropzone"},
-            "next_tool": "auto_analyze_after_drop",
-            "description": "드롭존을 열어 파일 업로드를 요청합니다. 파일이 업로드되면 자동 분석합니다.",
+            "next_tool": "analyze_uploaded_file",
+            "description": "드롭존을 열어 파일 업로드를 요청합니다. 파일이 업로드되면 analyze_uploaded_file(file_path, track_dropzone=True)로 분석합니다.",
             "suggested_response": "파일을 여기로 드래그하거나 업로드해 주세요. 업로드하시면 분석해 드리겠습니다."
         },
         "drawing_request": {
@@ -414,7 +414,7 @@ def get_workflow_hints(intent: str) -> dict:
         "whiteboard_input": {
             "primary_tool": "get_whiteboard_state",
             "primary_args": {},
-            "next_tool": "auto_analyze_whiteboard",
+            "next_tool": "get_whiteboard_state",
             "description": "화이트보드의 현재 상태를 읽고 분석합니다.",
             "suggested_response": "화이트보드 내용을 분석해 보겠습니다."
         },

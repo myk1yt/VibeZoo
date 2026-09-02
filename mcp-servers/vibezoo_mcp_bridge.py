@@ -15,6 +15,13 @@ _EXT_ROOT = str(Path(__file__).resolve().parent)
 if _EXT_ROOT not in sys.path:
     sys.path.insert(0, _EXT_ROOT)
 
+# Fix Windows cp949 and pythonw (None stdout/stderr)
+if sys.platform == "win32":
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 from fastmcp import FastMCP
 from starlette.responses import JSONResponse
 from starlette.requests import Request
@@ -22,6 +29,11 @@ from starlette.requests import Request
 from bridge.config import VERSION, CROW_URL, CROW_TIMEOUT
 from bridge.crow_client import crow_health_check
 from bridge.tools import register_all_tools
+from bridge.i18n import init as i18n_init
+import os
+
+# Initialize i18n from VIBEZOO_LANG env var (set by Extension's SubagentManager)
+i18n_init(os.environ.get("VIBEZOO_LANG", "en"))
 
 mcp = FastMCP(name="vibezoo")
 register_all_tools(mcp)
@@ -43,13 +55,13 @@ async def list_subagents_route(request: Request) -> JSONResponse:
             {"name": "Tester", "status": "ready", "tools": ["generate_tests", "analyze_coverage"]},
             {"name": "Whiteboard", "status": "ready", "tools": ["draw_on_whiteboard", "get_whiteboard_state", "capture_screen", "check_uploaded_files"]},
             {"name": "FixLoop", "status": "ready", "tools": ["auto_fix_status", "retry_build", "check_intervention"]},
-            {"name": "Integrated", "status": "ready", "tools": ["review_project", "find_bugs", "suggest_refactor", "generate_docs"]},
+            {"name": "Integrated", "status": "ready", "tools": ["review_project"]},
             {"name": "Analysis", "status": "ready", "tools": ["explain_code", "analyze_changes", "review_pr", "refactor_across_files"]},
-            {"name": "Knowledge", "status": "ready", "tools": ["learn_project", "recall_project", "learn_preference", "get_preferences"]},
+            {"name": "Knowledge", "status": "ready", "tools": ["recall_project", "learn_preference", "get_preferences"]},
             {"name": "Web", "status": "ready", "tools": ["fetch_page", "web_search"]},
             {"name": "SSA", "status": "ready", "tools": ["aggregate_spatial_pixels"]},
             {"name": "Setup", "status": "ready", "tools": ["vibezoo_setup"]},
-            {"name": "Editor", "status": "ready", "tools": ["apply_patch", "read_project_file"]},
+            {"name": "Editor", "status": "ready", "tools": ["apply_patch"]},
             {"name": "FileAnalyzer", "status": "ready", "tools": ["analyze_uploaded_file", "check_uploaded_files"]},
         ]
     })
