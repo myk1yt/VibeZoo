@@ -27,7 +27,7 @@ import { ContextIndicator, ExplainLessSuggestor, SessionResume, EmotionalDetecto
 import { SubagentManager } from './orchestra/SubagentManager';
 import { MentionRouter } from './orchestra/MentionRouter';
 import { VisualVibePanels } from './visual/VisualVibePanels';
-import { activateErrorCollection } from './flow/ErrorCollection';
+import { activateErrorCollection, markErrorsAsSeen, resetErrorRegistry } from './flow/ErrorCollection';
 import { McpConfigService } from './mcp/McpConfigService';
 import { SelfChecker } from './safety/SelfCheck';
 
@@ -446,6 +446,58 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.openErrorDashboard', () => {
       visualPanels.openErrorDashboard();
+      markErrorsAsSeen(Date.now());
+    })
+  );
+
+  // Configure Error Dashboard Auto-Open (P3)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('vibezoo.configureErrorDashboard', async () => {
+      const config = vscode.workspace.getConfiguration('vibezoo');
+      const currentAutoOpen = config.get<string>('errorCollection.autoOpenDashboard', 'never');
+      const currentNotify = config.get<boolean>('errorCollection.notifyOnCritical', true);
+
+      const items: vscode.QuickPickItem[] = [
+        {
+          label: '$(circle-slash) Never (기본값)',
+          description: '에러 대시보드 webview를 자동으로 열지 않음 (Status Bar만 표기)',
+          picked: currentAutoOpen === 'never'
+        },
+        {
+          label: '$(flame) On New Critical Error',
+          description: '새로운 Critical 에러 발생 시에만 대시보드 webview 자동 열기',
+          picked: currentAutoOpen === 'onCritical'
+        },
+        {
+          label: '$(pinned) Always',
+          description: 'Critical 에러 존재 시 창을 켤 때마다 항상 대시보드 webview 자동 열기',
+          picked: currentAutoOpen === 'always'
+        },
+        {
+          label: currentNotify ? '$(bell-dot) Critical 에러 알림 팝업: 활성화됨' : '$(bell-slash) Critical 에러 알림 팝업: 비활성화됨',
+          description: currentNotify ? '클릭 시 Critical 에러 감지 팝업을 비활성화합니다' : '클릭 시 Critical 에러 감지 팝업을 활성화합니다'
+        }
+      ];
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'VibeZoo Error Dashboard 자동 열기 동작 선택'
+      });
+
+      if (!selected) return;
+
+      if (selected.label.includes('Never')) {
+        await config.update('errorCollection.autoOpenDashboard', 'never', vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('✅ VibeZoo: Error Dashboard 자동 열기가 비활성화되었습니다 (Never).');
+      } else if (selected.label.includes('On New Critical Error')) {
+        await config.update('errorCollection.autoOpenDashboard', 'onCritical', vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('✅ VibeZoo: 새로운 Critical 에러 발생 시에만 Error Dashboard가 자동으로 열립니다.');
+      } else if (selected.label.includes('Always')) {
+        await config.update('errorCollection.autoOpenDashboard', 'always', vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('✅ VibeZoo: Critical 에러 존재 시 항상 Error Dashboard가 자동으로 열립니다.');
+      } else if (selected.label.includes('Critical 에러 알림 팝업')) {
+        await config.update('errorCollection.notifyOnCritical', !currentNotify, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`✅ VibeZoo: Critical 에러 알림 팝업이 ${!currentNotify ? '활성화' : '비활성화'}되었습니다.`);
+      }
     })
   );
 
@@ -638,13 +690,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('vibezoo.refactorAcrossFiles', async () => {
       vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"refactor\" in Zoo Code chat. (refactor_across_files MCP tool)'));
-    })
-  );
-
-  // H. vibezoo.learnProject — 프로젝트 지식 학습 (MCP 툴 안내)
-  context.subscriptions.push(
-    vscode.commands.registerCommand('vibezoo.learnProject', async () => {
-      vscode.window.showInformationMessage(vscode.l10n.t('VibeZoo: Please type \"learn project\" in Zoo Code chat. (learn_project MCP tool)'));
     })
   );
 

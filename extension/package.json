@@ -71,18 +71,6 @@
         "title": "%vibezoo.reviewProject.title%"
       },
       {
-        "command": "vibezoo.findBugs",
-        "title": "%vibezoo.findBugs.title%"
-      },
-      {
-        "command": "vibezoo.suggestRefactor",
-        "title": "%vibezoo.suggestRefactor.title%"
-      },
-      {
-        "command": "vibezoo.generateDocs",
-        "title": "%vibezoo.generateDocs.title%"
-      },
-      {
         "command": "vibezoo.pauseFixLoop",
         "title": "%vibezoo.pauseFixLoop.title%"
       },
@@ -119,10 +107,6 @@
         "title": "%vibezoo.refactorAcrossFiles.title%"
       },
       {
-        "command": "vibezoo.learnProject",
-        "title": "%vibezoo.learnProject.title%"
-      },
-      {
         "command": "vibezoo.recallProject",
         "title": "%vibezoo.recallProject.title%"
       },
@@ -141,6 +125,10 @@
       {
         "command": "vibezoo.openErrorDashboard",
         "title": "%vibezoo.openErrorDashboard.title%"
+      },
+      {
+        "command": "vibezoo.configureErrorDashboard",
+        "title": "%vibezoo.configureErrorDashboard.title%"
       }
     ],
     "viewsContainers": {
@@ -299,6 +287,26 @@
           "default": true,
           "description": "%vibezoo.errorCollection.enabled.description%"
         },
+        "vibezoo.errorCollection.autoOpenDashboard": {
+          "type": "string",
+          "enum": [
+            "never",
+            "onCritical",
+            "always"
+          ],
+          "enumDescriptions": [
+            "%vibezoo.errorCollection.autoOpenDashboard.never%",
+            "%vibezoo.errorCollection.autoOpenDashboard.onCritical%",
+            "%vibezoo.errorCollection.autoOpenDashboard.always%"
+          ],
+          "default": "never",
+          "description": "%vibezoo.errorCollection.autoOpenDashboard.description%"
+        },
+        "vibezoo.errorCollection.notifyOnCritical": {
+          "type": "boolean",
+          "default": true,
+          "description": "%vibezoo.errorCollection.notifyOnCritical.description%"
+        },
         "vibezoo.errorCollection.maxEntries": {
           "type": "number",
           "default": 100,
@@ -353,38 +361,11 @@
           "command": "vibezoo.reviewProject",
           "group": "vibezoo@1",
           "when": "explorerViewletVisible"
-        },
-        {
-          "command": "vibezoo.findBugs",
-          "group": "vibezoo@2",
-          "when": "explorerViewletVisible"
-        },
-        {
-          "command": "vibezoo.suggestRefactor",
-          "group": "vibezoo@3",
-          "when": "explorerViewletVisible"
-        },
-        {
-          "command": "vibezoo.generateDocs",
-          "group": "vibezoo@4",
-          "when": "explorerViewletVisible"
         }
       ],
       "commandPalette": [
         {
           "command": "vibezoo.reviewProject",
-          "when": "never"
-        },
-        {
-          "command": "vibezoo.findBugs",
-          "when": "never"
-        },
-        {
-          "command": "vibezoo.suggestRefactor",
-          "when": "never"
-        },
-        {
-          "command": "vibezoo.generateDocs",
           "when": "never"
         }
       ]

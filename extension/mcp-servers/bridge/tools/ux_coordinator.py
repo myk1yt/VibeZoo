@@ -83,7 +83,7 @@ def register(mcp):
             response_parts.append("")
             response_parts.append(f"### 📎 {t('Dropzone Auto Binding')}")
             response_parts.append(t("A recently uploaded file was detected: `{0}`", os.path.basename(dz_path)))
-            response_parts.append(t("Suggest calling `auto_analyze_after_drop(file_path=\"{0}\")`.", dz_path))
+            response_parts.append(t("Suggest calling `analyze_uploaded_file(file_path=\"{0}\", track_dropzone=True)`.", dz_path))
 
         if context:
             response_parts.append("")

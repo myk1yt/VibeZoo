@@ -83,7 +83,7 @@ def register(mcp):
             response_parts.append("")
             response_parts.append("### 📎 Dropzone 자동 바인딩")
             response_parts.append(f"최근 업로드된 파일이 감지되었습니다: `{os.path.basename(dz_path)}`")
-            response_parts.append(f"`auto_analyze_after_drop(file_path=\"{dz_path}\")` 호출을 제안합니다.")
+            response_parts.append(f"`analyze_uploaded_file(file_path=\"{dz_path}\", track_dropzone=True)` 호출을 제안합니다.")
 
         if context:
             response_parts.append("")
