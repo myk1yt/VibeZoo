@@ -134,5 +134,6 @@ Former aggregate tools (`find_bugs`, `suggest_refactor`, `generate_docs`, `learn
 - File-based IPC has 500ms latency (fs.watchFile interval)
 - Guard.git uses OS-specific ACLs (Windows: icacls, Linux: chmod, macOS: chmod)
 - Python deps auto-installed by SubagentManager on first startup
+- Any bridge code change MUST be mirrored between `extension/mcp-servers/` (source of truth) and root `mcp-servers/` (dev mirror) — manual dual maintenance
 
 </project_architecture>

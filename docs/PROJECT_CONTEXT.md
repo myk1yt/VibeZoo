@@ -4,8 +4,8 @@
 >
 > A Companion Extension for Zoo Code that helps the LLM search, analyze, review, and document code more intelligently.
 
-- **Last Updated**: 2026-07-25
-- **Version**: v0.16.0 (extension), v0.16.0 (bridge config)
+- **Last Updated**: 2026-09-02
+- **Version**: v0.15.1 (extension), v0.16.0 (bridge config)
 - **License**: MIT
 - **Repository**: <https://github.com/vibezoo/VibeZoo_forZoocode>
 
@@ -85,6 +85,8 @@ VibeZoo extends Zoo Code's functionality without modifying a single line of its 
 
 VibeZoo consists of a **3-Layer Hybrid Architecture**. Since v0.15.1, Zoo Code auto-starts the Python MCP Bridge (port 9027) via `autoStart` and `autoStartCommand` defined in `mcp_settings.json`. The VibeZoo extension monitors the physical port (`netstat`/`lsof`) to detect and clean up duplicate/zombie processes on port 9027, ensuring conflict-free auto-connect.
 
+> **Source-of-Truth Dual-Tree Layout**: `extension/mcp-servers/` is the **SOURCE OF TRUTH** for the Python bridge; `init_vibezoo.bat` / `init_vibezoo.sh` deploy it to `%USERPROFILE%\mcp-servers\vibezoo`. Root `mcp-servers/` is a development mirror of the same tree, kept in sync **manually** (no codegen script exists — every bridge edit must be applied to both trees).
+
 ```text
 ┌───────────────────────────────────────────────────────────────────────┐
 │                         VS Code Window                                 │
@@ -155,7 +157,7 @@ When the extension activates, auto-connect proceeds in the following order:
 | Layer | Directory | Responsibility |
 |-------|-----------|----------------|
 | **Layer 1** | [`extension/src/`](extension/src/) | VS Code Extension — UI, Safety, Flow, Orchestra, Visual |
-| **Layer 2** | [`mcp-servers/bridge/`](mcp-servers/bridge/) | Python MCP Bridge — 33 tools, AST, search, OCR, vision, error handling |
+| **Layer 2** | [`extension/mcp-servers/bridge/`](extension/mcp-servers/bridge/) (source of truth; root `mcp-servers/` is the dev mirror) | Python MCP Bridge — 33 tools, AST, search, OCR, vision, error handling |
 | **Layer 3** | Crow Memory (external) | Synaptic memory server — Hebbian EMA, 8 Registers, `crow.bin` |
 
 ### 3.2 Crow Memory's 8 Registers
@@ -291,7 +293,7 @@ User drag-and-drop / Ctrl+V
 | | [`visual/ErrorDashboard.ts`](extension/src/visual/ErrorDashboard.ts:12) | `registry.json` watch → Webview dashboard |
 | **Types** | [`types/index.ts`](extension/src/types/index.ts:1) | Common type definitions (CrowServerConfig, BuildResult, SubagentNode, GuardGit, etc.) |
 
-### 6.2 Layer 2 — Python MCP Bridge (`mcp-servers/bridge/`)
+### 6.2 Layer 2 — Python MCP Bridge (`extension/mcp-servers/bridge/`)
 
 | Module | File | Responsibility |
 |--------|------|----------------|
@@ -362,7 +364,7 @@ extension/mcp-servers/
 ├── vibezoo_mcp_bridge.py
 └── bridge/
 
-mcp-servers/bridge/ (legacy mirror)
+mcp-servers/bridge/ (dev mirror of extension/mcp-servers/bridge/ — manual dual maintenance)
 ├── __init__.py
 ├── config.py
 ├── crow_client.py
@@ -380,6 +382,7 @@ mcp-servers/bridge/ (legacy mirror)
 ├── search_engine.py
 ├── tool_context.py
 ├── utils.py
+├── i18n/            # 20 translation JSON files (bridge-side i18n)
 ├── tools/
 │   ├── __init__.py
 │   ├── _base.py
@@ -461,8 +464,8 @@ The VibeZoo MCP Bridge provides 33 MCP tools modularized across 16 files.
 | Reviewer | [`tools/reviewer.py`](mcp-servers/bridge/tools/reviewer.py) | `review_code` | Code quality check (ESLint, go vet integration) |
 | Tester | [`tools/tester.py`](mcp-servers/bridge/tools/tester.py) | `generate_tests`, `analyze_coverage` | Test generation and coverage analysis |
 | Deep Analyzer | [`tools/deep_analyzer.py`](mcp-servers/bridge/tools/deep_analyzer.py) | `analyze_call_graph`, `map_dependencies`, `extract_patterns`, `reverse_engineer` | Deep AST analysis |
-| File Analyzer | [`tools/file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | `analyze_uploaded_file` | Uploaded file analysis (list check and SSA/OCR/Vision support) |
-| Whiteboard | [`tools/whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | `draw_on_whiteboard`, `get_whiteboard_state`, `capture_screen` | AI-Human visual collaboration |
+| File Analyzer | [`tools/file_analyzer.py`](mcp-servers/bridge/tools/file_analyzer.py) | `analyze_uploaded_file` | Uploaded file analysis (SSA/OCR/Vision pipeline, dropzone session tracking) |
+| Whiteboard | [`tools/whiteboard.py`](mcp-servers/bridge/tools/whiteboard.py) | `draw_on_whiteboard`, `get_whiteboard_state`, `capture_screen`, `check_uploaded_files` | AI-Human visual collaboration and upload monitoring |
 | Fix Loop | [`tools/fix_loop.py`](mcp-servers/bridge/tools/fix_loop.py) | `auto_fix_status`, `retry_build`, `check_intervention` | Autonomous build fix loop |
 | Integrated | [`tools/integrated.py`](mcp-servers/bridge/tools/integrated.py) | `review_project` | Unified project review |
 | Analysis | [`tools/analysis.py`](mcp-servers/bridge/tools/analysis.py) | `explain_code`, `analyze_changes`, `review_pr`, `refactor_across_files` | Code explanation and diff analysis |
@@ -729,5 +732,5 @@ Manual configuration:
 
 ---
 
-*VibeZoo v0.16.0 — July 2026*  
+*VibeZoo v0.16.0 — September 2026*
 *Co-designed by Stefano, Kim & AI*

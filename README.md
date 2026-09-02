@@ -19,7 +19,7 @@ Your support helps us develop new features and keep the AI coding revolution mov
 
 ## 🌍 Global i18n / l10n Support
 
-VibeZoo now fully supports global internationalization (i18n). Built on top of the native `vscode.l10n` API, VibeZoo automatically detects your VS Code display language. It currently provides a base English locale along with a fully translated Korean (`ko`) language pack, ensuring a native experience regardless of your region.
+VibeZoo fully supports global internationalization (i18n) across **20 languages** (English base + ar, bg, cs, de, es, fr, he, hu, it, ja, ko, pl, pt-BR, ru, th, tr, vi, zh-CN, zh-TW). Built on top of the native `vscode.l10n` API, VibeZoo automatically detects your VS Code display language, ensuring a native experience regardless of your region.
 
 
 ---
@@ -92,8 +92,8 @@ Key infrastructure modules:
 - [`result_ranker.py`](mcp-servers/bridge/result_ranker.py) — BM25 + embedding cosine similarity result ranking
 - [`file_cache.py`](mcp-servers/bridge/file_cache.py) — L1 memory cache with 20s TTL for search results
 
-### 1.0 Autonomous Agents (2 Tools) — Web Search & Feedback
-The `web_search` tool leverages the **Exa API** (neural search engine) to autonomously fetch real-time data and documentation with high-quality highlighted snippets. The `vibezoo_feedback` allows the LLM to write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement.
+### 1.0 Autonomous Agents — Feedback & Telemetry
+The [`vibezoo_feedback`](mcp-servers/bridge/tools/feedback.py) tool lets the LLM write telemetry logs (`feedbacks/`) to suggest new capabilities or highlight repetitive tasks for continuous improvement. (Web search tools are covered in [1.11 Web](#111-web-2-tools--web-search-and-page-analysis).)
 
 ### 1.1 UX (2 Tools) — Intent Detection + Auto Tool Chains
 When you say "I'll show you a file", the Dropzone opens. Uploaded files are automatically analyzed through the SSA→OCR→MiniCPM pipeline.
@@ -130,10 +130,10 @@ Tools: [`analyze_call_graph`](mcp-servers/bridge/tools/deep_analyzer.py), [`map_
 
 Analyzes call graphs, dependencies, and recurring patterns using tree-sitter AST, and automatically generates documentation.
 
-### 1.6 Whiteboard (3 Tools) — AI-Human Visual Collaboration
-Tools: [`draw_on_whiteboard`](mcp-servers/bridge/tools/whiteboard.py), [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py), [`capture_screen`](mcp-servers/bridge/tools/whiteboard.py)
+### 1.6 Whiteboard (4 Tools) — AI-Human Visual Collaboration
+Tools: [`draw_on_whiteboard`](mcp-servers/bridge/tools/whiteboard.py), [`get_whiteboard_state`](mcp-servers/bridge/tools/whiteboard.py), [`capture_screen`](mcp-servers/bridge/tools/whiteboard.py), [`check_uploaded_files`](mcp-servers/bridge/tools/whiteboard.py)
 
-The AI draws on a Fabric.js canvas, reads user modifications, and can capture the screen.
+The AI draws on a Fabric.js canvas, reads user modifications, captures the screen, and monitors files uploaded to the Dropzone.
 
 
 ### 1.7 Fix Loop (3 Tools) — Autonomous Build & Fix Loop
@@ -147,13 +147,10 @@ Combines multiple tools into a single workflow. Just say "Review this", and it r
 ### 1.9 Analysis (4 Tools) — Code Explanation and Diff Analysis
 Explains what specific code lines do, analyzes git diffs, supports PR reviews, and proposes bulk refactoring.
 
-### 1.10 Knowledge (3 Tools) — Project Knowledge Memory
-Saves project structures and patterns into Crow Memory and recalls them later.
+### 1.10 Knowledge & Preferences (3 Tools) — Project Knowledge Memory
+[`recall_project`](mcp-servers/bridge/tools/knowledge.py) recalls auto-captured project knowledge (learned at bridge startup via `_auto_learn_project`), while [`learn_preference`](mcp-servers/bridge/tools/knowledge.py) and [`get_preferences`](mcp-servers/bridge/tools/knowledge.py) store and retrieve your coding style and preferences in Crow Memory.
 
-### 1.11 Preferences (2 Tools) — User Preference Learning
-Stores your coding style and preferences in Crow Memory to be recalled when needed.
-
-### 1.12 Web (2 Tools) — Web Search and Page Analysis
+### 1.11 Web (2 Tools) — Web Search and Page Analysis
 Used to reference external documentation or search for the latest technical information.
 
 **v0.16.0 improvements**:
@@ -161,10 +158,10 @@ Used to reference external documentation or search for the latest technical info
 - Errors are surfaced with structured error codes instead of silent `except: return []`
 - Retry logic: 2 retries with exponential backoff (0.5s, 1.5s)
 
-### 1.13 SSA (1 Tool) — Spatial Statistical Analysis
+### 1.12 SSA (1 Tool) — Spatial Statistical Analysis
 Spatial Statistical Aggregator: OpenCV-based image pixel statistics analysis, including OCR.
 
-### 1.14 Editor (1 Tool) — AI-Safe File Editing
+### 1.13 Editor (1 Tool) — AI-Safe File Editing
 Apply patches to files without worrying about missing parameters. The [`apply_patch`](mcp-servers/bridge/tools/editor.py) tool:
 - **`path` optional**: Auto-detects target file from diff content
 - **Fuzzy matching**: Auto-corrects up to 85% similarity (ignores whitespace/indentation differences)
@@ -174,7 +171,7 @@ Apply patches to files without worrying about missing parameters. The [`apply_pa
 - **Supports both `=======` / `-------`**: Compatible with `apply_diff`
 
 
-### 1.15 Setup (1 Tool) — Automation
+### 1.14 Setup (1 Tool) — Automation
 Installs VibeZoo dependencies and auto-configures MCP/Zoo settings.
 **ripgrep auto-install**: When running `vibezoo_setup(target="full")`, automatically installs ripgrep via winget/choco/scoop or direct download.
 
@@ -246,6 +243,12 @@ VibeZoo Bridge stores and retrieves memories via Crow Memory's REST API:
 - `GET /recall` — Search for similar errors and patterns
 
 ### Changelog
+- **v0.16.1** (2026-09-02):
+  - **Tool inventory cleanup (39→33)**: removed aggregate tools `find_bugs`, `suggest_refactor`, `generate_docs`, `learn_project`, `auto_analyze_whiteboard`, `auto_analyze_after_drop` — equivalent workflows are now prompt-level compositions of the remaining tools
+  - Deleted dead `github_diver.py`; purged ghost tool `read_project_file`
+  - `analyze_uploaded_file` now supports dropzone session tracking (`track_dropzone` parameter)
+  - Removed extension wrapper commands `vibezoo.findBugs` / `vibezoo.suggestRefactor` / `vibezoo.generateDocs` / `vibezoo.learnProject` and orphaned NLS keys across 20 locales
+  - Path-safety fixes: no absolute/user-specific paths in bridge output and docs
 - **v0.16.0** (2026-07-25):
   - **Tool Ecosystem Overhaul**: Comprehensive enhancement of the VibeZoo MCP tool ecosystem
   - New modules: `fuzzy_matcher.py` (trigram fuzzy matching), `embedding_client.py` (embedding-based semantic search), `ast_singleton.py` (shared AST singleton)
@@ -285,18 +288,12 @@ VibeZoo Bridge stores and retrieves memories via Crow Memory's REST API:
 - Git
 
 ### 5.2 Installation
-**Windows (PowerShell):**
-```powershell
-git clone https://github.com/vibezoo/crowmemory.git
-cd crowmemory
-.\install.ps1
-```
+See the [Out-of-the-Box Setup](#-out-of-the-box-setup-universal-ux) section above, or [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for the full guide:
 
-**macOS / Linux:**
 ```bash
-git clone https://github.com/vibezoo/crowmemory.git
-cd crowmemory
-python install.py
+git clone https://github.com/vibezoo/VibeZoo_forZoocode.git
+cd VibeZoo_forZoocode
+# Windows: init_vibezoo.bat   |   macOS/Linux: bash init_vibezoo.sh
 ```
 
 ### 5.3 Manual VibeZoo MCP Bridge Configuration

@@ -56,22 +56,21 @@ Key infrastructure modules:
 - [`ast_singleton.py`](extension/mcp-servers/bridge/ast_singleton.py) — High-performance tree-sitter AST engine singleton
 - [`fuzzy_matcher.py`](extension/mcp-servers/bridge/fuzzy_matcher.py) — Trigram Dice coefficient fuzzy approximate matching
 - [`embedding_client.py`](extension/mcp-servers/bridge/embedding_client.py) — Embedding client (LM Studio / Ollama auto-detection on port `8089` with BM25 fallback)
-- [`index_cache.py`](extension/mcp-servers/bridge/index_cache.py) — SHA-256 incremental hash cache for instant embedding index reuse
 - [`result_ranker.py`](extension/mcp-servers/bridge/result_ranker.py) — Hybrid BM25 + cosine similarity ranker
 - [`file_cache.py`](extension/mcp-servers/bridge/file_cache.py) — L1 memory cache with 20s TTL
+
+> **Note**: `extension/mcp-servers/` is the SOURCE OF TRUTH for the Python bridge; root `mcp-servers/` is a manually-synced dev mirror. `init_vibezoo.bat` deploys the source of truth to `%USERPROFILE%\mcp-servers\vibezoo`.
 
 ---
 
 ### 1.1 Scout & Code Search (3 Tools)
-Tools: [`search_codebase`](extension/mcp-servers/bridge/tools/scout.py), [`find_references`](extension/mcp-servers/bridge/tools/scout.py), [`summarize_architecture`](extension/mcp-servers/bridge/tools/scout.py), [`embedding_health_check`](extension/mcp-servers/bridge/tools/scout.py), [`rebuild_code_index`](extension/mcp-servers/bridge/tools/scout.py)
+Tools: [`search_codebase`](extension/mcp-servers/bridge/tools/scout.py), [`find_references`](extension/mcp-servers/bridge/tools/scout.py), [`summarize_architecture`](extension/mcp-servers/bridge/tools/scout.py)
 
 - **`search_codebase`**: Multi-mode codebase search supporting `auto`, `exact`, `fuzzy`, `ast`, and `semantic` modes.
-  - `semantic`: Embedding-based cosine similarity with SHA-256 index caching. Automatically falls back to BM25 when the embedding server is offline.
+  - `semantic`: Embedding-based cosine similarity. Automatically falls back to BM25 when the embedding server (port `8089`) is offline.
   - `target_path`: Supports searching targeted subdirectories or external project paths.
 - **`find_references`**: Word-boundary regex matching (`\b`) preventing substring false positives.
 - **`summarize_architecture`**: AST-driven overview of modules, classes, and entry points.
-- **`embedding_health_check`**: Diagnoses connection to the local embedding server (port `8089`).
-- **`rebuild_code_index`**: Forces full recalculation of vector embeddings, invalidating cached indices.
 
 ### 1.2 Deep AST Analyzer (4 Tools)
 Tools: [`analyze_call_graph`](extension/mcp-servers/bridge/tools/deep_analyzer.py), [`map_dependencies`](extension/mcp-servers/bridge/tools/deep_analyzer.py), [`extract_patterns`](extension/mcp-servers/bridge/tools/deep_analyzer.py), [`reverse_engineer`](extension/mcp-servers/bridge/tools/deep_analyzer.py)
@@ -85,6 +84,7 @@ Tool: [`review_code`](extension/mcp-servers/bridge/tools/reviewer.py)
 
 ### 1.4 Whiteboard & Dropzone (4 Tools)
 Tools: [`draw_on_whiteboard`](extension/mcp-servers/bridge/tools/whiteboard.py), [`get_whiteboard_state`](extension/mcp-servers/bridge/tools/whiteboard.py), [`capture_screen`](extension/mcp-servers/bridge/tools/whiteboard.py), [`check_uploaded_files`](extension/mcp-servers/bridge/tools/whiteboard.py)
+<!-- 4 tools: 3 whiteboard + 1 upload monitor; upload analysis via analyze_uploaded_file (1.5) -->
 
 - Real-time visual collaboration on a Fabric.js canvas. AI can draw diagrams, inspect user modifications, capture viewport snapshots, and monitor image uploads.
 
@@ -220,4 +220,5 @@ MIT License — See [`extension/package.json`](extension/package.json) (or [MIT 
 Contact: 📧 **myk1yt@gmail.com**
 
 ---
-*VibeZoo v0.15.1*
+*VibeZoo v0.16.1 — September 2026*
+*Co-designed by Stefano, Kim & AI*
