@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+from pathlib import Path
 
 KEYS = (
     "vibezoo.findBugs.title",
@@ -20,7 +21,10 @@ PATTERN = re.compile(
     r'^\s*"(?:' + "|".join(re.escape(k) for k in KEYS) + r')"\s*:'
 )
 
-EXT_DIR = os.path.join("d:", os.sep, "OneDrive", "Projects", "VibeZoo", "extension")
+# Resolve repo root relative to this script's location:
+#   _st6_purge_nls.py  →  docs/<session>/  →  docs/  →  repo root
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+EXT_DIR = str(_REPO_ROOT / "extension")
 files = sorted(glob.glob(os.path.join(EXT_DIR, "package.nls*.json")))
 targets = [f for f in files if "-myk1yt" not in os.path.basename(f)]
 
